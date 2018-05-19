@@ -346,36 +346,3 @@ class PlotCorrelation:
         self._activeUpdatingThread.start()
 
 
-def nfigure(name="noname",figsize=None,**figprops):
-  try:
-    fig_names = [x.canvas.manager.window.get_title()
-      for x in matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
-  except:
-    try:
-                  fig_names = [x.canvas.manager.window.wm_title()
-        for x in matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
-    except:
-      fig_names = [x.canvas.manager.window.windowTitle()
-        for x in matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
-        #import code; code.interact(local=locals())
-  n=0
-  found=0
-  for tname in fig_names:
-          n+=1
-          if tname == name:
-                  fig=matplotlib._pylab_helpers.Gcf.get_all_fig_managers()[n-1]
-                  matplotlib._pylab_helpers.Gcf.set_active(fig)
-                  fig = plt.gcf()
-                  found = 1
-
-  if not found==1:
-          print('Created new figure %s'  % (name))
-          if (figsize is None):
-                  fig = plt.figure(**figprops)
-          else:
-                  fig = plt.figure(figsize=figsize,**figprops)
-          if name is not None:
-            fig.canvas.set_window_title(name)
-  plt.figure(fig.number)
-  return fig
-
