@@ -40,8 +40,6 @@ class HistPlot:
         self._lastPlotRequest = time.time()
         x, y, yerr = self._getplotData()
         props = next(self.axes._get_lines.prop_cycler)
-        holdstate = self.axes.ishold()
-        self.axes.hold(True)
         err = self.axes.fill_between(x, y+yerr,
                                      np.max(np.vstack([y-yerr, np.zeros_like(y)]), axis=0),
                                      color=props['color'],
@@ -56,7 +54,6 @@ class HistPlot:
                     self.data.scan._parameters[self.scanVariable].unit))
             self.axes.set_ylabel('%s / %s' % (self.data.name, self.data.unit))
         plt.draw()
-        self.axes.hold(holdstate)
         self._lastPlottingTime = time.time()-self._lastPlotRequest
 
     def replot(self):
@@ -76,7 +73,6 @@ class HistPlot:
         if self.autoscale:
             self.axes.relim()
             self.axes.autoscale_view(True, True, True)
-        plt.draw()
         self._lastPlottingTime = time.time()-self._lastPlotRequest
 
     def _generateYerrVertices(self, x, y, yerr):
@@ -157,8 +153,6 @@ class Plot:
             self._lastPlottingTime = time.time()-self._lastPlotRequest
             return
         props = next(self.axes._get_lines.prop_cycler)
-        holdstate = self.axes.ishold()
-        self.axes.hold(True)
         errs = []
         if self.step:
             for n,eP in enumerate(self.errPercentiles):
@@ -184,7 +178,6 @@ class Plot:
                     self.data.scan._parameters[self.scanVariable].unit))
             self.axes.set_ylabel('%s / %s' % (self.data.name, self.data.unit))
         plt.draw_all()
-        self.axes.hold(holdstate)
         self._lastPlottingTime = time.time()-self._lastPlotRequest
 
     def replot(self):
@@ -298,8 +291,6 @@ class PlotCorrelation:
             self._lastPlottingTime = time.time()-self._lastPlotRequest
             return
         props = next(self.axes._get_lines.prop_cycler)
-        holdstate = self.axes.ishold()
-        self.axes.hold(True)
         line = self.axes.plot(x, y, '.', label=self.label, **props)[0]
         self.drawn = dict(line=line)
         if self.autosetAxlabel:
@@ -312,7 +303,6 @@ class PlotCorrelation:
                     self.data_y.name,
                     self.data_y.unit))
         plt.draw_all()
-        self.axes.hold(holdstate)
         self._lastPlottingTime = time.time()-self._lastPlotRequest
 
     def replot(self):
