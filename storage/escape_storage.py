@@ -72,7 +72,34 @@ def wrap4escData(func,convertOutput2EscData='auto'):
 
 
 
+class Scan:
+    def __init__(self, parameter_names=None, values=[], readbacks=[], parameter_Ids=None, scan_step_info=[]):
+        """
+        """
+        self._parameter_names = parameter_names
+        self._parameter_Ids = parameter_Ids
+        self._values = values
+        self._readbacks = readbacks
+        self._scan_step_info = scan_step_info
 
+    def _append(self,values,readbacks,scan_step_info=None):
+        assert len(values) == len(self._parameterNames), 'Not enough values supplied'
+        assert len(readbacks) == len(self._parameterNames), 'Not enough values supplied'
+        self._values.append(values)
+        self._readbacks.append(readbacks)
+        self._scan_step_info.append(scan_step_info)
+
+    def keys(self):
+        return self._parameter_names
+
+    def __len__(self):
+        return len(self._values)
+
+    def __getitem__(self, item):
+        if type(item) is slice or type(item) is int:
+            return np.asarray(self._values).T[item]
+        elif type(item) is str:
+            return np.asarray(self._values).T[self._parameter_names.index(item)]
 
 
 

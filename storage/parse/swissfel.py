@@ -3,7 +3,7 @@ import pathlib
 from . import utilities
 import h5py
 from dask import array as da
-from .. import Array
+from .. import Array, Scan
 
 
 def readScanEcoJson_v01(file_name_json):
@@ -29,7 +29,7 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
             fn = pathlib.Path(fp.name)
             if not searchpaths:
                 searchpaths = [fp.parent]+\
-                    [scan_info_filepath.parent/pathlib.Path(tp) \
+                    [scan_info_filepath.parent/pathlib.Path(tp.format(fp.parent.name)) \
                     for tp in search_paths]
             for path in searchpaths:
                 file_path = path/fn
@@ -45,7 +45,9 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
 
     names = set()
     dstores = {}
-    for stepNo,datasets in enumerate(datasets_scan,s['scan_values','scan_readbacks',s['scan_step_info']]):
+
+    for stepNo,(datasets,scan_values,scan_readbacks,scan_step_info) \
+            in enumerate(datasets_scan,s['scan_values'],s['scan_readbacks'],s['scan_step_info']):
         tnames = set(datasets.keys())
         newnames = tnames.difference(names)
         oldnames = names.intersection(tnames)
@@ -53,6 +55,10 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
             if datasets[name][0].size ==0:
                 print("Found empty dataset in {} in cycle {}".format(name,stepNo))
             else:
+                scan = Scan(parameter_names=s['parameter_names'], parameter_Ids=s['parameter_Ids'])
+                size_data = np.dtype(datasets[name][0].dtype).itemsize * datasets[name][0].size /1024**2
+                size_element = np.dtype(datasets[name][0].dtype).itemsize * np.prod(datasets[name][0].shape[1:]) /1024**2
+                chunk_size = 
                 dstores[name] = [da.from_array(datasets[name][0],chunks=datasets[name][0].chunks), \
                                 da.from_array(datasets[name][1], chunks=datasets[name][1].chunks),[len(datasets[name][0])]]
                 names.add(name)
@@ -81,9 +87,6 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
     return escArrays
 
             
-def attachToDict(key,value,dictionary):
-    if key in dictionary.keys():
-        bof
 
 
            
