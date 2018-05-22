@@ -4,7 +4,7 @@ from . import utilities
 import h5py
 from dask import array as da
 from .. import Array, Scan
-
+import numpy as np
 
 def readScanEcoJson_v01(file_name_json):
     p = pathlib.Path(file_name_json)
@@ -47,7 +47,7 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
     dstores = {}
 
     for stepNo,(datasets,scan_values,scan_readbacks,scan_step_info) \
-            in enumerate(datasets_scan,s['scan_values'],s['scan_readbacks'],s['scan_step_info']):
+            in enumerate(zip(datasets_scan,s['scan_values'],s['scan_readbacks'],s['scan_step_info'])):
         tnames = set(datasets.keys())
         newnames = tnames.difference(names)
         oldnames = names.intersection(tnames)
@@ -55,51 +55,53 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
             if datasets[name][0].size ==0:
                 print("Found empty dataset in {} in cycle {}".format(name,stepNo))
             else:
-                scan = Scan(parameter_names=s['parameter_names'], parameter_Ids=s['parameter_Ids'])
+                scan = Scan(parameter_names=s['scan_parameters']['name'], parameter_Ids=s['scan_parameters']['Id'])
                 size_data = np.dtype(datasets[name][0].dtype).itemsize * datasets[name][0].size /1024**2
-                size_element = np.dtype(datasets[name][0].dtype).itemsize * np.prod(datasets[name][0].shape) /1024**2
-                chunk_size = dataset[name][0].chunks
+                size_element = np.dtype(datasets[name][0].dtype).itemsize * np.prod(datasets[name][0].shape[1:]) /1024**2
+                chunk_size = list(datasets[name][0].chunks)
                 if chunk_size[0] == 1:
-                    chunk_size[0] = memlimit_mD_MB//size_element
+                    chunk_size[0] = int(memlimit_mD_MB//size_element)
                 dstores[name] = {}
                 dstores[name]['scan'] = scan
+                # dirty hack for inconsitency in writer
+                if len(scan_readbacks) > len(scan._parameter_names):
+                    scan_readbacks = scan_readbacks[:len(scan._parameter_names)]
+                dstores[name]['scan']._append(scan_values, scan_readbacks, scan_step_info=scan_step_info)
                 dstores[name]['data'] = []
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['data_chunks'] = chunk_size
                 dstores[name]['eventIds'] = []
                 dstores[name]['eventIds'].append(datasets[name][1])
                 dstores[name]['stepLengths'] = []
-                dstores[name]['stepLemgths'].append(len(datasets[name][0]))
-                #dstores[name] = [da.from_array(datasets[name][0],chunks=datasets[name][0].chunks), \
-                #       da.from_array(datasets[name][1], chunks=datasets[name][1].chunks),[len(datasets[name][0])]]
+                dstores[name]['stepLengths'].append(len(datasets[name][0]))
                 names.add(name)
         for name in oldnames:
             if datasets[name][0].size ==0:
                 print("Found empty dataset in {} in cycle {}".format(name,stepNo))
             else:
-                dstores[name]['scan'].append()
+                # dirty hack for inconsitency in writer
+                if len(scan_readbacks) > len(scan._parameter_names):
+                    scan_readbacks = scan_readbacks[:len(scan._parameter_names)]
+                dstores[name]['scan']._append(scan_values, scan_readbacks, scan_step_info=scan_step_info)
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['eventIds'].append(datasets[name][1])
-                dstores[name]['stepLemgths'].append(len(datasets[name][0]))
-#                dstores[name][0] = da.concatenate( [ dstores[name][0],
-#                    da.from_array(datasets[name][0],chunks=datasets[name][0].chunks) ], axis=0)
-#                dstores[name][1] = da.concatenate( [ dstores[name][1],
-#                    da.from_array(datasets[name][1],chunks=datasets[name][1].chunks) ], axis=0)
-#                dstores[name][2].append(len(datasets[name][0]))
-
+                dstores[name]['stepLengths'].append(len(datasets[name][0]))
     escArrays = {}
-    for name,(data,eventId,steplengths) in dstores.items():
-        escArrays[name] = Array(data,eventIds=eventId,stepLengths=steplengths)
-
-
-
-
-
-
-        
-
-    
+    containers = {}
+    for name,dat in dstores.items():
+        containers[name] = LazyContainer(dat)
+        escArrays[name] = Array(containers[name].get_data,\
+                eventIds=containers[name].get_eventIds,stepLengths=dat['stepLengths'],scan=dat['scan'])
     return escArrays
+
+
+class LazyContainer:
+    def __init__(self,dat):
+        self.dat = dat
+    def get_data(self):
+        return da.concatenate([da.from_array(td,chunks=self.dat['data_chunks']) for td in self.dat['data']])
+    def get_eventIds(self):
+        return np.concatenate([td[...].ravel() for td in self.dat['eventIds']])
 
             
 

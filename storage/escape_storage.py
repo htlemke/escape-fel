@@ -4,16 +4,18 @@ from dask import array as da
 class Array:
     def __init__(self, data=None, eventIds=None,
                  stepLengths=None, scan=None):
-        assert len(data) == len(eventIds), \
-            "lengths of data and event IDs must mutch!"
+        if not (callable(data) or callable(eventIds)):
+            assert len(data) == len(eventIds), \
+                "lengths of data and event IDs must mutch!"
         if not stepLengths is None:
-            assert sum(stepLengths)==len(eventIds), \
-                "StepsLength need to add up to dataset length!"
+            if not callable(eventIds):
+                assert sum(stepLengths)==len(eventIds), \
+                    "StepsLength need to add up to dataset length!"
             if scan is None:
                 print("No information about event groups (steps) \
                     available!")
         self._eventIds = eventIds
-        self.data = data
+        self._data = data
         self.stepLengths = stepLengths
         self.scan = scan
     
@@ -24,6 +26,12 @@ class Array:
         elif callable(self._eventIds):
             self._eventIds = self._eventIds()
         return self._eventIds
+    
+    @property
+    def data(self):
+        if callable(self._data):
+            self._data = self._data()
+        return self._data
 
     def __len__(self):
         return len(self.data)
@@ -83,8 +91,9 @@ class Scan:
         self._scan_step_info = scan_step_info
 
     def _append(self,values,readbacks,scan_step_info=None):
-        assert len(values) == len(self._parameterNames), 'Not enough values supplied'
-        assert len(readbacks) == len(self._parameterNames), 'Not enough values supplied'
+        assert len(values) == len(self._parameter_names), 'number of values doesn\'t fit no of parameter names'
+        assert len(readbacks) == len(self._parameter_names), 'number of readbacks doesn\'t fit no of parameter names'
+
         self._values.append(values)
         self._readbacks.append(readbacks)
         self._scan_step_info.append(scan_step_info)
