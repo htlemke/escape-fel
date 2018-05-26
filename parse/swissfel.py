@@ -15,7 +15,7 @@ def readScanEcoJson_v01(file_name_json):
     assert len(s['scan_files']) == len(s['scan_readbacks']), 'number of files and scan readbacks don\'t match in {}'.format(file_name_json)
     return s,p
 
-def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_data'],memlimit_0D_MB=5, memlimit_mD_MB=10):
+def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_data'],memlimit_0D_MB=5, memlimit_mD_MB=10, createEscArrays=True):
     """Data parser assuming eco-written files from pilot phase 1"""
     s,scan_info_filepath = readScanEcoJson_v01(file_name_json)
     lastpath = None
@@ -39,8 +39,11 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                         searchpaths.insert(0,path)
                     break
             assert file_path.is_file(), 'Could not find file {} '.format(fn)
-            fh = h5py.File(file_path.resolve(),mode='r')
-            datasets.update(utilities.findItemnamesGroups(fh,['data','pulse_id']))
+            try:
+                fh = h5py.File(file_path.resolve(),mode='r')
+                datasets.update(utilities.findItemnamesGroups(fh,['data','pulse_id']))
+            except:
+                print(f'WARNING: could not read {file_path.absolute().as_posix()}.')
         datasets_scan.append(datasets)
 
     names = set()
@@ -86,13 +89,16 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['eventIds'].append(datasets[name][1])
                 dstores[name]['stepLengths'].append(len(datasets[name][0]))
-    escArrays = {}
-    containers = {}
-    for name,dat in dstores.items():
-        containers[name] = LazyContainer(dat)
-        escArrays[name] = Array(containers[name].get_data,\
-                eventIds=containers[name].get_eventIds,stepLengths=dat['stepLengths'],scan=dat['scan'])
-    return escArrays
+    if createEscArrays:
+        escArrays = {}
+        containers = {}
+        for name,dat in dstores.items():
+            containers[name] = LazyContainer(dat)
+            escArrays[name] = Array(containers[name].get_data,\
+                    eventIds=containers[name].get_eventIds,stepLengths=dat['stepLengths'],scan=dat['scan'])
+        return escArrays
+    else:
+        return dstores
 
 
 class LazyContainer:
