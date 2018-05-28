@@ -58,18 +58,19 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
             if datasets[name][0].size ==0:
                 print("Found empty dataset in {} in cycle {}".format(name,stepNo))
             else:
-                scan = Scan(parameter_names=s['scan_parameters']['name'], parameter_Ids=s['scan_parameters']['Id'])
                 size_data = np.dtype(datasets[name][0].dtype).itemsize * datasets[name][0].size /1024**2
                 size_element = np.dtype(datasets[name][0].dtype).itemsize * np.prod(datasets[name][0].shape[1:]) /1024**2
                 chunk_size = list(datasets[name][0].chunks)
                 if chunk_size[0] == 1:
                     chunk_size[0] = int(memlimit_mD_MB//size_element)
                 dstores[name] = {}
-                dstores[name]['scan'] = scan
+                dstores[name]['scan'] = Scan(parameter_names=s['scan_parameters']['name'], parameter_Ids=s['scan_parameters']['Id'])
                 # dirty hack for inconsitency in writer
-                if len(scan_readbacks) > len(scan._parameter_names):
-                    scan_readbacks = scan_readbacks[:len(scan._parameter_names)]
-                dstores[name]['scan']._append(scan_values, scan_readbacks, scan_step_info=scan_step_info)
+                if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names):
+                    scan_readbacks = scan_readbacks[:len(dstores[name]['scan']._parameter_names)]
+                dstores[name]['scan']._append(scan_values.copy(), scan_readbacks.copy(), scan_step_info=scan_step_info.copy())
+                if name=='JF_1.5M':
+                    print(scan_values, scan_readbacks, scan_step_info)
                 dstores[name]['data'] = []
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['data_chunks'] = chunk_size
@@ -83,9 +84,12 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                 print("Found empty dataset in {} in cycle {}".format(name,stepNo))
             else:
                 # dirty hack for inconsitency in writer
-                if len(scan_readbacks) > len(scan._parameter_names):
-                    scan_readbacks = scan_readbacks[:len(scan._parameter_names)]
-                dstores[name]['scan']._append(scan_values, scan_readbacks, scan_step_info=scan_step_info)
+                if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names):
+                    scan_readbacks = scan_readbacks[:len(dstores[name]['scan']._parameter_names)]
+                dstores[name]['scan']._append(scan_values.copy(), scan_readbacks.copy(), scan_step_info=scan_step_info.copy())
+                if name=='JF_1.5M':
+                    print(len(dstores[name]['scan']._values))
+                    print(scan_values, scan_readbacks, scan_step_info)
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['eventIds'].append(datasets[name][1])
                 dstores[name]['stepLengths'].append(len(datasets[name][0]))

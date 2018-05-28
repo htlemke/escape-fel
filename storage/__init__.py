@@ -33,6 +33,21 @@ class Array:
             self._data = self._data()
         return self._data
 
+    def get_step(self,n):
+        assert n>=0, 'Step index needs to be positive'
+        if n==0 and not self.stepLengths:
+            return self.data[:]
+        assert self.stepLengths, "No step sizes defined."
+        assert n<len(self.stepLengths), f'Only {len(self.stepLengths)} steps'
+        return self.data[sum(self.stepLengths[:n]):sum(self.stepLengths[:(n+1)])]
+
+    def steps(self):
+        """returns iterator over all steps"""
+        n = 0
+        while n < len(self.stepLengths):
+            yield self.get_step(n)
+            n += 1
+
     def __len__(self):
         return len(self.data)
 
@@ -81,13 +96,19 @@ def wrap4escData(func,convertOutput2EscData='auto'):
 
 
 class Scan:
-    def __init__(self, parameter_names=None, values=[], readbacks=[], parameter_Ids=None, scan_step_info=[]):
+    def __init__(self, parameter_names=None, values=None, readbacks=None, parameter_Ids=None, scan_step_info=None):
         """
         """
         self._parameter_names = parameter_names
         self._parameter_Ids = parameter_Ids
+        if values is None:
+            values = []
         self._values = values
+        if readbacks is None:
+            readbacks = []
         self._readbacks = readbacks
+        if scan_step_info is None:
+            scan_step_info = []
         self._scan_step_info = scan_step_info
 
     def _append(self,values,readbacks,scan_step_info=None):
@@ -135,7 +156,7 @@ def matchIDs(ids_master,ids_slaves,stepLengths_master=None):
     for tid in ids_slaves:
         srt = tid.argsort(axis=0)
         inds_slaves.append(srt[np.searchsorted(tid,ids_res,sorter=srt)])
-    srt = ids_res.argsort(axis=0)
+    srt = ids_master.argsort(axis=0)
     inds_master = srt[np.searchsorted(ids_master,ids_res,sorter=srt)]
 
     if not stepLengths_master is None:
