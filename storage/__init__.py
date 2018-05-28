@@ -23,8 +23,10 @@ class Array:
     def eventIds(self):
         if isinstance(self._eventIds,da.Array):
             self._eventIds = self._eventIds.compute()
+            self._eventIds, self.data = get_unique_Ids(self._eventIds,self.data)
         elif callable(self._eventIds):
             self._eventIds = self._eventIds()
+            self._eventIds, self._data = get_unique_Ids(self._eventIds,self.data)
         return self._eventIds
     
     @property
@@ -167,4 +169,13 @@ def matchIDs(ids_master,ids_slaves,stepLengths_master=None):
         stepLensNew = None
     return inds_master,inds_slaves,stepLensNew
 
+
+def get_unique_Ids(eventIds, array_data, delete_Ids=[0]):
+    eventIds,idxs = np.unique(eventIds,return_index=True)
+    good_Ids = np.ones_like(idxs,dtype=bool)
+    for bad_Id in delete_Ids:
+        good_Ids[eventIds==bad_Id] = False
+    eventIds = eventIds[good_Ids]
+    idxs = idxs[good_Ids]
+    return eventIds,array_data[idxs]
 
