@@ -74,7 +74,7 @@ class Scan:
         return not np.isnan(parValues).any()
 
     def _append(self):
-        """Appends scan para meter val ues in case they don't exist already.
+        """Appends scan parameter values in case they don't exist already.
         returns a boolean "is to append" and the index of the data"""
         if self._parameters is None:
             return False, 0
@@ -626,7 +626,7 @@ _operatorsJoin = [
     (operator.or_, '|'),
     (operator.pow,   '**'),
     (operator.is_,  'is'),
-    (operator.is_not,    'is not'),
+    (operator.is_not,    'is not'),
     (operator.lshift,    '<<'),
     (operator.mod,   '%'),
     (operator.mul,   '*'),

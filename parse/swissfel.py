@@ -5,6 +5,7 @@ import h5py
 from dask import array as da
 from .. import Array, Scan
 import numpy as np
+from copy import copy
 
 def readScanEcoJson_v01(file_name_json):
     p = pathlib.Path(file_name_json)
@@ -38,7 +39,7 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                         lastpath = path
                         searchpaths.insert(0,path)
                     break
-            assert file_path.is_file(), 'Could not find file {} '.format(fn)
+            #assert file_path.is_file(), 'Could not find file {} '.format(fn)
             try:
                 fh = h5py.File(file_path.resolve(),mode='r')
                 datasets.update(utilities.findItemnamesGroups(fh,['data','pulse_id']))
@@ -68,7 +69,7 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                 # dirty hack for inconsitency in writer
                 if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names):
                     scan_readbacks = scan_readbacks[:len(dstores[name]['scan']._parameter_names)]
-                dstores[name]['scan']._append(scan_values.copy(), scan_readbacks.copy(), scan_step_info=scan_step_info.copy())
+                dstores[name]['scan']._append(copy(scan_values), copy(scan_readbacks), scan_step_info=copy(scan_step_info))
                 dstores[name]['data'] = []
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['data_chunks'] = chunk_size
@@ -84,7 +85,7 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                 # dirty hack for inconsitency in writer
                 if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names):
                     scan_readbacks = scan_readbacks[:len(dstores[name]['scan']._parameter_names)]
-                dstores[name]['scan']._append(scan_values.copy(), scan_readbacks.copy(), scan_step_info=scan_step_info.copy())
+                dstores[name]['scan']._append(copy(scan_values), copy(scan_readbacks), scan_step_info=copy(scan_step_info))
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['eventIds'].append(datasets[name][1])
                 dstores[name]['stepLengths'].append(len(datasets[name][0]))
