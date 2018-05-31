@@ -61,7 +61,10 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
             else:
                 size_data = np.dtype(datasets[name][0].dtype).itemsize * datasets[name][0].size /1024**2
                 size_element = np.dtype(datasets[name][0].dtype).itemsize * np.prod(datasets[name][0].shape[1:]) /1024**2
-                chunk_size = list(datasets[name][0].chunks)
+                if datasets[name][0].chunks:
+                    chunk_size = list(datasets[name][0].chunks)
+                else:
+                    chunk_size = list(datasets[name][0].shape)
                 if chunk_size[0] == 1:
                     chunk_size[0] = int(memlimit_mD_MB//size_element)
                 dstores[name] = {}
