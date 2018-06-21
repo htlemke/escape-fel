@@ -6,7 +6,7 @@ a high level, object oriented framework which abstracs event processing to high 
 
 """
 
-from .storage import Array, Scan, wrap4escData
+from .storage import Array, Scan, escaped
 
 
 

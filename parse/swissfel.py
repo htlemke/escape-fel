@@ -68,11 +68,14 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                 if chunk_size[0] == 1:
                     chunk_size[0] = int(memlimit_mD_MB//size_element)
                 dstores[name] = {}
-                dstores[name]['scan'] = Scan(parameter_names=s['scan_parameters']['name'], parameter_Ids=s['scan_parameters']['Id'])
+                dstores[name]['scan'] = Scan(
+                        parameter_names = s['scan_parameters']['name']+[f'{tn}_readback' for tn in s['scan_parameters']['name']],
+                        parameter_attrs = {tn:{'Id':ti} for tn,ti in zip(s['scan_parameters']['name'],s['scan_parameters']['Id'])}
+                        )
                 # dirty hack for inconsitency in writer
-                if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names):
-                    scan_readbacks = scan_readbacks[:len(dstores[name]['scan']._parameter_names)]
-                dstores[name]['scan']._append(copy(scan_values), copy(scan_readbacks), scan_step_info=copy(scan_step_info))
+                if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names)/2:
+                    scan_readbacks = scan_readbacks[:int(len(dstores[name]['scan']._parameter_names)/2)]
+                dstores[name]['scan']._append(copy(scan_values) + copy(scan_readbacks), scan_step_info=copy(scan_step_info))
                 dstores[name]['data'] = []
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['data_chunks'] = chunk_size
@@ -86,9 +89,9 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                 print("Found empty dataset in {} in cycle {}".format(name,stepNo))
             else:
                 # dirty hack for inconsitency in writer
-                if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names):
-                    scan_readbacks = scan_readbacks[:len(dstores[name]['scan']._parameter_names)]
-                dstores[name]['scan']._append(copy(scan_values), copy(scan_readbacks), scan_step_info=copy(scan_step_info))
+                if len(scan_readbacks) > len(dstores[name]['scan']._parameter_names)/2:
+                    scan_readbacks = scan_readbacks[:int(len(dstores[name]['scan']._parameter_names)/2)]
+                dstores[name]['scan']._append(copy(scan_values) + copy(scan_readbacks), scan_step_info=copy(scan_step_info))
                 dstores[name]['data'].append(datasets[name][0])
                 dstores[name]['eventIds'].append(datasets[name][1])
                 dstores[name]['stepLengths'].append(len(datasets[name][0]))
