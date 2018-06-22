@@ -1,4 +1,7 @@
 deploy:
   provider: pypi
-  user: "htlemke"
-  password: "Your password"
+  user: htlemke
+  password:
+    secure: S9++NkNwiSVecGsISwSMBC7WrsAX1Zw+UNBWoQClTh1SUpcnSVGwSXuGHEElIzedjux9wLfbW3DJ8yFoaYChFdZMjOyt7DT95J08f/72gTYrSJP6UuWoyIfvgxV4TYF71dMCyKzpvxcDvE1l/xB7cbo850xgYh+/yLT3o6KGj+DHPEOq8VPllGtChTPJJKUAI77e7e/oDTYN9zaoGFxWNBq4UMoJY3YRRVhlWdZb5E4edQELs+KzGUkeUTRD0Ui6d4DTYwYoEDuplc4i2bEH6aW1tguwPru9OtRyKJL6nWwdoxy+rvn9254ea6vVLQPKz0433KYbJeKMlx5lTaQMwFqml8TXohX14oQQPvOw2lR9Z2w1iqcbF/sxUwLUpLn/9Mmt+bttRIG47YGxOkuNthjD1nqw6yWwVKbfGPktSHiZVpPAXt/yAUTWiE0ZQ67pO/cQOt3VKtN9HkjoSj5ly1u0xIRN/9sbcaBIUL9IPgnxLpGosRx742GEmiRrzH3gEE3f9cgIcxH6tGkaWJGjX4sL/pO3/9yIBl/H2aF/ayASUUeg+UcHN2xkQktJBxXPT7WuW/y1CUJWFJ8rLkhAO3TzKWt+ejNEbOHCGbFV1p+u95m0ixZynrHJtDV/w1YBq6bbn6w7e4ymr9qtTGfI8w3i7eFtE5+xyk6a3q9KdfE=
+  on:
+    tags: true
