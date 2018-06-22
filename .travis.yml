@@ -1,0 +1,4 @@
+deploy:
+  provider: pypi
+  user: "htlemke"
+  password: "Your password"
