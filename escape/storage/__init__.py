@@ -107,7 +107,10 @@ class Array:
                 self.__class__.__module__,
                 self.__class__.__name__,
                 hex(id(self)))
-        s += '{}; shape {}'.format(self.name,self.shape) 
+        s += ' {}; shape {}'.format(self.name,self.shape) 
+        if self.scan:
+            s+='\n'
+            s+=self.scan.__repr__()
         return s
 
 def escaped(func,convertOutput2EscData='auto'):
@@ -253,6 +256,8 @@ class Scan:
                 'values':[self._values[i] for i in  selection],
                 'scan_step_info':[self._step_info[i] for i in  selection]
                 }
+    def __len(self):
+        return len(self._values)
 
     def __len__(self):
         return len(self._values)
@@ -262,6 +267,12 @@ class Scan:
             return np.asarray(self._values).T[item]
         elif type(item) is str:
             return np.asarray(self._values).T[self._parameter_names.index(item)]
+
+    def __repr__(self):
+        s = "Scan over {} steps".format(len(self)) 
+        s += '\n'
+        s += "Parameters {}".format(', '.join(self._parameter_names))
+        return s
 
 
 def matchIDs(ids_master,ids_slaves,stepLengths_master=None):
