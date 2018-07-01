@@ -69,7 +69,8 @@ def parseScanEco_v01(file_name_json,search_paths=['./','./scan_data/','../scan_d
                     chunk_size[0] = int(memlimit_mD_MB//size_element)
                 dstores[name] = {}
                 dstores[name]['scan'] = Scan(
-                        parameter_names = s['scan_parameters']['name']+[f'{tn}_readback' for tn in s['scan_parameters']['name']],
+                        parameter_names = [str(ts) for ts in s['scan_parameters']['name']]
+                        +[f'{tn}_readback' for tn in s['scan_parameters']['name']],
                         parameter_attrs = {tn:{'Id':ti} for tn,ti in zip(s['scan_parameters']['name'],s['scan_parameters']['Id'])}
                         )
                 # dirty hack for inconsitency in writer
