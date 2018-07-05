@@ -45,9 +45,9 @@ class Array:
 
     def get_step_data(self,n):
         assert n>=0, 'Step index needs to be positive'
-        if n==0 and not self.stepLengths:
+        if n==0 and self.stepLengths is None:
             return self.data[:]
-        assert self.stepLengths, "No step sizes defined."
+        assert not self.stepLengths is None, "No step sizes defined."
         assert n<len(self.stepLengths), f'Only {len(self.stepLengths)} steps'
         return self.data[sum(self.stepLengths[:n]):sum(self.stepLengths[:(n+1)])]
 
@@ -55,7 +55,7 @@ class Array:
         """returns iterator over all steps"""
         n = 0
         while n < len(self.stepLengths):
-            yield self.get_step(n)
+            yield self.get_step_data(n)
             n += 1
 
     def __len__(self):
@@ -75,8 +75,10 @@ class Array:
             events = [ta for ta in args if ta][self.eventDim]
         if isinstance(events,slice):
             events = list(range(*events.indices(len(self))))
+        elif isinstance(events,np.ndarray) and events.dtype is bool:
+            events = events.nonzero()[0]
         stepLengths,scan = get_scan_step_selections(events,self.stepLengths,scan=self.scan)
-        return Array(data=self.data.__getitem__(args), 
+        return Array(data=self.data.__getitem__(*args), 
             eventIds=self.eventIds.__getitem__(events),
             stepLengths=stepLengths, scan=scan, eventDim=self.eventDim)
 
