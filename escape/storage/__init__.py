@@ -308,6 +308,8 @@ def get_unique_Ids(eventIds, array_data, stepLengths=None, delete_Ids=[0]):
     return eventIds,array_data[idxs],stepLengths
 
 def get_scan_step_selections(ix,stepLengths,scan=None):
+    if type(ix) is int:
+        ix = [ix]
     stepLengths = \
         np.bincount(
             np.digitize(ix,bins=np.cumsum(stepLengths)),minlength=len(stepLengths))
