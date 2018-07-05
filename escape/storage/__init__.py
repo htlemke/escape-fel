@@ -66,6 +66,8 @@ class Array:
             args = args[0]
         if len(args)==1:
             assert self.eventDim==0, "requesting slice not along event dimension!"
+            if type(args[0]) is int:
+                args = (slice(args[0],args[0]+1),)
             events = args[0]
         elif len(args)==self.ndim:
             events = args[self.eventDim]
@@ -250,6 +252,9 @@ class Scan:
         return self._parameter_names
 
     def get_steps(self,selection):
+        selection = np.atleast_1d(selection)
+        if selection.dtype==bool:
+            selection = selection.nonzero()[0]
         return {
                 'parameter_names':self._parameter_names,
                 'parameter_attrs':self._parameter_attrs,
@@ -308,8 +313,7 @@ def get_unique_Ids(eventIds, array_data, stepLengths=None, delete_Ids=[0]):
     return eventIds,array_data[idxs],stepLengths
 
 def get_scan_step_selections(ix,stepLengths,scan=None):
-    if type(ix) is int:
-        ix = [ix]
+    ix = np.atleast_1d(ix)
     stepLengths = \
         np.bincount(
             np.digitize(ix,bins=np.cumsum(stepLengths)),minlength=len(stepLengths))
