@@ -232,8 +232,8 @@ class Scan:
         self._parameter_names = parameter_names
         self._parameter_attrs = {}
         for name,attr in parameter_attrs.items():
-            assert name in self._parameter_names, f'Attribute {name} not in scan parameter names.'
-            self._parameter_attrs[name]=attr
+            assert str(name) in self._parameter_names, f'Attribute {name} not in scan parameter names.'
+            self._parameter_attrs[str(name)]=attr
         if values is None:
             values = []
         self._values = values
