@@ -45,9 +45,9 @@ class Array:
 
     def get_step_data(self,n):
         assert n>=0, 'Step index needs to be positive'
-        if n==0 and not self.stepLengths:
+        if n==0 and self.stepLengths is None:
             return self.data[:]
-        assert self.stepLengths, "No step sizes defined."
+        assert not self.stepLengths is None, "No step sizes defined."
         assert n<len(self.stepLengths), f'Only {len(self.stepLengths)} steps'
         return self.data[sum(self.stepLengths[:n]):sum(self.stepLengths[:(n+1)])]
 
@@ -55,7 +55,7 @@ class Array:
         """returns iterator over all steps"""
         n = 0
         while n < len(self.stepLengths):
-            yield self.get_step(n)
+            yield self.get_step_data(n)
             n += 1
 
     def __len__(self):
@@ -66,6 +66,8 @@ class Array:
             args = args[0]
         if len(args)==1:
             assert self.eventDim==0, "requesting slice not along event dimension!"
+            if type(args[0]) is int:
+                args = (slice(args[0],args[0]+1),)
             events = args[0]
         elif len(args)==self.ndim:
             events = args[self.eventDim]
@@ -73,8 +75,10 @@ class Array:
             events = [ta for ta in args if ta][self.eventDim]
         if isinstance(events,slice):
             events = list(range(*events.indices(len(self))))
+        elif isinstance(events,np.ndarray) and events.dtype is bool:
+            events = events.nonzero()[0]
         stepLengths,scan = get_scan_step_selections(events,self.stepLengths,scan=self.scan)
-        return Array(data=self.data.__getitem__(args), 
+        return Array(data=self.data.__getitem__(*args), 
             eventIds=self.eventIds.__getitem__(events),
             stepLengths=stepLengths, scan=scan, eventDim=self.eventDim)
 
@@ -250,6 +254,9 @@ class Scan:
         return self._parameter_names
 
     def get_steps(self,selection):
+        selection = np.atleast_1d(selection)
+        if selection.dtype==bool:
+            selection = selection.nonzero()[0]
         return {
                 'parameter_names':self._parameter_names,
                 'parameter_attrs':self._parameter_attrs,
@@ -308,6 +315,7 @@ def get_unique_Ids(eventIds, array_data, stepLengths=None, delete_Ids=[0]):
     return eventIds,array_data[idxs],stepLengths
 
 def get_scan_step_selections(ix,stepLengths,scan=None):
+    ix = np.atleast_1d(ix)
     stepLengths = \
         np.bincount(
             np.digitize(ix,bins=np.cumsum(stepLengths)),minlength=len(stepLengths))
