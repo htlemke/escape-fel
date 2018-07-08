@@ -1,0 +1,26 @@
+package:
+    name: escape-fel
+    version: 0.0.1
+source:
+    path: ..
+
+build:
+    number: 1
+
+requirements:
+    build:
+        - python
+        - setuptools
+    run:
+        - python
+        - numpy
+        - dask
+        - h5py
+
+          #build:
+          #  entry_points:
+          #    - bs = bsread.bs:main
+
+about:
+    home: ""
+    summary: ""
