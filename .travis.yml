@@ -1,7 +1,6 @@
 language: python
-
 matrix:
- include:
+  include:
   - python: 2.7
     env: TOXENV=py27
   - python: 3.5
@@ -10,18 +9,15 @@ matrix:
     env: TOXENV=quality
   - python: 3.6
     env: TOXENV=py36
-
 cache:
-  - pip
-
+- pip
 script:
-  - pytest
-
+- pytest
 deploy:
   provider: pypi
   user: htlemke
   password:
-    secure: S9++NkNwiSVecGsISwSMBC7WrsAX1Zw+UNBWoQClTh1SUpcnSVGwSXuGHEElIzedjux9wLfbW3DJ8yFoaYChFdZMjOyt7DT95J08f/72gTYrSJP6UuWoyIfvgxV4TYF71dMCyKzpvxcDvE1l/xB7cbo850xgYh+/yLT3o6KGj+DHPEOq8VPllGtChTPJJKUAI77e7e/oDTYN9zaoGFxWNBq4UMoJY3YRRVhlWdZb5E4edQELs+KzGUkeUTRD0Ui6d4DTYwYoEDuplc4i2bEH6aW1tguwPru9OtRyKJL6nWwdoxy+rvn9254ea6vVLQPKz0433KYbJeKMlx5lTaQMwFqml8TXohX14oQQPvOw2lR9Z2w1iqcbF/sxUwLUpLn/9Mmt+bttRIG47YGxOkuNthjD1nqw6yWwVKbfGPktSHiZVpPAXt/yAUTWiE0ZQ67pO/cQOt3VKtN9HkjoSj5ly1u0xIRN/9sbcaBIUL9IPgnxLpGosRx742GEmiRrzH3gEE3f9cgIcxH6tGkaWJGjX4sL/pO3/9yIBl/H2aF/ayASUUeg+UcHN2xkQktJBxXPT7WuW/y1CUJWFJ8rLkhAO3TzKWt+ejNEbOHCGbFV1p+u95m0ixZynrHJtDV/w1YBq6bbn6w7e4ymr9qtTGfI8w3i7eFtE5+xyk6a3q9KdfE=
+    secure: nzUKwt39NECAWKagVtyT5CRF+ucyP/aLW1gzVjsPyIkXh05FT+YXNsmt3QfzkfM6RUDuJ7z1bKJSYtHUKnW9rsEZdvk1I+8G5RcDDzLt7Ebh8paNQkFglWcV9VQv8Y4jKj4XLb9GkpXh2okOuQ6b1Ua5jps8G/v8L0JH55R+I+744+/3fpuvh15ZSDogsIPp5x0mSbg2lmPOAwUDGNSPdFPtykE9JqeiLOYg1Qc/t1JSHQugK5CNaph+M/2U2yRjx9h366mn2H0M1Osq7UxklNBp0MYbL3igFzTENKSNEytfHp7HwzTqw9Rn2+rGO+Bg+hUylfNzv1ZYTkFx5b1DN5f6L6YDNDheudUxwyqu7KhbpZwIuJjWIIMUur8AIzla9LhmqkQzxNkgOxFWr7CM9Eg+wqw6LbUUMA/4Ec2+xq2rycotH4AfoodCwh2vgiWhLTBgaWtNAzV2eImw2lMwy6jAidJkUeqijzdd/xqOFNuqkJJjlfUl8WgiN+3XndYFUlvulQ4D6kf8+geQ4ixY2m5qgV3axLfJghtS7wZy7FqUKoOPi+Q113p1Le9tmmq65yNVgLimSmOIwxC8bLHb+CmDjQSBZXTD9iZx+KTmF580W91AEuLJwAaUSoC63oGQlsmAgiGRD81rMWufdUasK2a93IhMq7gqJrEwNuoEc68=
   distributions: sdist bdist_wheel
   on:
     tags: true
