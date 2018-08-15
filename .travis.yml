@@ -15,7 +15,7 @@ cache:
   - pip
 
 script:
-  - make test
+  - pytest
 
 deploy:
   provider: pypi
