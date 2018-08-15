@@ -15,7 +15,7 @@ script:
 - pytest
 deploy:
   provider: pypi
-  user: "htlemke"
+  user: htlemke
   distributions: sdist bdist_wheel
   true:
     tags: true
