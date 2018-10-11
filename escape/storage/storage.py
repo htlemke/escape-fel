@@ -83,16 +83,46 @@ class Array:
 
     def __getitem__(self, *args, **kwargs):
         if type(args[0]) is tuple:
-            args = args[0]
-        if len(args) == 1:
+            # this is multi dimensional itemgetting
+            
+            #expand ellipses
+            if Ellipsis in args[0]:
+                rargs = list(args[0])
+                elind = rargs.index(Ellipsis)
+                rargs.pop(elind)
+                eventsel = [ta for ta in rargs if ta]
+                missing_dims = self.ndim-len(eventsel)
+                for n in range(missing_dims):
+                    rargs.insert(elind,slice(None,None,None))
+                args = (tuple(rargs),)
+            #get event selector
+            eventIx = -1
+            for n,targ in enumerate(args[0]):
+                if targ:
+                    eventIx += 1
+                if eventIx == self.eventDim:
+                    break
+            if type(args[0][eventIx]) is int:
+                rargs = list(args[0])
+                if rargs[eventIx] == -1:
+                    rargs[eventIx] = slice(rargs[eventIx], None)
+                else:
+                    rargs[eventIx] = slice(rargs[eventIx], rargs[eventIx] + 1)
+                args = (tuple(rargs),)
+            events = args[0][eventIx]
+
+        else:
+            # this is single dimension itemgetting, which is by default along
+            # event dimension, raise error if inconsistent with data shape
             assert self.eventDim == 0, "requesting slice not along event dimension!"
             if type(args[0]) is int:
-                args = (slice(args[0], args[0] + 1),)
+                rargs = list(args)
+                if rargs[0] == -1:
+                    rargs[0] = slice(rargs[0], None)
+                else:
+                    rargs[0] = slice(rargs[0], rargs[0] + 1)
+                args = tuple(rargs)
             events = args[0]
-        elif len(args) == self.ndim:
-            events = args[self.eventDim]
-        elif len(args) > self.ndim:
-            events = [ta for ta in args if ta][self.eventDim]
         if isinstance(events, slice):
             events = list(range(*events.indices(len(self))))
         elif isinstance(events, np.ndarray) and events.dtype is bool:
@@ -146,7 +176,12 @@ class Array:
         )
 
     def _get_ana_str(self,perc_limits=[5,95]):
-        d = self.data.squeeze()
+        sqaxes = list(range(self.data.ndim))
+        sqaxes.pop(self.eventDim)
+        try:
+            d = self.data.squeeze(axis=tuple(sqaxes))
+        except:
+            return ''
         if d.ndim==1:
             ostr = ''
             hrange = np.percentile(d,perc_limits)
@@ -156,6 +191,8 @@ class Array:
             ho = Hist_ascii(d,range=hrange,bins=40)
             ostr+=ho.horizontal()
             return ostr
+        else:
+            return ''
 
     def __repr__(self):
         s = "<%s.%s object at %s>" % (
