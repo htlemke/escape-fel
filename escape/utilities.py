@@ -1,5 +1,17 @@
 import numpy as np
+from bisect import bisect
+from random import randint
 
+greyscale = [
+      " ",
+      " ",
+      ".,-",
+      "_ivc=!/|\\~",
+      "gjez2]/(YL)t[+T7Vf",
+      "mdK4ZGbNDXY5P*Q",
+      "W8KMA",
+      "#%$"
+      ]
 
 def hist_asciicontrast(x, bins=50, range=None, disprange=True):
     h, edges = np.histogram(x, bins=bins, range=range)
