@@ -1,5 +1,6 @@
 import numpy as np
 from dask import array as da
+from dask.diagnostics import ProgressBar
 import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
 
@@ -167,13 +168,14 @@ class Array:
         return self.transpose()
 
     def compute(self):
-        return Array(
-            data=self.data.compute(),
-            eventIds=self.eventIds,
-            stepLengths=self.stepLengths,
-            scan=self.scan,
-            eventDim=self.eventDim,
-        )
+        with ProgressBar():
+            return Array(
+                data=self.data.compute(),
+                eventIds=self.eventIds,
+                stepLengths=self.stepLengths,
+                scan=self.scan,
+                eventDim=self.eventDim,
+            )
 
     def _get_ana_str(self,perc_limits=[5,95]):
         sqaxes = list(range(self.data.ndim))
@@ -184,7 +186,7 @@ class Array:
             return ''
         if d.ndim==1:
             ostr = ''
-            hrange = np.percentile(d,perc_limits)
+            hrange = np.percentile(d[~np.isnan(d)],perc_limits)
             formnum = lambda num: '{:<9}'.format('%0.4g' %(num))
             for n,td in enumerate(self.step_data()):
                 ostr+='Step %04d:'%n + hist_asciicontrast(td.squeeze(),bins=40,range=hrange,disprange=False) +'\n'

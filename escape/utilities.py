@@ -34,6 +34,15 @@ def hist_asciicontrast(x, bins=50, range=None, disprange=True):
 
     return hstr
 
+import numpy as np
+
+def hist_unicode(data,bins=10):
+    bars = u' ▁▂▃▄▅▆▇█'
+    n,_ = np.histogram(data,bins=bins)
+    n2 = np.round(n*(len(bars)-1)/(max(n))).astype(int)
+    res = u" ".join([bars[i] for i in n2])
+    return res
+
 
 class Hist_ascii(object):
     """
