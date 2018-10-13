@@ -126,7 +126,7 @@ class Array:
             events = args[0]
         if isinstance(events, slice):
             events = list(range(*events.indices(len(self))))
-        elif isinstance(events, np.ndarray) and events.dtype is bool:
+        elif isinstance(events, np.ndarray) and events.dtype==bool:
             events = events.nonzero()[0]
         stepLengths, scan = get_scan_step_selections(
             events, self.stepLengths, scan=self.scan
