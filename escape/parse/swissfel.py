@@ -6,6 +6,9 @@ from dask import array as da
 from .. import Array, Scan
 import numpy as np
 from copy import copy
+import logging
+from tqdm import tqdm
+
 
 
 def readScanEcoJson_v01(file_name_json):
@@ -35,9 +38,9 @@ def parseScanEco_v01(
     searchpaths = None
 
     datasets_scan = []
-    for files in s["scan_files"]:
+    for files in tqdm(s["scan_files"], desc='Scan steps'):
         datasets = {}
-        for f in files:
+        for f in tqdm(files, desc='Step files'):
             fp = pathlib.Path(f)
             fn = pathlib.Path(fp.name)
             if not searchpaths:
@@ -56,6 +59,7 @@ def parseScanEco_v01(
             try:
                 fh = h5py.File(file_path.resolve(), mode="r")
                 datasets.update(utilities.findItemnamesGroups(fh, ["data", "pulse_id"]))
+                logging.info("Successfully parsed file %s" % file_path.resolve())
             except:
                 print(f"WARNING: could not read {file_path.absolute().as_posix()}.")
         datasets_scan.append(datasets)
@@ -158,6 +162,17 @@ def parseScanEco_v01(
 class LazyContainer:
     def __init__(self, dat):
         self.dat = dat
+
+    def get_data(self):
+        return da.concatenate(
+            [
+                da.from_array(td, chunks=self.dat["data_chunks"])
+                for td in self.dat["data"]
+            ]
+        )
+
+    def get_eventIds(self):
+        return np.concatenate([td[...].ravel() for td in self.dat["eventIds"]])
 
     def get_data(self):
         return da.concatenate(
