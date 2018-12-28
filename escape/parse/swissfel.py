@@ -1,5 +1,6 @@
 import json
 import pathlib
+from pathlib import Path
 from . import utilities
 import h5py
 from dask import array as da
@@ -24,6 +25,112 @@ def readScanEcoJson_v01(file_name_json):
     ), "number of files and scan readbacks don't match in {}".format(file_name_json)
     return s, p
 
+def parseSFh5File_v01(
+    file_path,
+    memlimit_0D_MB=5,
+    memlimit_mD_MB=10,
+    createEscArrays=True,
+):
+    file_path = Path(file_path)
+    """Data parser assuming the standard swissfel h5 format for raw data"""
+    fh = h5py.File(file_path.resolve(), mode="r")
+    datasets.update(utilities.findItemnamesGroups(fh, ["data", "pulse_id"]))
+    logging.info("Successfully parsed file %s" % file_path.resolve())
+    datasets_scan.append(datasets)
+
+    names = set()
+    dstores = {}
+
+    for stepNo, (datasets, scan_values, scan_readbacks, scan_step_info) in enumerate(
+        zip(datasets_scan, s["scan_values"], s["scan_readbacks"], s["scan_step_info"])
+    ):
+        tnames = set(datasets.keys())
+        newnames = tnames.difference(names)
+        oldnames = names.intersection(tnames)
+        for name in newnames:
+            if datasets[name][0].size == 0:
+                print("Found empty dataset in {} in cycle {}".format(name, stepNo))
+            else:
+                size_data = (
+                    np.dtype(datasets[name][0].dtype).itemsize
+                    * datasets[name][0].size
+                    / 1024 ** 2
+                )
+                size_element = (
+                    np.dtype(datasets[name][0].dtype).itemsize
+                    * np.prod(datasets[name][0].shape[1:])
+                    / 1024 ** 2
+                )
+                if datasets[name][0].chunks:
+                    chunk_size = list(datasets[name][0].chunks)
+                else:
+                    chunk_size = list(datasets[name][0].shape)
+                if chunk_size[0] == 1:
+                    chunk_size[0] = int(memlimit_mD_MB // size_element)
+                dstores[name] = {}
+                dstores[name]["scan"] = Scan(
+                    parameter_names=[str(ts) for ts in s["scan_parameters"]["name"]]
+                    + [f"{tn}_readback" for tn in s["scan_parameters"]["name"]],
+                    parameter_attrs={
+                        tn: {"Id": ti}
+                        for tn, ti in zip(
+                            s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
+                        )
+                    },
+                )
+                # dirty hack for inconsitency in writer
+                if (
+                    len(scan_readbacks)
+                    > len(dstores[name]["scan"]._parameter_names) / 2
+                ):
+                    scan_readbacks = scan_readbacks[
+                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
+                    ]
+                dstores[name]["scan"]._append(
+                    copy(scan_values) + copy(scan_readbacks),
+                    scan_step_info=copy(scan_step_info),
+                )
+                dstores[name]["data"] = []
+                dstores[name]["data"].append(datasets[name][0])
+                dstores[name]["data_chunks"] = chunk_size
+                dstores[name]["eventIds"] = []
+                dstores[name]["eventIds"].append(datasets[name][1])
+                dstores[name]["stepLengths"] = []
+                dstores[name]["stepLengths"].append(len(datasets[name][0]))
+                names.add(name)
+        for name in oldnames:
+            if datasets[name][0].size == 0:
+                print("Found empty dataset in {} in cycle {}".format(name, stepNo))
+            else:
+                # dirty hack for inconsitency in writer
+                if (
+                    len(scan_readbacks)
+                    > len(dstores[name]["scan"]._parameter_names) / 2
+                ):
+                    scan_readbacks = scan_readbacks[
+                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
+                    ]
+                dstores[name]["scan"]._append(
+                    copy(scan_values) + copy(scan_readbacks),
+                    scan_step_info=copy(scan_step_info),
+                )
+                dstores[name]["data"].append(datasets[name][0])
+                dstores[name]["eventIds"].append(datasets[name][1])
+                dstores[name]["stepLengths"].append(len(datasets[name][0]))
+    if createEscArrays:
+        escArrays = {}
+        containers = {}
+        for name, dat in dstores.items():
+            containers[name] = LazyContainer(dat)
+            escArrays[name] = Array(
+                containers[name].get_data,
+                eventIds=containers[name].get_eventIds,
+                stepLengths=dat["stepLengths"],
+                scan=dat["scan"],
+            )
+        return escArrays
+    else:
+        return dstores
 
 def parseScanEco_v01(
     file_name_json,
