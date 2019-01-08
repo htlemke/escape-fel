@@ -26,30 +26,32 @@ def readScanEcoJson_v01(file_name_json):
     return s, p
 
 def parseSFh5File_v01(
-    file_path,
+    files,
     memlimit_0D_MB=5,
     memlimit_mD_MB=10,
     createEscArrays=True,
 ):
-    file_path = Path(file_path)
     """Data parser assuming the standard swissfel h5 format for raw data"""
-    fh = h5py.File(file_path.resolve(), mode="r")
-    datasets.update(utilities.findItemnamesGroups(fh, ["data", "pulse_id"]))
-    logging.info("Successfully parsed file %s" % file_path.resolve())
-    datasets_scan.append(datasets)
+    if (type(files) is str) or (not np.iterable(files)):
+        files = [files]
+    datasets_all = []
+    for fina in files:
+        fina = Path(fina)
+        fh = h5py.File(fina.resolve(), mode="r")
+        datasets = utilities.findItemnamesGroups(fh, ["data", "pulse_id"])
+        logging.info("Successfully parsed file %s" % fina.resolve())
+        datasets_all.append(datasets)
 
     names = set()
     dstores = {}
 
-    for stepNo, (datasets, scan_values, scan_readbacks, scan_step_info) in enumerate(
-        zip(datasets_scan, s["scan_values"], s["scan_readbacks"], s["scan_step_info"])
-    ):
+    for datasets in datasets_all:
         tnames = set(datasets.keys())
         newnames = tnames.difference(names)
         oldnames = names.intersection(tnames)
         for name in newnames:
             if datasets[name][0].size == 0:
-                print("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                print("Found empty dataset in {}".format(name))
             else:
                 size_data = (
                     np.dtype(datasets[name][0].dtype).itemsize
@@ -68,28 +70,6 @@ def parseSFh5File_v01(
                 if chunk_size[0] == 1:
                     chunk_size[0] = int(memlimit_mD_MB // size_element)
                 dstores[name] = {}
-                dstores[name]["scan"] = Scan(
-                    parameter_names=[str(ts) for ts in s["scan_parameters"]["name"]]
-                    + [f"{tn}_readback" for tn in s["scan_parameters"]["name"]],
-                    parameter_attrs={
-                        tn: {"Id": ti}
-                        for tn, ti in zip(
-                            s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
-                        )
-                    },
-                )
-                # dirty hack for inconsitency in writer
-                if (
-                    len(scan_readbacks)
-                    > len(dstores[name]["scan"]._parameter_names) / 2
-                ):
-                    scan_readbacks = scan_readbacks[
-                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
-                    ]
-                dstores[name]["scan"]._append(
-                    copy(scan_values) + copy(scan_readbacks),
-                    scan_step_info=copy(scan_step_info),
-                )
                 dstores[name]["data"] = []
                 dstores[name]["data"].append(datasets[name][0])
                 dstores[name]["data_chunks"] = chunk_size
@@ -100,20 +80,9 @@ def parseSFh5File_v01(
                 names.add(name)
         for name in oldnames:
             if datasets[name][0].size == 0:
-                print("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                print("Found empty dataset in {}".format(name))
             else:
                 # dirty hack for inconsitency in writer
-                if (
-                    len(scan_readbacks)
-                    > len(dstores[name]["scan"]._parameter_names) / 2
-                ):
-                    scan_readbacks = scan_readbacks[
-                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
-                    ]
-                dstores[name]["scan"]._append(
-                    copy(scan_values) + copy(scan_readbacks),
-                    scan_step_info=copy(scan_step_info),
-                )
                 dstores[name]["data"].append(datasets[name][0])
                 dstores[name]["eventIds"].append(datasets[name][1])
                 dstores[name]["stepLengths"].append(len(datasets[name][0]))
@@ -126,7 +95,7 @@ def parseSFh5File_v01(
                 containers[name].get_data,
                 eventIds=containers[name].get_eventIds,
                 stepLengths=dat["stepLengths"],
-                scan=dat["scan"],
+                scan=None,
             )
         return escArrays
     else:

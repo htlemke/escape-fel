@@ -43,6 +43,7 @@ class Array:
         self.stepLengths = stepLengths
         self.scan = scan
         self.name = name
+        self._add_methods()
 
     @property
     def eventIds(self):
@@ -62,7 +63,17 @@ class Array:
     def data(self):
         if callable(self._data):
             self._data = self._data()
+            self._add_methods()
         return self._data
+    
+    def _add_methods(self):
+        if isinstance(self.data,np.ndarray):
+            for m in ['mean','std','median','percentile','max','min']:
+                self.__dict__[m] = escaped(np.__dict__[m],convertOutput2EscData=[0])
+        elif isinstance(self.data,da.Array):
+            for m in ['mean','std','max','min']:
+                self.__dict__[m] = escaped(da.__dict__[m],convertOutput2EscData=[0])
+
 
     def get_step_data(self, n):
         assert n >= 0, "Step index needs to be positive"
@@ -433,3 +444,6 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
         scan = Scan(**scan.get_steps(validsteps))
     stepLengths = stepLengths[~(stepLengths == 0)]
     return stepLengths, scan
+
+def applyFuncOnEscArray(array,func,*args,**kwargs):
+    return func(array.data, *args, **kwargs)
