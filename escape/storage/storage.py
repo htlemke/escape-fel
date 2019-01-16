@@ -445,5 +445,9 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
     stepLengths = stepLengths[~(stepLengths == 0)]
     return stepLengths, scan
 
-def applyFuncOnEscArray(array,func,*args,**kwargs):
-    return func(array.data, *args, **kwargs)
+def escaped_FuncsOnEscArray(array,inst_funcs,*args,**kwargs):
+    for inst,func in inst_funcs:
+        if isinstance(array.data, inst):
+            return escaped(func,*args,**kwargs)
+
+
