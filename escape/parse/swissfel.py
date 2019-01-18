@@ -28,7 +28,7 @@ def readScanEcoJson_v01(file_name_json):
 def parseSFh5File_v01(
     files,
     memlimit_0D_MB=5,
-    memlimit_mD_MB=10,
+    memlimit_mD_MB=132,
     createEscArrays=True,
 ):
     """Data parser assuming the standard swissfel h5 format for raw data"""
