@@ -401,6 +401,10 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
+@escaped
+def matchArrays(*args):
+    return args
+
 
 def matchIDs(ids_master, ids_slaves, stepLengths_master=None):
     ids_res = ids_master
