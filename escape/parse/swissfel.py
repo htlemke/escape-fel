@@ -250,13 +250,4 @@ class LazyContainer:
     def get_eventIds(self):
         return np.concatenate([td[...].ravel() for td in self.dat["eventIds"]])
 
-    def get_data(self):
-        return da.concatenate(
-            [
-                da.from_array(td, chunks=self.dat["data_chunks"])
-                for td in self.dat["data"]
-            ]
-        )
-
-    def get_eventIds(self):
-        return np.concatenate([td[...].ravel() for td in self.dat["eventIds"]])
+    
