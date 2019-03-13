@@ -454,4 +454,9 @@ def escaped_FuncsOnEscArray(array,inst_funcs,*args,**kwargs):
         if isinstance(array.data, inst):
             return escaped(func,*args,**kwargs)
 
+def digitize(array,*args,foo=da.digitize,**kwargs):
+    """ digitize array data"""
+    bins = foo(array.data,*args,**kwargs)
+
+
 
