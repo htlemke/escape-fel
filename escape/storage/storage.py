@@ -412,6 +412,7 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
+<<<<<<< HEAD
 # def to_dataframe(*args):
 #     for arg in args:
 #         if arg.data.shape>1:
@@ -421,7 +422,7 @@ class Scan:
 #     # dd.concat()
 
 @escaped
-def match_arrays(*args):
+def matchArrays(*args):
     return args
 
 
