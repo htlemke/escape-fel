@@ -412,6 +412,18 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
+# def to_dataframe(*args):
+#     for arg in args:
+#         if arg.data.shape>1:
+#             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
+    
+#     from dask import dataframe as dd
+#     # dd.concat()
+
+@escaped
+def match_arrays(*args):
+    return args
+
 
 def matchIDs(ids_master, ids_slaves, stepLengths_master=None):
     ids_res = ids_master
