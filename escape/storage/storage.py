@@ -412,14 +412,13 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
-<<<<<<< HEAD
-# def to_dataframe(*args):
-#     for arg in args:
-#         if arg.data.shape>1:
-#             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
-    
-#     from dask import dataframe as dd
-#     # dd.concat()
+ def to_dataframe(*args):
+     for arg in args:
+         if arg.data.shape>1:
+             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
+   
+     # from dask import dataframe as dd
+     # dd.concat()
 
 @escaped
 def matchArrays(*args):
