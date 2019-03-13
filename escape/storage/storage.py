@@ -469,8 +469,21 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
     return stepLengths, scan
 
 def escaped_FuncsOnEscArray(array,inst_funcs,*args,**kwargs):
+    # TODO
     for inst,func in inst_funcs:
         if isinstance(array.data, inst):
             return escaped(func,*args,**kwargs)
+
+def digitize(array, bins, foo=da.digitize, **kwargs):
+    """digitization function for escape arrays. checking for 1D arrays"""
+    if not np.prod(np.asarray(array.shape))==array.shape[array.eventDim]:
+        raise NotImplementedError('Only 1d escape arrays can be digitized in a sensible way.')
+    darray = array.data.ravel()
+    inds = foo(darray,bins,**kwargs)
+    ix = inds.argsort()
+    bins,counts = da.unique(inds,return_counts=True)
+    Array(data=array.data[ix],eventIds=array.eventIds[ix],stepLengths=counts)
+
+
 
 
