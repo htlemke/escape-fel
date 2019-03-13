@@ -188,6 +188,17 @@ class Array:
                 eventDim=self.eventDim,
             )
 
+    def map_blocks(self,*args,event_dim='same',**kwargs):
+        if event_dim=='same':
+            event_dim = self.eventDim
+        return Array(
+            data=self.data.map_blocks(*args,**kwargs),
+            eventIds=self.eventIds,
+            stepLengths=self.stepLengths,
+            scan=self.scan,
+            eventDim=event_dim,
+        )
+
     def _get_ana_str(self,perc_limits=[5,95]):
         sqaxes = list(range(self.data.ndim))
         sqaxes.pop(self.eventDim)
