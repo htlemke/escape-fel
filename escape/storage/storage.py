@@ -412,7 +412,7 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
-<<<<<<< HEAD
+#<<<<<<< HEAD
 # def to_dataframe(*args):
 #     for arg in args:
 #         if arg.data.shape>1:
