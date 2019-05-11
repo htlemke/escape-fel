@@ -188,6 +188,17 @@ class Array:
                 eventDim=self.eventDim,
             )
 
+    def map_blocks(self,*args,event_dim='same',**kwargs):
+        if event_dim=='same':
+            event_dim = self.eventDim
+        return Array(
+            data=self.data.map_blocks(*args,**kwargs),
+            eventIds=self.eventIds,
+            stepLengths=self.stepLengths,
+            scan=self.scan,
+            eventDim=event_dim,
+        )
+
     def _get_ana_str(self,perc_limits=[5,95]):
         sqaxes = list(range(self.data.ndim))
         sqaxes.pop(self.eventDim)
@@ -400,6 +411,15 @@ class Scan:
         s += "\n"
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
+
+<<<<<<< HEAD
+# def to_dataframe(*args):
+#     for arg in args:
+#         if arg.data.shape>1:
+#             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
+    
+#     from dask import dataframe as dd
+#     # dd.concat()
 
 @escaped
 def matchArrays(*args):
