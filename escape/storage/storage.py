@@ -89,6 +89,9 @@ class Array:
         while n < len(self.stepLengths):
             yield self.get_step_data(n)
             n += 1
+    def update(self,array):
+        """Update one escape array from another. Only array elements not existing  in the present array will be added to it."""
+        pass
 
     def __len__(self):
         return len(self.eventIds)
@@ -412,11 +415,12 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
- def to_dataframe(*args):
+def to_dataframe(*args):
      for arg in args:
          if arg.data.shape>1:
              raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
-   
+         
+      
      # from dask import dataframe as dd
      # dd.concat()
 
@@ -482,8 +486,24 @@ def digitize(array, bins, foo=da.digitize, **kwargs):
     inds = foo(darray,bins,**kwargs)
     ix = inds.argsort()
     bins,counts = da.unique(inds,return_counts=True)
-    Array(data=array.data[ix],eventIds=array.eventIds[ix],stepLengths=counts)
+    return Array(
+            data=array.data[ix],
+            eventIds=array.eventIds[ix],
+            stepLengths=counts)
 
 
+def filter(array, *args, foos_filtering=[operator.gt, operator.lt],**kwargs):
+    """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of 
+    filter functions that take one argument as input and """
+    if not np.prod(np.asarray(array.shape))==array.shape[array.eventDim]:
+        raise NotImplementedError('Only 1d escape arrays can be filtered in a sensible way.')
+    darray = array.data.ravel()
+    ix = da.logical_and(*[tfoo(darray,targ) for tfoo,targ in zip(args,foos_filtering)])
+    stepLengths, scan = get_scan_step_selections(ix, array.stepLengths, scan=array.scan)
+    return Array(
+            data=array.data[ix],
+            eventIds=array.eventIds[ix],
+            stepLengths=stepLengths
+            scan=scan)
 
 
