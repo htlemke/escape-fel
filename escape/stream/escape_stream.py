@@ -8,11 +8,11 @@ high level objects that can get updated from live data.
 """
 from threading import Thread
 import time
-from es_wrappers import EventHandler_SFEL
+from .es_wrappers import EventHandler_SFEL
 import numpy as np
-import tools
+from . import tools
 import operator
-import plots
+from . import plots
 import copy
 import matplotlib.pyplot as plt
 
