@@ -15,6 +15,7 @@ import operator
 from . import plots
 import copy
 import matplotlib.pyplot as plt
+from collections import deque
 
 
 def initEscDataInstances():
@@ -267,11 +268,11 @@ class EscData:
 
 
 class DataManager:
-    def __init__(self, data=None, eventIds=None, scan=Scan()):
+    def __init__(self, data=None, eventIds=None, maxlen=1000, scan=Scan()):
         self.scan = scan
         if data is None and eventIds is None:
-            self._data = [[] for n in range(len(scan._values))]
-            self._eventIds = [[] for n in range(len(scan._values))]
+            self._data = [deque(maxlen=maxlen) for n in range(len(scan._values))]
+            self._eventIds = [deque(maxlen=maxlen) for n in range(len(scan._values))]
         else:
             self._data = data
             self._eventIds = eventIds
