@@ -502,13 +502,17 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt],**kwargs):
     filter functions that take one argument as input and """
     if not np.prod(np.asarray(array.shape))==array.shape[array.eventDim]:
         raise NotImplementedError('Only 1d escape arrays can be filtered in a sensible way.')
-    darray = array.data.ravel()
+    darray = array.data
+    if isinstance(darray,da.Array):
+        print('filtering, i.e. downsizing of arrays requires to convert to numpy.')
+        darray = darray.compute()
+    #darray = array.data.ravel()
     ix = da.logical_and(*[tfoo(darray,targ) for tfoo,targ in zip(foos_filtering,args)]).nonzero()[0]
     stepLengths, scan = get_scan_step_selections(ix, array.stepLengths, scan=array.scan)
     return Array(
             data=array.data[ix],
             eventIds=array.eventIds[ix],
             stepLengths=stepLengths,
+            eventDim = array.eventDim,
             scan=scan)
-
 
