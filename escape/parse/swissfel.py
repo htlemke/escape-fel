@@ -10,7 +10,7 @@ from copy import copy
 import logging
 from tqdm import tqdm
 
-
+logger = logging.getLogger(__name__)
 
 def readScanEcoJson_v01(file_name_json):
     p = pathlib.Path(file_name_json)
@@ -39,7 +39,7 @@ def parseSFh5File_v01(
         fina = Path(fina)
         fh = h5py.File(fina.resolve(), mode="r")
         datasets = utilities.findItemnamesGroups(fh, ["data", "pulse_id"])
-        logging.info("Successfully parsed file %s" % fina.resolve())
+        logger.info("Successfully parsed file %s" % fina.resolve())
         datasets_all.append(datasets)
 
     names = set()
@@ -51,7 +51,7 @@ def parseSFh5File_v01(
         oldnames = names.intersection(tnames)
         for name in newnames:
             if datasets[name][0].size == 0:
-                print("Found empty dataset in {}".format(name))
+                logger.debug("Found empty dataset in {}".format(name))
             else:
                 size_data = (
                     np.dtype(datasets[name][0].dtype).itemsize
@@ -80,7 +80,7 @@ def parseSFh5File_v01(
                 names.add(name)
         for name in oldnames:
             if datasets[name][0].size == 0:
-                print("Found empty dataset in {}".format(name))
+                logger.debug("Found empty dataset in {}".format(name))
             else:
                 # dirty hack for inconsitency in writer
                 dstores[name]["data"].append(datasets[name][0])
@@ -135,9 +135,9 @@ def parseScanEco_v01(
             try:
                 fh = h5py.File(file_path.resolve(), mode="r")
                 datasets.update(utilities.findItemnamesGroups(fh, ["data", "pulse_id"]))
-                logging.info("Successfully parsed file %s" % file_path.resolve())
+                logger.info("Successfully parsed file %s" % file_path.resolve())
             except:
-                print(f"WARNING: could not read {file_path.absolute().as_posix()}.")
+                logger.warning(f"WARNING: could not read {file_path.absolute().as_posix()}.")
         datasets_scan.append(datasets)
 
     names = set()
@@ -151,7 +151,7 @@ def parseScanEco_v01(
         oldnames = names.intersection(tnames)
         for name in newnames:
             if datasets[name][0].size == 0:
-                print("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
             else:
                 size_data = (
                     np.dtype(datasets[name][0].dtype).itemsize
@@ -202,7 +202,7 @@ def parseScanEco_v01(
                 names.add(name)
         for name in oldnames:
             if datasets[name][0].size == 0:
-                print("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
             else:
                 # dirty hack for inconsitency in writer
                 if (

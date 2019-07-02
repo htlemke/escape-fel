@@ -3,7 +3,9 @@ from dask import array as da
 from dask.diagnostics import ProgressBar
 import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
+import logging
 
+logger = logging.getLogger(__name__)
 
 
 class Array:
@@ -17,7 +19,7 @@ class Array:
         name=None,
     ):
         if eventDim is None:
-            print(
+            logger.debug(
                 "No event dimension eventDim defined,\
                     assuming 0th Dimension."
             )
@@ -34,7 +36,7 @@ class Array:
                     eventIds
                 ), "StepsLength need to add up to dataset length!"
             if scan is None:
-                print(
+                logger.debug(
                     "No information about event groups (steps) \
                     available!"
                 )
@@ -65,15 +67,14 @@ class Array:
             self._data = self._data()
             self._add_methods()
         return self._data
-    
-    def _add_methods(self):
-        if isinstance(self.data,np.ndarray):
-            for m in ['mean','std','median','percentile','max','min']:
-                self.__dict__[m] = escaped(np.__dict__[m],convertOutput2EscData=[0])
-        elif isinstance(self.data,da.Array):
-            for m in ['mean','std','max','min']:
-                self.__dict__[m] = escaped(da.__dict__[m],convertOutput2EscData=[0])
 
+    def _add_methods(self):
+        if isinstance(self.data, np.ndarray):
+            for m in ["mean", "std", "median", "percentile", "max", "min"]:
+                self.__dict__[m] = escaped(np.__dict__[m], convertOutput2EscData=[0])
+        elif isinstance(self.data, da.Array):
+            for m in ["mean", "std", "max", "min"]:
+                self.__dict__[m] = escaped(da.__dict__[m], convertOutput2EscData=[0])
 
     def get_step_data(self, n):
         assert n >= 0, "Step index needs to be positive"
@@ -90,26 +91,30 @@ class Array:
             yield self.get_step_data(n)
             n += 1
 
+    def update(self, array):
+        """Update one escape array from another. Only array elements not existing  in the present array will be added to it."""
+        pass
+
     def __len__(self):
         return len(self.eventIds)
 
     def __getitem__(self, *args, **kwargs):
         if type(args[0]) is tuple:
             # this is multi dimensional itemgetting
-            
-            #expand ellipses
+
+            # expand ellipses
             if Ellipsis in args[0]:
                 rargs = list(args[0])
                 elind = rargs.index(Ellipsis)
                 rargs.pop(elind)
                 eventsel = [ta for ta in rargs if ta]
-                missing_dims = self.ndim-len(eventsel)
+                missing_dims = self.ndim - len(eventsel)
                 for n in range(missing_dims):
-                    rargs.insert(elind,slice(None,None,None))
+                    rargs.insert(elind, slice(None, None, None))
                 args = (tuple(rargs),)
-            #get event selector
+            # get event selector
             eventIx = -1
-            for n,targ in enumerate(args[0]):
+            for n, targ in enumerate(args[0]):
                 if targ:
                     eventIx += 1
                 if eventIx == self.eventDim:
@@ -137,7 +142,7 @@ class Array:
             events = args[0]
         if isinstance(events, slice):
             events = list(range(*events.indices(len(self))))
-        elif isinstance(events, np.ndarray) and events.dtype==bool:
+        elif isinstance(events, np.ndarray) and events.dtype == bool:
             events = events.nonzero()[0]
         stepLengths, scan = get_scan_step_selections(
             events, self.stepLengths, scan=self.scan
@@ -188,35 +193,78 @@ class Array:
                 eventDim=self.eventDim,
             )
 
-    def map_blocks(self,*args,event_dim='same',**kwargs):
-        if event_dim=='same':
+    def map_event_blocks(
+        self,
+        foo,
+        *args,
+        chunks=None,
+        drop_axis=None,
+        new_axis=None,
+        event_dim="same",
+        **kwargs,
+    ):
+        """map a function which works for a chunk of the Array (events along eventDim). This is only really relevant for dask array array data."""
+
+        if event_dim == "same":
             event_dim = self.eventDim
+
+        chunks_edim = self.data.chunks[self.eventDim]
+        shp = self.data.shape
+        newchunks = []
+        rechunk = False
+        for dim, dimchunks in enumerate(self.data.chunks):
+            if dim == self.eventDim:
+                newchunks.append(dimchunks)
+            else:
+                rechunk = len(chunks) > 1 or rechunk
+                newchunks.append((sum(dimchunks),))
+        if rechunk:
+            data = self.data.rechunk(tuple(newchunks))
+        else:
+            data = self.data
+            newchunks = self.data.chunks
+
         return Array(
-            data=self.data.map_blocks(*args,**kwargs),
+            data=data.map_blocks(
+                *args,
+                chunks=newchunks,
+                drop_axis=drop_axis,
+                new_axis=new_axis,
+                **kwargs,
+            ),
             eventIds=self.eventIds,
             stepLengths=self.stepLengths,
             scan=self.scan,
             eventDim=event_dim,
         )
 
-    def _get_ana_str(self,perc_limits=[5,95]):
+    def to_h5(self, filename_or_parent, name=None, unit=None, **kwargs):
+        pass
+
+    def _get_ana_str(self, perc_limits=[5, 95]):
         sqaxes = list(range(self.data.ndim))
         sqaxes.pop(self.eventDim)
         try:
             d = self.data.squeeze(axis=tuple(sqaxes))
         except:
-            return ''
-        if d.ndim==1:
-            ostr = ''
-            hrange = np.percentile(d[~np.isnan(d)],perc_limits)
-            formnum = lambda num: '{:<9}'.format('%0.4g' %(num))
-            for n,td in enumerate(self.step_data()):
-                ostr+='Step %04d:'%n + hist_asciicontrast(td.squeeze(),bins=40,range=hrange,disprange=False) +'\n'
-            ho = Hist_ascii(d,range=hrange,bins=40)
-            ostr+=ho.horizontal()
+            return ""
+        if d.ndim == 1:
+            ostr = ""
+            hrange = np.percentile(d[~np.isnan(d)], perc_limits)
+            formnum = lambda num: "{:<9}".format("%0.4g" % (num))
+            for n, td in enumerate(self.step_data()):
+                ostr += (
+                    "Step %04d:" % n
+                    + hist_asciicontrast(
+                        td.squeeze(), bins=40, range=hrange, disprange=False
+                    )
+                    + "\n"
+                )
+            ho = Hist_ascii(d, range=hrange, bins=40)
+            ostr += ho.horizontal()
             return ostr
         else:
-            return ''
+            return ""
 
     def __repr__(self):
         s = "<%s.%s object at %s>" % (
@@ -226,7 +274,7 @@ class Array:
         )
         s += " {}; shape {}".format(self.name, self.shape)
         s += "\n"
-        if isinstance(self.data,np.ndarray):
+        if isinstance(self.data, np.ndarray):
             s += self._get_ana_str()
         if self.scan:
             s += self.scan.__repr__()
@@ -412,12 +460,14 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
-#<<<<<<< HEAD
-# def to_dataframe(*args):
-#     for arg in args:
-#         if arg.data.shape>1:
-#             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
-    
+
+def to_dataframe(*args):
+    for arg in args:
+        if arg.data.shape > 1:
+            raise (
+                NotImplementedError("Only 1D Arrays can be converted to dataframes.")
+            )
+
 
 @escaped
 def matchArrays(*args):
@@ -467,14 +517,47 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
     stepLengths = stepLengths[~(stepLengths == 0)]
     return stepLengths, scan
 
-def escaped_FuncsOnEscArray(array,inst_funcs,*args,**kwargs):
-    for inst,func in inst_funcs:
+
+def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
+    # TODO
+    for inst, func in inst_funcs:
         if isinstance(array.data, inst):
-            return escaped(func,*args,**kwargs)
-
-def digitize(array,*args,foo=da.digitize,**kwargs):
-    """ digitize array data"""
-    bins = foo(array.data,*args,**kwargs)
+            return escaped(func, *args, **kwargs)
 
 
+def digitize(array, bins, foo=da.digitize, **kwargs):
+    """digitization function for escape arrays. checking for 1D arrays"""
+    if not np.prod(np.asarray(array.shape)) == array.shape[array.eventDim]:
+        raise NotImplementedError(
+            "Only 1d escape arrays can be digitized in a sensible way."
+        )
+    darray = array.data.ravel()
+    inds = foo(darray, bins, **kwargs)
+    ix = inds.argsort()
+    bins, counts = da.unique(inds, return_counts=True)
+    return Array(data=array.data[ix], eventIds=array.eventIds[ix], stepLengths=counts)
 
+
+def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
+    """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of 
+    filter functions that take one argument as input and """
+    if not np.prod(np.asarray(array.shape)) == array.shape[array.eventDim]:
+        raise NotImplementedError(
+            "Only 1d escape arrays can be filtered in a sensible way."
+        )
+    darray = array.data
+    if isinstance(darray, da.Array):
+        print("filtering, i.e. downsizing of arrays requires to convert to numpy.")
+        darray = darray.compute()
+    # darray = array.data.ravel()
+    ix = da.logical_and(
+        *[tfoo(darray, targ) for tfoo, targ in zip(foos_filtering, args)]
+    ).nonzero()[0]
+    stepLengths, scan = get_scan_step_selections(ix, array.stepLengths, scan=array.scan)
+    return Array(
+        data=array.data[ix],
+        eventIds=array.eventIds[ix],
+        stepLengths=stepLengths,
+        eventDim=array.eventDim,
+        scan=scan,
+    )
