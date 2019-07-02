@@ -418,8 +418,6 @@ class Scan:
 #         if arg.data.shape>1:
 #             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
     
-#     from dask import dataframe as dd
-#     # dd.concat()
 
 @escaped
 def matchArrays(*args):
