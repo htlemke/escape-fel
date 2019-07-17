@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-def readScanEcoJson_v01(file_name_json):
+def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
     p = pathlib.Path(file_name_json)
     assert p.is_file(), "Input string does not describe a valid file path."
     with p.open(mode="r") as f:
@@ -23,6 +23,11 @@ def readScanEcoJson_v01(file_name_json):
     assert len(s["scan_files"]) == len(
         s["scan_readbacks"]
     ), "number of files and scan readbacks don't match in {}".format(file_name_json)
+    for step in s['scan_files']:
+        for sstr in exclude_from_files:
+            for i,tf in enumerate(step):
+                if sstr in tf:
+                    step.pop(i)
     return s, p
 
 def parseSFh5File_v01(
