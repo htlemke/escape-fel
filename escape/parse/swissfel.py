@@ -102,14 +102,20 @@ def parseSFh5File_v01(
         return dstores
 
 def parseScanEco_v01(
-    file_name_json,
+    file_name_json=None,
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_0D_MB=5,
     memlimit_mD_MB=10,
     createEscArrays=True,
+    scan_info = None,
+    scan_info_filepath=None,
 ):
-    """Data parser assuming eco-written files from pilot phase 1"""
-    s, scan_info_filepath = readScanEcoJson_v01(file_name_json)
+    
+    if file_name_json:
+        """Data parser assuming eco-written files from pilot phase 1"""
+        s, scan_info_filepath = readScanEcoJson_v01(file_name_json)
+    else:
+        s = scan_info
     lastpath = None
     searchpaths = None
 
