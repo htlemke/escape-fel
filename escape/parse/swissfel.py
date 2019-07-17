@@ -25,9 +25,13 @@ def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
     ), "number of files and scan readbacks don't match in {}".format(file_name_json)
     for step in s['scan_files']:
         for sstr in exclude_from_files:
+            kill = []
             for i,tf in enumerate(step):
                 if sstr in tf:
-                    step.pop(i)
+                    kill.append(i)
+            for k in kill[-1::-1]:
+                step.pop(k)
+
     return s, p
 
 def parseSFh5File_v01(
@@ -114,11 +118,12 @@ def parseScanEco_v01(
     createEscArrays=True,
     scan_info = None,
     scan_info_filepath=None,
+    exclude_from_files = [],
 ):
     
     if file_name_json:
         """Data parser assuming eco-written files from pilot phase 1"""
-        s, scan_info_filepath = readScanEcoJson_v01(file_name_json)
+        s, scan_info_filepath = readScanEcoJson_v01(file_name_json,exclude_from_files=exclude_from_files)
     else:
         s = scan_info
     lastpath = None
