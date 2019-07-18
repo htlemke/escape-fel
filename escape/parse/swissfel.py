@@ -12,8 +12,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-
-def readScanEcoJson_v01(file_name_json):
+def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
     p = pathlib.Path(file_name_json)
     assert p.is_file(), "Input string does not describe a valid file path."
     with p.open(mode="r") as f:
@@ -24,6 +23,15 @@ def readScanEcoJson_v01(file_name_json):
     assert len(s["scan_files"]) == len(
         s["scan_readbacks"]
     ), "number of files and scan readbacks don't match in {}".format(file_name_json)
+    for step in s['scan_files']:
+        for sstr in exclude_from_files:
+            kill = []
+            for i,tf in enumerate(step):
+                if sstr in tf:
+                    kill.append(i)
+            for k in kill[-1::-1]:
+                step.pop(k)
+
     return s, p
 
 def parseSFh5File_v01(
@@ -103,14 +111,21 @@ def parseSFh5File_v01(
         return dstores
 
 def parseScanEco_v01(
-    file_name_json,
+    file_name_json=None,
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_0D_MB=5,
     memlimit_mD_MB=10,
     createEscArrays=True,
+    scan_info = None,
+    scan_info_filepath=None,
+    exclude_from_files = [],
 ):
-    """Data parser assuming eco-written files from pilot phase 1"""
-    s, scan_info_filepath = readScanEcoJson_v01(file_name_json)
+    
+    if file_name_json:
+        """Data parser assuming eco-written files from pilot phase 1"""
+        s, scan_info_filepath = readScanEcoJson_v01(file_name_json,exclude_from_files=exclude_from_files)
+    else:
+        s = scan_info
     lastpath = None
     searchpaths = None
 
@@ -152,7 +167,7 @@ def parseScanEco_v01(
         oldnames = names.intersection(tnames)
         for name in newnames:
             if datasets[name][0].size == 0:
-                logger.debug"Found empty dataset in {} in cycle {}".format(name, stepNo))
+                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
             else:
                 size_data = (
                     np.dtype(datasets[name][0].dtype).itemsize
