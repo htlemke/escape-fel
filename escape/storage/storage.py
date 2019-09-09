@@ -238,8 +238,12 @@ class Array:
             eventDim=event_dim,
         )
 
-    def to_h5(self, filename_or_parent, name=None, unit=None, **kwargs):
+    def store(self, filename_or_parent=None, name=None, unit=None, **kwargs):
+        if not self.store:
+            pass
         pass
+
+
 
     def _get_ana_str(self, perc_limits=[5, 95]):
         sqaxes = list(range(self.data.ndim))
