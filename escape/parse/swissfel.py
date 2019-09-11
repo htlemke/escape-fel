@@ -8,7 +8,7 @@ from .. import Array, Scan
 import numpy as np
 from copy import copy
 import logging
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +255,7 @@ class LazyContainer:
     def __init__(self, dat):
         self.dat = dat
 
-    def get_data(self):
+    def get_data(self,**kwargs):
         return da.concatenate(
             [
                 da.from_array(td, chunks=self.dat["data_chunks"])

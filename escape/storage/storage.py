@@ -4,8 +4,20 @@ from dask.diagnostics import ProgressBar
 import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
 import logging
+from itertools import chain
 
 logger = logging.getLogger(__name__)
+
+class ArraySelector:
+    def __init__(self,arrayitem,dims=None):
+        """ Container object for selecting array subsets in functions mapped on escape Arrays."""
+        self.arrayitem = arrayitem
+        self.dims = dims
+    def __call__(self,sel):
+        if max(self.dims) <= (len(sel)-1):
+            return self.arrayitem.__getitem__(tuple(sel[n] for n in self.dims))
+        else:
+            return self.arrayitem
 
 
 class Array:
@@ -42,6 +54,7 @@ class Array:
                 )
         self._eventIds = eventIds
         self._data = data
+        self._data_selector = None
         self.stepLengths = stepLengths
         self.scan = scan
         self.name = name
@@ -64,15 +77,24 @@ class Array:
     @property
     def data(self):
         if callable(self._data):
-            self._data = self._data()
-            self._add_methods()
-        return self._data
+            op = self._data(data_selector=self._data_selector)
+            if len(op)==2 and op[1]=='nopersist':
+                self._add_methods(op[0])
+                return op[0]
+            else:
+                self._data = op
+                self._add_methods()
+                return self._data
+        else:
+            return self._data
 
-    def _add_methods(self):
-        if isinstance(self.data, np.ndarray):
+    def _add_methods(self,data=None):
+        if data is None:
+            data = self._data
+        if isinstance(data, np.ndarray):
             for m in ["mean", "std", "median", "percentile", "max", "min"]:
                 self.__dict__[m] = escaped(np.__dict__[m], convertOutput2EscData=[0])
-        elif isinstance(self.data, da.Array):
+        elif isinstance(data, da.Array):
             for m in ["mean", "std", "max", "min"]:
                 self.__dict__[m] = escaped(da.__dict__[m], convertOutput2EscData=[0])
 
@@ -83,6 +105,8 @@ class Array:
         assert not self.stepLengths is None, "No step sizes defined."
         assert n < len(self.stepLengths), f"Only {len(self.stepLengths)} steps"
         return self.data[sum(self.stepLengths[:n]) : sum(self.stepLengths[: (n + 1)])]
+
+    #TODO: get_steps() method that returns arrays for step selection or an iterator over all.
 
     def step_data(self):
         """returns iterator over all steps"""
@@ -99,10 +123,10 @@ class Array:
         return len(self.eventIds)
 
     def __getitem__(self, *args, **kwargs):
+        
+        # this is multi dimensional itemgetting
         if type(args[0]) is tuple:
-            # this is multi dimensional itemgetting
-
-            # expand ellipses
+            # expanding ellipses --> TODO: multiple ellipses possible?
             if Ellipsis in args[0]:
                 rargs = list(args[0])
                 elind = rargs.index(Ellipsis)
@@ -112,13 +136,14 @@ class Array:
                 for n in range(missing_dims):
                     rargs.insert(elind, slice(None, None, None))
                 args = (tuple(rargs),)
-            # get event selector
+            # get event selector for the event ID selection
             eventIx = -1
             for n, targ in enumerate(args[0]):
                 if targ:
                     eventIx += 1
                 if eventIx == self.eventDim:
                     break
+
             if type(args[0][eventIx]) is int:
                 rargs = list(args[0])
                 if rargs[eventIx] == -1:
@@ -128,10 +153,11 @@ class Array:
                 args = (tuple(rargs),)
             events = args[0][eventIx]
 
+        # Single dimension itemgetting, which is by default along
+        # event dimension, raise error if inconsistent with data shape
         else:
-            # this is single dimension itemgetting, which is by default along
-            # event dimension, raise error if inconsistent with data shape
             assert self.eventDim == 0, "requesting slice not along event dimension!"
+            # making sure slices are taken in a way the event dimention is not squeezed away.
             if type(args[0]) is int:
                 rargs = list(args)
                 if rargs[0] == -1:
@@ -140,6 +166,9 @@ class Array:
                     rargs[0] = slice(rargs[0], rargs[0] + 1)
                 args = tuple(rargs)
             events = args[0]
+            #expand all dimensions for potential use in derived functions
+
+
         if isinstance(events, slice):
             events = list(range(*events.indices(len(self))))
         elif isinstance(events, np.ndarray) and events.dtype == bool:
@@ -147,6 +176,8 @@ class Array:
         stepLengths, scan = get_scan_step_selections(
             events, self.stepLengths, scan=self.scan
         )
+        # Save indices for potential use in derived functions
+        self._data_selector=args
         return Array(
             data=self.data.__getitem__(*args),
             eventIds=self.eventIds.__getitem__(events),
@@ -205,10 +236,12 @@ class Array:
     ):
         """map a function which works for a chunk of the Array (events along eventDim). This is only really relevant for dask array array data."""
 
+        # Getting chunks in the event dimension
         if event_dim == "same":
             event_dim = self.eventDim
-
         chunks_edim = self.data.chunks[self.eventDim]
+
+        # making sure that chunks in other dimensions are "flat"
         shp = self.data.shape
         newchunks = []
         rechunk = False
@@ -216,7 +249,7 @@ class Array:
             if dim == self.eventDim:
                 newchunks.append(dimchunks)
             else:
-                rechunk = len(chunks) > 1 or rechunk
+                rechunk = len(dimchunks) > 1 or rechunk
                 newchunks.append((sum(dimchunks),))
         if rechunk:
             data = self.data.rechunk(tuple(newchunks))
@@ -224,19 +257,39 @@ class Array:
             data = self.data
             newchunks = self.data.chunks
 
-        return Array(
-            data=data.map_blocks(
-                *args,
-                chunks=newchunks,
-                drop_axis=drop_axis,
-                new_axis=new_axis,
-                **kwargs,
-            ),
-            eventIds=self.eventIds,
-            stepLengths=self.stepLengths,
-            scan=self.scan,
-            eventDim=event_dim,
-        )
+        # checking if any inputs are to be selected
+        if any([isinstance(x,ArraySelector) for x in chain(args,kwargs.values())]):
+            def get_data(data_selector=None):
+                args_sel = [ta if not isinstance(ta,ArraySelector) else ta(data_selector) for ta in args]
+                kwargs_sel = {}
+                for tk,tv in kwargs.items():
+                    if isinstance(tv,ArraySelector):
+                        kwargs_sel[tk] = tv(data_selector)
+                    else:
+                        kwargs_sel[tk] = tv
+                return (data.map_blocks(foo,*args_sel,chunks=newchunks,drop_axis=drop_axis,new_axis=new_axis,**kwargs_sel),'nopersist')
+            return Array(
+                data=get_data,
+                eventIds=self.eventIds,
+                stepLengths=self.stepLengths,
+                scan=self.scan,
+                eventDim=event_dim,
+            )
+        else:
+            return Array(
+                data=data.map_blocks(
+                    foo,
+                    *args,
+                    chunks=newchunks,
+                    drop_axis=drop_axis,
+                    new_axis=new_axis,
+                    **kwargs,
+                ),
+                eventIds=self.eventIds,
+                stepLengths=self.stepLengths,
+                scan=self.scan,
+                eventDim=event_dim,
+            )
 
     def store(self, filename_or_parent=None, name=None, unit=None, **kwargs):
         if not self.store:
