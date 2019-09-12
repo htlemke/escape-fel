@@ -5,6 +5,7 @@ import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
 import logging
 from itertools import chain
+from functools import partial
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +93,11 @@ class Array:
         if data is None:
             data = self._data
         if isinstance(data, np.ndarray):
-            for m in ["mean", "std", "median", "percentile", "max", "min"]:
-                self.__dict__[m] = escaped(np.__dict__[m], convertOutput2EscData=[0])
+            for m in ["sum","mean", "std", "median", "percentile", "max", "min"]:
+                self.__dict__[m] = partial(escaped(np.__dict__[m], convertOutput2EscData=[0]),self)
         elif isinstance(data, da.Array):
-            for m in ["mean", "std", "max", "min"]:
-                self.__dict__[m] = escaped(da.__dict__[m], convertOutput2EscData=[0])
+            for m in ["sum","mean", "std", "max", "min"]:
+                self.__dict__[m] = partial(escaped(da.__dict__[m], convertOutput2EscData=[0]),self)
 
     def get_step_data(self, n):
         assert n >= 0, "Step index needs to be positive"
@@ -152,6 +153,7 @@ class Array:
                     rargs[eventIx] = slice(rargs[eventIx], rargs[eventIx] + 1)
                 args = (tuple(rargs),)
             events = args[0][eventIx]
+            events_type = 'eventIx'
 
         # Single dimension itemgetting, which is by default along
         # event dimension, raise error if inconsistent with data shape
@@ -166,6 +168,7 @@ class Array:
                     rargs[0] = slice(rargs[0], rargs[0] + 1)
                 args = tuple(rargs)
             events = args[0]
+            events_type = 'none'
             #expand all dimensions for potential use in derived functions
 
 
@@ -173,6 +176,17 @@ class Array:
             events = list(range(*events.indices(len(self))))
         elif isinstance(events, np.ndarray) and events.dtype == bool:
             events = events.nonzero()[0]
+        elif isinstance(events, Array):
+            inds_self,[inds_selector],dum = matchIDs(self.eventIds,[events.eventIds])
+            events = inds_self[events.data[inds_selector].nonzero()[0]]
+            if events_type=='eventIx':
+                args[0][eventIx] = events
+            elif events_type=='none':
+                args = (events,)
+            else:
+                raise Exception("Issue in escape array getitem using another escape array!")
+
+
         stepLengths, scan = get_scan_step_selections(
             events, self.stepLengths, scan=self.scan
         )

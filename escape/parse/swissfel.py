@@ -4,11 +4,18 @@ from pathlib import Path
 from . import utilities
 import h5py
 from dask import array as da
+from dask import bag as db
+
 from .. import Array, Scan
 import numpy as np
 from copy import copy
 import logging
-from tqdm.autonotebook import tqdm
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from tqdm.autonotebook import tqdm
+from threading import Thread
+from time import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -126,15 +133,180 @@ def parseScanEco_v01(
         s, scan_info_filepath = readScanEcoJson_v01(file_name_json,exclude_from_files=exclude_from_files)
     else:
         s = scan_info
+
+    datasets_scan = []
+    
+    files_bar = tqdm(s["scan_files"], desc='Scan steps')
+
+    all_parses = {}    
+    def get_datasets_from_files(n):
+        lastpath = None
+        searchpaths = None
+        files = s["scan_files"][n]
+        datasets = {}
+        for n_file,f in enumerate(files):
+            fp = pathlib.Path(f)
+            fn = pathlib.Path(fp.name)
+            if not searchpaths:
+                searchpaths = [fp.parent] + [
+                    scan_info_filepath.parent / pathlib.Path(tp.format(fp.parent.name))
+                    for tp in search_paths
+                ]
+            for path in searchpaths:
+                file_path = path / fn
+                if file_path.is_file():
+                    if not lastpath:
+                        lastpath = path
+                        searchpaths.insert(0, path)
+                    break
+            # assert file_path.is_file(), 'Could not find file {} '.format(fn)
+            try:
+                fh = h5py.File(file_path.resolve(), mode="r")
+                datasets.update(utilities.findItemnamesGroups(fh, ["data", "pulse_id"]))
+                logger.info("Successfully parsed file %s" % file_path.resolve())
+            except:
+                logger.warning(f"could not read {file_path.absolute().as_posix()}.")
+        all_parses[n] =  datasets
+    ts = []
+    for n in range(len(s["scan_files"])):
+        ts.append(Thread(target=get_datasets_from_files,args=[n]))
+    for t in ts:
+        t.start()
+    while len(all_parses.keys())<len(s["scan_files"]):
+        n = len(all_parses.keys())
+        m = len(s["scan_files"])
+        files_bar.update(n-files_bar.n)
+        sleep(.01)
+    for t in ts:
+        t.join()
+    files_bar.update(files_bar.total-files_bar.n)
+    
+    # datasets_scan.append(datasets)
+
+    names = set()
+    dstores = {}
+
+    for stepNo, (scan_values, scan_readbacks, scan_step_info) in enumerate(
+        zip(s["scan_values"], s["scan_readbacks"], s["scan_step_info"])
+    ):
+        datasets = all_parses[stepNo]
+        tnames = set(datasets.keys())
+        newnames = tnames.difference(names)
+        oldnames = names.intersection(tnames)
+        for name in newnames:
+            if datasets[name][0].size == 0:
+                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
+            else:
+                size_data = (
+                    np.dtype(datasets[name][0].dtype).itemsize
+                    * datasets[name][0].size
+                    / 1024 ** 2
+                )
+                size_element = (
+                    np.dtype(datasets[name][0].dtype).itemsize
+                    * np.prod(datasets[name][0].shape[1:])
+                    / 1024 ** 2
+                )
+                if datasets[name][0].chunks:
+                    chunk_size = list(datasets[name][0].chunks)
+                else:
+                    chunk_size = list(datasets[name][0].shape)
+                if chunk_size[0] == 1:
+                    chunk_size[0] = int(memlimit_mD_MB // size_element)
+                dstores[name] = {}
+                dstores[name]["scan"] = Scan(
+                    parameter_names=[str(ts) for ts in s["scan_parameters"]["name"]]
+                    + [f"{tn}_readback" for tn in s["scan_parameters"]["name"]],
+                    parameter_attrs={
+                        tn: {"Id": ti}
+                        for tn, ti in zip(
+                            s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
+                        )
+                    },
+                )
+                # dirty hack for inconsitency in writer
+                if (
+                    len(scan_readbacks)
+                    > len(dstores[name]["scan"]._parameter_names) / 2
+                ):
+                    scan_readbacks = scan_readbacks[
+                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
+                    ]
+                dstores[name]["scan"]._append(
+                    copy(scan_values) + copy(scan_readbacks),
+                    scan_step_info=copy(scan_step_info),
+                )
+                dstores[name]["data"] = []
+                dstores[name]["data"].append(datasets[name][0])
+                dstores[name]["data_chunks"] = chunk_size
+                dstores[name]["eventIds"] = []
+                dstores[name]["eventIds"].append(datasets[name][1])
+                dstores[name]["stepLengths"] = []
+                dstores[name]["stepLengths"].append(len(datasets[name][0]))
+                names.add(name)
+        for name in oldnames:
+            if datasets[name][0].size == 0:
+                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
+            else:
+                # dirty hack for inconsitency in writer
+                if (
+                    len(scan_readbacks)
+                    > len(dstores[name]["scan"]._parameter_names) / 2
+                ):
+                    scan_readbacks = scan_readbacks[
+                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
+                    ]
+                dstores[name]["scan"]._append(
+                    copy(scan_values) + copy(scan_readbacks),
+                    scan_step_info=copy(scan_step_info),
+                )
+                dstores[name]["data"].append(datasets[name][0])
+                dstores[name]["eventIds"].append(datasets[name][1])
+                dstores[name]["stepLengths"].append(len(datasets[name][0]))
+    if createEscArrays:
+        escArrays = {}
+        containers = {}
+        for name, dat in dstores.items():
+            containers[name] = LazyContainer(dat)
+            escArrays[name] = Array(
+                containers[name].get_data,
+                eventIds=containers[name].get_eventIds,
+                stepLengths=dat["stepLengths"],
+                scan=dat["scan"],
+            )
+        return escArrays
+    else:
+        return dstores
+
+
+def parseScanEco_v01_old(
+    file_name_json=None,
+    search_paths=["./", "./scan_data/", "../scan_data"],
+    memlimit_0D_MB=5,
+    memlimit_mD_MB=10,
+    createEscArrays=True,
+    scan_info = None,
+    scan_info_filepath=None,
+    exclude_from_files = [],
+):
+    
+    if file_name_json:
+        """Data parser assuming eco-written files from pilot phase 1"""
+        s, scan_info_filepath = readScanEcoJson_v01(file_name_json,exclude_from_files=exclude_from_files)
+    else:
+        s = scan_info
     lastpath = None
     searchpaths = None
 
     datasets_scan = []
-    for files in tqdm(s["scan_files"], desc='Scan steps'):
+
+    files_bar = tqdm(s["scan_files"], desc='Scan steps')
+    for files in files_bar:
         datasets = {}
-        for f in tqdm(files, desc='Step files'):
+        for n_file,f in enumerate(files):
             fp = pathlib.Path(f)
             fn = pathlib.Path(fp.name)
+            files_bar.set_postfix_str(f'file ({n_file+1}/{len(files)})')
             if not searchpaths:
                 searchpaths = [fp.parent] + [
                     scan_info_filepath.parent / pathlib.Path(tp.format(fp.parent.name))
@@ -264,6 +436,14 @@ class LazyContainer:
         )
 
     def get_eventIds(self):
-        return np.concatenate([td[...].ravel() for td in self.dat["eventIds"]])
+        ids = {}
+        def getids(n,dset):
+            ids[n] = dset[...].ravel()
+        ts = [Thread(target=getids,args=[n,td]) for n,td in enumerate(self.dat["eventIds"])]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        return np.concatenate([ids[n] for n in range(len(self.dat["eventIds"]))])
 
     
