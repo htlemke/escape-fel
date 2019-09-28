@@ -6,6 +6,7 @@ from ..utilities import hist_asciicontrast, Hist_ascii
 import logging
 from itertools import chain
 from functools import partial
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -306,9 +307,25 @@ class Array:
             )
 
     def store(self, filename_or_parent=None, name=None, unit=None, **kwargs):
+        """work in progess!!! unusable!!!, should allow easy saving and even appending of array data."""
         if not self.store:
             pass
-        pass
+        parent = filename_or_parent
+        grp = parent.require_group(name)
+        if 'data' in grp.keys():
+            print(f'Dataset {name} already exists, data:')
+            print(str(grp['data']))
+            if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
+                del grp['data']
+                del grp['event_ids']
+            else:
+                return
+        grp['event_ids'] = self.eventIds
+        if isinstance(self.data,np.array):
+            grp['data'] = self.data
+        elif isinstance(self.data,da.array):
+            dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
+            self.data.store(dset)
 
 
 
@@ -632,3 +649,68 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
         eventDim=array.eventDim,
         scan=scan,
     )
+
+
+class ArrayH5Dataset:
+    def __init__(self,parent,name,):
+        self.parent = parent
+        self.grp = parent.require_group(name)
+        self._data_finder = re.compile("^data_[0-9]{4}$")
+        self._event_ids_finder = re.compile("^event_ids_[0-9]{4}$")
+        self.n_d = []
+        self.n_i = []
+        for key in grp.keys():
+            if self._data_finder.match(key)):
+                n_d.append(int(-4:]))
+            if self._event_ids_finder.match(key)):
+                n_i.append(int(-4:]))
+        self.n_d.sort()
+        self.n_i.sort()
+        if not ns_d==ns_i:
+            raise Exception('Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!')
+    @property
+    def event_ids(self):
+        return np.asarray([self.grp[f'event_ids_{n:04d}'][:] for n in self.n_i])
+
+    def append(self,data,event_ids,event_dim,scan=None):
+        ids_stored = self.event_ids
+        if len(event_ids)<len(ids_stored):
+            raise Exception("fewer event_ids to append than already stored!")
+        if not (event_ids[:len(ids_stored)]==ids_stored).all():
+            raise Exception("new event_ids don't extend existing ones!")
+        if len(event_ids)==len(ids_stored):
+            print('Nothing new to append.')
+            return
+        n_new = len(self.n_i)
+        self.grp[f'event_ids_{n_new:04d}'] = event_ids[len(ids_stored):]
+        if isinstance(data,np.array):
+            self.grp[f'data_{n_new:04d}'] = self.data[len(ids_stored):,...]
+        elif isinstance(data,da.array):
+            # new_shape = data.shape
+            # new_shape[0] = new_shape[0]-len(ids_stored)
+            new_data = data[len(ids_stored):,...]
+            dset = grp.create_dataset(f'data_{n_new:04d}',shape=new_data.shape,chunks=new_data.chunks,dtype=new_data.dtype)
+            da.store(new_data,dset)
+        self.n_i.append(n_new)
+        self.n_d.append(n_new)
+    
+    
+    def get_data_da(self):
+        return da.concatenate([da.from_array(self.grp[f'data_{n:04d}']) for n in self.n_i])
+
+# if 'data' in grp.keys():
+            # print(f'Dataset {name} already exists, data:')
+            # print(str(grp['data']))
+            # if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
+                # del grp['data']
+                # del grp['event_ids']
+            # else:
+                # return
+        # grp['event_ids'] = self.eventIds
+        # if isinstance(self.data,np.array):
+            # grp['data'] = self.data
+        # elif isinstance(self.data,da.array):
+            # dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
+            # self.data.store(dset)
+
+
