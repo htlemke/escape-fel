@@ -41,7 +41,7 @@ def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
 
     return s, p
 
-def parseSFh5File_v01(
+def parseSFh5File_v01_old(
     files,
     memlimit_0D_MB=5,
     memlimit_mD_MB=132,
@@ -97,8 +97,11 @@ def parseSFh5File_v01(
         for name in oldnames:
             if datasets[name][0].size == 0:
                 logger.debug("Found empty dataset in {}".format(name))
-            else:
                 # dirty hack for inconsitency in writer
+            elif not len(datasets[name][0].shape) == len(dstores[name]["data"][0].shape):
+                print('damn')
+                logger.debug("Found inconsistent dataset in {}".format(name))
+            else:
                 dstores[name]["data"].append(datasets[name][0])
                 dstores[name]["eventIds"].append(datasets[name][1])
                 dstores[name]["stepLengths"].append(len(datasets[name][0]))
@@ -247,6 +250,11 @@ def parseScanEco_v01(
         for name in oldnames:
             if datasets[name][0].size == 0:
                 logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
+            elif not len(datasets[name][0].shape) == len(dstores[name]["data"][0].shape):
+                logger.debug("Found inconsistent dataset in {}".format(name))
+            elif not datasets[name][0].shape[0] == datasets[name][1].shape[0]:
+                print('really shit')
+                logger.debug("Found inconsistent dataset in {}".format(name))
             else:
                 # dirty hack for inconsitency in writer
                 if (
