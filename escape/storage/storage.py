@@ -94,10 +94,10 @@ class Array:
         if data is None:
             data = self._data
         if isinstance(data, np.ndarray):
-            for m in ["sum","mean", "std", "median", "percentile", "max", "min"]:
+            for m in ["nansum","nanmean","nanstd","sum","mean", "std", "median", "percentile", "max", "min"]:
                 self.__dict__[m] = partial(escaped(np.__dict__[m], convertOutput2EscData=[0]),self)
         elif isinstance(data, da.Array):
-            for m in ["sum","mean", "std", "max", "min"]:
+            for m in ["nanmean","nansum","nanstd","sum","mean", "std", "max", "min"]:
                 self.__dict__[m] = partial(escaped(da.__dict__[m], convertOutput2EscData=[0]),self)
 
     def get_step_data(self, n):
