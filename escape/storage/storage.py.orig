@@ -4,22 +4,8 @@ from dask.diagnostics import ProgressBar
 import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
 import logging
-from itertools import chain
-from functools import partial
-import re
 
 logger = logging.getLogger(__name__)
-
-class ArraySelector:
-    def __init__(self,arrayitem,dims=None):
-        """ Container object for selecting array subsets in functions mapped on escape Arrays."""
-        self.arrayitem = arrayitem
-        self.dims = dims
-    def __call__(self,sel):
-        if max(self.dims) <= (len(sel)-1):
-            return self.arrayitem.__getitem__(tuple(sel[n] for n in self.dims))
-        else:
-            return self.arrayitem
 
 
 class Array:
@@ -56,7 +42,6 @@ class Array:
                 )
         self._eventIds = eventIds
         self._data = data
-        self._data_selector = None
         self.stepLengths = stepLengths
         self.scan = scan
         self.name = name
@@ -79,26 +64,17 @@ class Array:
     @property
     def data(self):
         if callable(self._data):
-            op = self._data(data_selector=self._data_selector)
-            if len(op)==2 and op[1]=='nopersist':
-                self._add_methods(op[0])
-                return op[0]
-            else:
-                self._data = op
-                self._add_methods()
-                return self._data
-        else:
-            return self._data
+            self._data = self._data()
+            self._add_methods()
+        return self._data
 
-    def _add_methods(self,data=None):
-        if data is None:
-            data = self._data
-        if isinstance(data, np.ndarray):
-            for m in ["sum","mean", "std", "median", "percentile", "max", "min"]:
-                self.__dict__[m] = partial(escaped(np.__dict__[m], convertOutput2EscData=[0]),self)
-        elif isinstance(data, da.Array):
-            for m in ["sum","mean", "std", "max", "min"]:
-                self.__dict__[m] = partial(escaped(da.__dict__[m], convertOutput2EscData=[0]),self)
+    def _add_methods(self):
+        if isinstance(self.data, np.ndarray):
+            for m in ["mean", "std", "median", "percentile", "max", "min"]:
+                self.__dict__[m] = escaped(np.__dict__[m], convertOutput2EscData=[0])
+        elif isinstance(self.data, da.Array):
+            for m in ["mean", "std", "max", "min"]:
+                self.__dict__[m] = escaped(da.__dict__[m], convertOutput2EscData=[0])
 
     def get_step_data(self, n):
         assert n >= 0, "Step index needs to be positive"
@@ -107,8 +83,6 @@ class Array:
         assert not self.stepLengths is None, "No step sizes defined."
         assert n < len(self.stepLengths), f"Only {len(self.stepLengths)} steps"
         return self.data[sum(self.stepLengths[:n]) : sum(self.stepLengths[: (n + 1)])]
-
-    #TODO: get_steps() method that returns arrays for step selection or an iterator over all.
 
     def step_data(self):
         """returns iterator over all steps"""
@@ -125,10 +99,10 @@ class Array:
         return len(self.eventIds)
 
     def __getitem__(self, *args, **kwargs):
-        
-        # this is multi dimensional itemgetting
         if type(args[0]) is tuple:
-            # expanding ellipses --> TODO: multiple ellipses possible?
+            # this is multi dimensional itemgetting
+
+            # expand ellipses
             if Ellipsis in args[0]:
                 rargs = list(args[0])
                 elind = rargs.index(Ellipsis)
@@ -138,14 +112,13 @@ class Array:
                 for n in range(missing_dims):
                     rargs.insert(elind, slice(None, None, None))
                 args = (tuple(rargs),)
-            # get event selector for the event ID selection
+            # get event selector
             eventIx = -1
             for n, targ in enumerate(args[0]):
                 if targ:
                     eventIx += 1
                 if eventIx == self.eventDim:
                     break
-
             if type(args[0][eventIx]) is int:
                 rargs = list(args[0])
                 if rargs[eventIx] == -1:
@@ -154,13 +127,11 @@ class Array:
                     rargs[eventIx] = slice(rargs[eventIx], rargs[eventIx] + 1)
                 args = (tuple(rargs),)
             events = args[0][eventIx]
-            events_type = 'eventIx'
 
-        # Single dimension itemgetting, which is by default along
-        # event dimension, raise error if inconsistent with data shape
         else:
+            # this is single dimension itemgetting, which is by default along
+            # event dimension, raise error if inconsistent with data shape
             assert self.eventDim == 0, "requesting slice not along event dimension!"
-            # making sure slices are taken in a way the event dimention is not squeezed away.
             if type(args[0]) is int:
                 rargs = list(args)
                 if rargs[0] == -1:
@@ -169,30 +140,13 @@ class Array:
                     rargs[0] = slice(rargs[0], rargs[0] + 1)
                 args = tuple(rargs)
             events = args[0]
-            events_type = 'none'
-            #expand all dimensions for potential use in derived functions
-
-
         if isinstance(events, slice):
             events = list(range(*events.indices(len(self))))
         elif isinstance(events, np.ndarray) and events.dtype == bool:
             events = events.nonzero()[0]
-        elif isinstance(events, Array):
-            inds_self,[inds_selector],dum = matchIDs(self.eventIds,[events.eventIds])
-            events = inds_self[events.data[inds_selector].nonzero()[0]]
-            if events_type=='eventIx':
-                args[0][eventIx] = events
-            elif events_type=='none':
-                args = (events,)
-            else:
-                raise Exception("Issue in escape array getitem using another escape array!")
-
-
         stepLengths, scan = get_scan_step_selections(
             events, self.stepLengths, scan=self.scan
         )
-        # Save indices for potential use in derived functions
-        self._data_selector=args
         return Array(
             data=self.data.__getitem__(*args),
             eventIds=self.eventIds.__getitem__(events),
@@ -251,12 +205,10 @@ class Array:
     ):
         """map a function which works for a chunk of the Array (events along eventDim). This is only really relevant for dask array array data."""
 
-        # Getting chunks in the event dimension
         if event_dim == "same":
             event_dim = self.eventDim
-        chunks_edim = self.data.chunks[self.eventDim]
 
-        # making sure that chunks in other dimensions are "flat"
+        chunks_edim = self.data.chunks[self.eventDim]
         shp = self.data.shape
         newchunks = []
         rechunk = False
@@ -264,7 +216,7 @@ class Array:
             if dim == self.eventDim:
                 newchunks.append(dimchunks)
             else:
-                rechunk = len(dimchunks) > 1 or rechunk
+                rechunk = len(chunks) > 1 or rechunk
                 newchunks.append((sum(dimchunks),))
         if rechunk:
             data = self.data.rechunk(tuple(newchunks))
@@ -272,62 +224,22 @@ class Array:
             data = self.data
             newchunks = self.data.chunks
 
-        # checking if any inputs are to be selected
-        if any([isinstance(x,ArraySelector) for x in chain(args,kwargs.values())]):
-            def get_data(data_selector=None):
-                args_sel = [ta if not isinstance(ta,ArraySelector) else ta(data_selector) for ta in args]
-                kwargs_sel = {}
-                for tk,tv in kwargs.items():
-                    if isinstance(tv,ArraySelector):
-                        kwargs_sel[tk] = tv(data_selector)
-                    else:
-                        kwargs_sel[tk] = tv
-                return (data.map_blocks(foo,*args_sel,chunks=newchunks,drop_axis=drop_axis,new_axis=new_axis,**kwargs_sel),'nopersist')
-            return Array(
-                data=get_data,
-                eventIds=self.eventIds,
-                stepLengths=self.stepLengths,
-                scan=self.scan,
-                eventDim=event_dim,
-            )
-        else:
-            return Array(
-                data=data.map_blocks(
-                    foo,
-                    *args,
-                    chunks=newchunks,
-                    drop_axis=drop_axis,
-                    new_axis=new_axis,
-                    **kwargs,
-                ),
-                eventIds=self.eventIds,
-                stepLengths=self.stepLengths,
-                scan=self.scan,
-                eventDim=event_dim,
-            )
+        return Array(
+            data=data.map_blocks(
+                *args,
+                chunks=newchunks,
+                drop_axis=drop_axis,
+                new_axis=new_axis,
+                **kwargs,
+            ),
+            eventIds=self.eventIds,
+            stepLengths=self.stepLengths,
+            scan=self.scan,
+            eventDim=event_dim,
+        )
 
-    def store(self, filename_or_parent=None, name=None, unit=None, **kwargs):
-        """work in progess!!! unusable!!!, should allow easy saving and even appending of array data."""
-        if not self.store:
-            pass
-        parent = filename_or_parent
-        grp = parent.require_group(name)
-        if 'data' in grp.keys():
-            print(f'Dataset {name} already exists, data:')
-            print(str(grp['data']))
-            if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
-                del grp['data']
-                del grp['event_ids']
-            else:
-                return
-        grp['event_ids'] = self.eventIds
-        if isinstance(self.data,np.array):
-            grp['data'] = self.data
-        elif isinstance(self.data,da.array):
-            dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
-            self.data.store(dset)
-
-
+    def to_h5(self, filename_or_parent, name=None, unit=None, **kwargs):
+        pass
 
     def _get_ana_str(self, perc_limits=[5, 95]):
         sqaxes = list(range(self.data.ndim))
@@ -548,6 +460,14 @@ class Scan:
         s += "Parameters {}".format(", ".join(self._parameter_names))
         return s
 
+<<<<<<< HEAD
+#<<<<<<< HEAD
+# def to_dataframe(*args):
+#     for arg in args:
+#         if arg.data.shape>1:
+#             raise(NotImplementedError('Only 1D Arrays can be converted to dataframes.'))
+    
+=======
 
 def to_dataframe(*args):
     for arg in args:
@@ -556,6 +476,7 @@ def to_dataframe(*args):
                 NotImplementedError("Only 1D Arrays can be converted to dataframes.")
             )
 
+>>>>>>> dev
 
 @escaped
 def matchArrays(*args):
@@ -649,83 +570,3 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
         eventDim=array.eventDim,
         scan=scan,
     )
-
-
-class ArrayH5Dataset:
-    def __init__(self,parent,name,):
-        self.parent = parent
-        self.grp = parent.require_group(name)
-        self._data_finder = re.compile("^data_[0-9]{4}$")
-        self._event_ids_finder = re.compile("^event_ids_[0-9]{4}$")
-        self.n_d = []
-        self.n_i = []
-        for key in self.grp.keys():
-            if self._data_finder.match(key):
-                self.n_d.append(int(key[-4:]))
-            if self._event_ids_finder.match(key):
-                self.n_i.append(int(key[-4:]))
-        self.n_d.sort()
-        self.n_i.sort()
-        if not self.n_d==self.n_i:
-            raise Exception('Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!')
-    @property
-    def event_ids(self):
-        return np.asarray([self.grp[f'event_ids_{n:04d}'][:] for n in self.n_i])
-
-    def append(self,data,event_ids,event_dim,scan=None):
-        ids_stored = self.event_ids
-        if len(event_ids)<len(ids_stored):
-            raise Exception("fewer event_ids to append than already stored!")
-        if not (event_ids[:len(ids_stored)]==ids_stored).all():
-            raise Exception("new event_ids don't extend existing ones!")
-        if len(event_ids)==len(ids_stored):
-            print('Nothing new to append.')
-            return
-        n_new = len(self.n_i)
-        self.grp[f'event_ids_{n_new:04d}'] = event_ids[len(ids_stored):]
-        if isinstance(data,np.ndarray):
-            self.grp[f'data_{n_new:04d}'] = data[len(ids_stored):,...]
-        elif isinstance(data,da.ndarray):
-            # new_shape = data.shape
-            # new_shape[0] = new_shape[0]-len(ids_stored)
-            new_data = data[len(ids_stored):,...]
-            dset = grp.create_dataset(f'data_{n_new:04d}',shape=new_data.shape,chunks=new_data.chunks,dtype=new_data.dtype)
-            da.store(new_data,dset)
-        self.n_i.append(n_new)
-        self.n_d.append(n_new)
-    
-    
-    def get_data_da(self):
-        allarrays = []
-        for n in self.n_i:
-            ds = self.grp[f'data_{n_04d}']
-            if ds.chunks:
-                chunk_size = list(ds.chunks)
-            else:
-                chunk_size = list(datasets[name][0].shape)
-            if chunk_size[0] == 1:
-                chunk_size[0] = int(memlimit_MB // size_element)
-
-
-
-            ds.
-            da.from_array(self.grp[f'data_{n:04d}'],chunks=self.grp[f'data_{n:04d}'].chunks) for n in self.n_i])
-            da.from_array(self.grp[f'data_{n:04d}'],chunks=self.grp[f'data_{n:04d}'].chunks) for n in self.n_i])
-        return da.concatenate([da.from_array(self.grp[f'data_{n:04d}'],chunks=self.grp[f'data_{n:04d}'].chunks) for n in self.n_i])
-
-# if 'data' in grp.keys():
-            # print(f'Dataset {name} already exists, data:')
-            # print(str(grp['data']))
-            # if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
-                # del grp['data']
-                # del grp['event_ids']
-            # else:
-                # return
-        # grp['event_ids'] = self.eventIds
-        # if isinstance(self.data,np.array):
-            # grp['data'] = self.data
-        # elif isinstance(self.data,da.array):
-            # dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
-            # self.data.store(dset)
-
-
