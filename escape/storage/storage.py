@@ -26,8 +26,8 @@ class Array:
     def __init__(
         self,
         data=None,
-        eventIds=None,
-        stepLengths=None,
+        index=None,
+        step_lengths=None,
         scan=None,
         eventDim=None,
         name=None,
@@ -40,24 +40,24 @@ class Array:
             self.eventDim = 0
         else:
             self.eventDim = eventDim
-        if not (callable(data) or callable(eventIds)):
+        if not (callable(data) or callable(index)):
             assert data.shape[self.eventDim] == len(
-                eventIds
+                index
             ), "lengths of data and event IDs must mutch!"
-        if not stepLengths is None:
-            if not callable(eventIds):
-                assert sum(stepLengths) == len(
-                    eventIds
+        if not step_lengths is None:
+            if not callable(index):
+                assert sum(step_lengths) == len(
+                    index
                 ), "StepsLength need to add up to dataset length!"
             if scan is None:
                 logger.debug(
                     "No information about event groups (steps) \
                     available!"
                 )
-        self._eventIds = eventIds
+        self._eventIds = index
         self._data = data
         self._data_selector = None
-        self.stepLengths = stepLengths
+        self.step_lengths = step_lengths
         self.scan = scan
         self.name = name
         self._add_methods()
@@ -66,13 +66,13 @@ class Array:
     def eventIds(self):
         if isinstance(self._eventIds, da.Array):
             self._eventIds = self._eventIds.compute()
-            self._eventIds, self._data, self.stepLengths = get_unique_Ids(
-                self._eventIds, self.data, self.stepLengths
+            self._eventIds, self._data, self.step_lengths = get_unique_Ids(
+                self._eventIds, self.data, self.step_lengths
             )
         elif callable(self._eventIds):
             self._eventIds = self._eventIds()
-            self._eventIds, self._data, self.stepLengths = get_unique_Ids(
-                self._eventIds, self.data, self.stepLengths
+            self._eventIds, self._data, self.step_lengths = get_unique_Ids(
+                self._eventIds, self.data, self.step_lengths
             )
         return self._eventIds
 
@@ -102,18 +102,18 @@ class Array:
 
     def get_step_data(self, n):
         assert n >= 0, "Step index needs to be positive"
-        if n == 0 and self.stepLengths is None:
+        if n == 0 and self.step_lengths is None:
             return self.data[:]
-        assert not self.stepLengths is None, "No step sizes defined."
-        assert n < len(self.stepLengths), f"Only {len(self.stepLengths)} steps"
-        return self.data[sum(self.stepLengths[:n]) : sum(self.stepLengths[: (n + 1)])]
+        assert not self.step_lengths is None, "No step sizes defined."
+        assert n < len(self.step_lengths), f"Only {len(self.step_lengths)} steps"
+        return self.data[sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])]
 
     #TODO: get_steps() method that returns arrays for step selection or an iterator over all.
 
     def step_data(self):
         """returns iterator over all steps"""
         n = 0
-        while n < len(self.stepLengths):
+        while n < len(self.step_lengths):
             yield self.get_step_data(n)
             n += 1
 
@@ -189,14 +189,14 @@ class Array:
 
 
         stepLengths, scan = get_scan_step_selections(
-            events, self.stepLengths, scan=self.scan
+            events, self.step_lengths, scan=self.scan
         )
         # Save indices for potential use in derived functions
         self._data_selector=args
         return Array(
             data=self.data.__getitem__(*args),
-            eventIds=self.eventIds.__getitem__(events),
-            stepLengths=stepLengths,
+            index=self.eventIds.__getitem__(events),
+            step_lengths=stepLengths,
             scan=scan,
             eventDim=self.eventDim,
         )
@@ -219,8 +219,8 @@ class Array:
         neweventDim = axes.index(self.eventDim)
         return Array(
             data=self.data.transpose(*args),
-            eventIds=self.eventIds,
-            stepLengths=self.stepLengths,
+            index=self.eventIds,
+            step_lengths=self.step_lengths,
             scan=self.scan,
             eventDim=neweventDim,
         )
@@ -233,8 +233,8 @@ class Array:
         with ProgressBar():
             return Array(
                 data=self.data.compute(),
-                eventIds=self.eventIds,
-                stepLengths=self.stepLengths,
+                index=self.eventIds,
+                step_lengths=self.step_lengths,
                 scan=self.scan,
                 eventDim=self.eventDim,
             )
@@ -285,8 +285,8 @@ class Array:
                 return (data.map_blocks(foo,*args_sel,chunks=newchunks,drop_axis=drop_axis,new_axis=new_axis,**kwargs_sel),'nopersist')
             return Array(
                 data=get_data,
-                eventIds=self.eventIds,
-                stepLengths=self.stepLengths,
+                index=self.eventIds,
+                step_lengths=self.step_lengths,
                 scan=self.scan,
                 eventDim=event_dim,
             )
@@ -300,8 +300,8 @@ class Array:
                     new_axis=new_axis,
                     **kwargs,
                 ),
-                eventIds=self.eventIds,
-                stepLengths=self.stepLengths,
+                index=self.eventIds,
+                step_lengths=self.step_lengths,
                 scan=self.scan,
                 eventDim=event_dim,
             )
@@ -426,8 +426,8 @@ def escaped(func, convertOutput2EscData="auto"):
                     n,
                     Array(
                         data=toutput,
-                        eventIds=ids_res,
-                        stepLengths=stepLengths,
+                        index=ids_res,
+                        step_lengths=stepLengths,
                         scan=scan,
                         eventDim=0,
                     ),
@@ -484,8 +484,57 @@ for opSing, symbol in _operatorsSingle:
         Array, "__%s__" % opSing.__name__, escaped(opSing, convertOutput2EscData=[0])
     )
 
-
 class Scan:
+    def __init__(
+        self,
+        parameter={},
+        step_lengths=None,
+        array=None
+        ):
+        
+
+        self.step_lengths=step_lengths
+        for name,par in parameter.items():
+            if not len(par)==len(self.step_lengths):
+                raise Exception(f"Parameter array length of {name} does not fit the defined steps.")
+        self.parameter = parameter
+        self._array = array
+
+    def __getitem__(self,sel):
+        """array getter for scan"""
+        if isinstance(sel,slice):
+
+        pass
+
+    def get_step_array(self,n):
+        """array getter for scan"""
+        assert n >= 0, "Step index needs to be positive"
+        if n == 0 and self.step_lengths is None:
+            return self._array.data[:]
+        assert not self.step_lengths  is None, "No step sizes defined."
+        assert n < len(self.step_lengths), f"Only {len(self.step_lengths)} steps"
+        return self._array.data[sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])]
+    
+    def _save_to_h5(self,group):
+        if 'scan' in group.keys():
+            del group['scan']
+        scan_group = group.require_group('scan')
+        scan_group['step_lengths'] = self.step_lengths
+        par_group = scan_group.require_group('parameter')
+        for parname,parvalue in self.parameter.items():
+            par_group[parname] = parvalue
+    
+    def _load_from_h5(self,group):
+        if not 'scan' in group.keys():
+            raise Exception("Did not find group scan!")
+        self.step_lengths = group['scan']['step_lengths'][()]
+        self.parameter = {}
+        for name,data in group['parameter'].items():
+            if not len(data)==len(self.step_lengths):
+                raise Exception(f"The length of data array in {name} parameter in scan does not fit!")
+            self.parameter['name'] = data[()]
+
+class Scan_old:
     def __init__(
         self,
         parameter_names=None,
@@ -623,7 +672,7 @@ def digitize(array, bins, foo=da.digitize, **kwargs):
     inds = foo(darray, bins, **kwargs)
     ix = inds.argsort()
     bins, counts = da.unique(inds, return_counts=True)
-    return Array(data=array.data[ix], eventIds=array.eventIds[ix], stepLengths=counts)
+    return Array(data=array.data[ix], index=array.eventIds[ix], step_lengths=counts)
 
 
 def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
@@ -644,36 +693,39 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
     stepLengths, scan = get_scan_step_selections(ix, array.stepLengths, scan=array.scan)
     return Array(
         data=array.data[ix],
-        eventIds=array.eventIds[ix],
-        stepLengths=stepLengths,
+        index=array.eventIds[ix],
+        step_lengths=stepLengths,
         eventDim=array.eventDim,
         scan=scan,
     )
 
 
 class ArrayH5Dataset:
-    def __init__(self,parent,name,):
+    def __init__(self,parent,name):
         self.parent = parent
         self.grp = parent.require_group(name)
         self._data_finder = re.compile("^data_[0-9]{4}$")
-        self._event_ids_finder = re.compile("^event_ids_[0-9]{4}$")
-        self.n_d = []
-        self.n_i = []
+        self._index_finder = re.compile("^index_[0-9]{4}$")
+        self._n_d = []
+        self._n_i = []
         for key in self.grp.keys():
             if self._data_finder.match(key):
-                self.n_d.append(int(key[-4:]))
-            if self._event_ids_finder.match(key):
-                self.n_i.append(int(key[-4:]))
-        self.n_d.sort()
-        self.n_i.sort()
-        if not self.n_d==self.n_i:
+                self._n_d.append(int(key[-4:]))
+            if self._index_finder.match(key):
+                self._n_i.append(int(key[-4:]))
+        self._n_d.sort()
+        self._n_i.sort()
+        if not self._n_d==self._n_i:
             raise Exception('Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!')
     @property
-    def event_ids(self):
-        return np.asarray([self.grp[f'event_ids_{n:04d}'][:] for n in self.n_i])
+    def index(self):
+        if self._n_i:
+            return np.concatenate([np.asarray(self.grp[f'index_{n:04d}'][:]) for n in self._n_i], axis=0)
+        else:
+            return np.asarray([],dtype=int)
 
-    def append(self,data,event_ids,event_dim,scan=None):
-        ids_stored = self.event_ids
+    def append(self,data,event_ids,scan=None):
+        ids_stored = self.index
         if len(event_ids)<len(ids_stored):
             raise Exception("fewer event_ids to append than already stored!")
         if not (event_ids[:len(ids_stored)]==ids_stored).all():
@@ -681,37 +733,41 @@ class ArrayH5Dataset:
         if len(event_ids)==len(ids_stored):
             print('Nothing new to append.')
             return
-        n_new = len(self.n_i)
-        self.grp[f'event_ids_{n_new:04d}'] = event_ids[len(ids_stored):]
+        n_new = len(self._n_i)
+        self.grp[f'index_{n_new:04d}'] = event_ids[len(ids_stored):]
         if isinstance(data,np.ndarray):
             self.grp[f'data_{n_new:04d}'] = data[len(ids_stored):,...]
-        elif isinstance(data,da.ndarray):
-            # new_shape = data.shape
-            # new_shape[0] = new_shape[0]-len(ids_stored)
+        elif isinstance(data,da.Array):
             new_data = data[len(ids_stored):,...]
-            dset = grp.create_dataset(f'data_{n_new:04d}',shape=new_data.shape,chunks=new_data.chunks,dtype=new_data.dtype)
+            dset = self.grp.create_dataset(f'data_{n_new:04d}',shape=new_data.shape,chunks=new_data.chunks,dtype=new_data.dtype)
             da.store(new_data,dset)
-        self.n_i.append(n_new)
-        self.n_d.append(n_new)
+        self._n_i.append(n_new)
+        self._n_d.append(n_new)
     
     
-    def get_data_da(self):
+    def get_data_da(self, memlimit_MB=50):
         allarrays = []
-        for n in self.n_i:
-            ds = self.grp[f'data_{n_04d}']
+        for n in self._n_i:
+            ds = self.grp[f'data_{n:04d}']
             if ds.chunks:
                 chunk_size = list(ds.chunks)
             else:
-                chunk_size = list(datasets[name][0].shape)
+                chunk_size = list(ds.shape)
             if chunk_size[0] == 1:
+                size_element = (
+                    np.dtype(ds.dtype).itemsize
+                    * np.prod(ds.shape[1:])
+                    / 1024 ** 2
+                )
+
                 chunk_size[0] = int(memlimit_MB // size_element)
 
+            allarrays.append(da.from_array(ds,chunks=chunk_size))
 
+        return da.concatenate(allarrays)
 
-            ds.
-            da.from_array(self.grp[f'data_{n:04d}'],chunks=self.grp[f'data_{n:04d}'].chunks) for n in self.n_i])
-            da.from_array(self.grp[f'data_{n:04d}'],chunks=self.grp[f'data_{n:04d}'].chunks) for n in self.n_i])
-        return da.concatenate([da.from_array(self.grp[f'data_{n:04d}'],chunks=self.grp[f'data_{n:04d}'].chunks) for n in self.n_i])
+    def create_Array(self):
+        return Array(data=self.get_data_da(),index=self.index)
 
 # if 'data' in grp.keys():
             # print(f'Dataset {name} already exists, data:')
