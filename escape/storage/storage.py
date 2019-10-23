@@ -32,21 +32,21 @@ class Array:
         index=None,
         step_lengths=None,
         parameter=None,
-        eventDim=None,
+        index_dim=None,
         name=None,
     ):
-        if eventDim is None:
+        if index_dim is None:
             logger.debug(
-                "No event dimension eventDim defined,\
+                "No event dimension event_dim defined,\
                     assuming 0th Dimension."
             )
-            self.eventDim = 0
+            self.index_dim = 0
         else:
-            self.eventDim = eventDim
+            self.index_dim = index_dim
         if not (callable(data) or callable(index)):
-            assert data.shape[self.eventDim] == len(
+            assert data.shape[self.index_dim] == len(
                 index
-            ), "lengths of data and event IDs must mutch!"
+            ), "lengths of data and event IDs must match!"
         if not step_lengths is None:
             if not callable(index):
                 assert sum(step_lengths) == len(
@@ -68,12 +68,12 @@ class Array:
     def index(self):
         if isinstance(self._index, da.Array):
             self._index = self._index.compute()
-            self._index, self._data, self.step_lengths = get_unique_Ids(
-                self._index, self.data, self.step_lengths
+            self._index, self._data, self.step_lengths = get_unique_indexes(
+                self._index, self.data, self.scan.step_lengths
             )
         elif callable(self._index):
             self._index = self._index()
-            self._index, self._data, self.scan.step_lengths = get_unique_Ids(
+            self._index, self._data, self.scan.step_lengths = get_unique_indexes(
                 self._index, self.data, self.scan.step_lengths
             )
         return self._index
@@ -169,7 +169,7 @@ class Array:
             for n, targ in enumerate(args[0]):
                 if targ:
                     eventIx += 1
-                if eventIx == self.eventDim:
+                if eventIx == self.index_dim:
                     break
 
             if type(args[0][eventIx]) is int:
@@ -185,7 +185,7 @@ class Array:
         # Single dimension itemgetting, which is by default along
         # event dimension, raise error if inconsistent with data shape
         else:
-            assert self.eventDim == 0, "requesting slice not along event dimension!"
+            assert self.index_dim == 0, "requesting slice not along event dimension!"
             # making sure slices are taken in a way the event dimention is not squeezed away.
             if type(args[0]) is int:
                 rargs = list(args)
@@ -203,7 +203,7 @@ class Array:
         elif isinstance(events, np.ndarray) and events.dtype == bool:
             events = events.nonzero()[0]
         elif isinstance(events, Array):
-            inds_self, [inds_selector], dum = matchIDs(self.index, [events.index])
+            inds_self, [inds_selector], dum = match_indexes(self.index, [events.index])
             events = inds_self[events.data[inds_selector].nonzero()[0]]
             if events_type == "eventIx":
                 args[0][eventIx] = events
@@ -224,7 +224,7 @@ class Array:
             index=self.index.__getitem__(events),
             step_lengths=stepLengths,
             parameter=scan.parameter,
-            eventDim=self.eventDim,
+            index_dim=self.index_dim,
         )
 
     @property
@@ -242,13 +242,13 @@ class Array:
             axes = args[0]
         else:
             axes = args
-        neweventDim = axes.index(self.eventDim)
+        new_index_dim = axes.index(self.index_dim)
         return Array(
             data=self.data.transpose(*args),
             index=self.index,
-            step_lengths=self.step_lengths,
+            step_lengths=self.scan.step_lengths,
             parameter=self.scan.parameter,
-            eventDim=neweventDim,
+            index_dim=new_index_dim,
         )
 
     @property
@@ -262,10 +262,10 @@ class Array:
                 index=self.index,
                 step_lengths=self.scan.step_lengths,
                 parameter=self.scan.parameter,
-                eventDim=self.eventDim,
+                index_dim=self.index_dim,
             )
 
-    def map_event_blocks(
+    def map_index_blocks(
         self,
         foo,
         *args,
@@ -275,19 +275,19 @@ class Array:
         event_dim="same",
         **kwargs,
     ):
-        """map a function which works for a chunk of the Array (events along eventDim). This is only really relevant for dask array array data."""
+        """map a function which works for a chunk of the Array (events along index_dim). This is only really relevant for dask array array data."""
 
         # Getting chunks in the event dimension
         if event_dim == "same":
-            event_dim = self.eventDim
-        chunks_edim = self.data.chunks[self.eventDim]
+            event_dim = self.index_dim
+        chunks_edim = self.data.chunks[self.index_dim]
 
         # making sure that chunks in other dimensions are "flat"
         shp = self.data.shape
         newchunks = []
         rechunk = False
         for dim, dimchunks in enumerate(self.data.chunks):
-            if dim == self.eventDim:
+            if dim == self.index_dim:
                 newchunks.append(dimchunks)
             else:
                 rechunk = len(dimchunks) > 1 or rechunk
@@ -316,7 +316,7 @@ class Array:
                     data.map_blocks(
                         foo,
                         *args_sel,
-                        chunks=newchunks,
+                        chunks=chunks,
                         drop_axis=drop_axis,
                         new_axis=new_axis,
                         **kwargs_sel,
@@ -329,14 +329,14 @@ class Array:
                 index=self.index,
                 step_lengths=self.step_lengths,
                 parameter=self.scan.parameter,
-                eventDim=event_dim,
+                index_dim=event_dim,
             )
         else:
             return Array(
                 data=data.map_blocks(
                     foo,
                     *args,
-                    chunks=newchunks,
+                    chunks=chunks,
                     drop_axis=drop_axis,
                     new_axis=new_axis,
                     **kwargs,
@@ -344,7 +344,7 @@ class Array:
                 index=self.index,
                 step_lengths=self.scan.step_lengths,
                 parameter=self.scan.parameter,
-                eventDim=event_dim,
+                index_dim=event_dim,
             )
 
     def store(self, parent_h5py=None, name=None, unit=None, **kwargs):
@@ -355,12 +355,12 @@ class Array:
             self.h5.append(self.data, self.index, self.scan)
         self._data = self.h5.get_data_da()
         self._index = self.h5.index
-        self.scan._save_to_h5(parent_h5py)
+        self.scan._save_to_h5(parent_h5py[name])
 
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
         h5 = ArrayH5Dataset(parent_h5py, name)
-        parameter, step_lengths = Scan._load_from_h5(parent_h5py)
+        parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
         return cls(
             index=h5.index,
             data=h5.get_data_da(),
@@ -369,9 +369,17 @@ class Array:
             name=name,
         )
 
+    def ones(self):
+        return Array(
+            data=np.ones(len(self)),
+            index=self.index,
+            step_lengths=self.scan.step_lengths,
+            parameter=self.scan.parameter,
+        )
+
     def _get_ana_str(self, perc_limits=[5, 95]):
         sqaxes = list(range(self.data.ndim))
-        sqaxes.pop(self.eventDim)
+        sqaxes.pop(self.index_dim)
         try:
             d = self.data.squeeze(axis=tuple(sqaxes))
         except:
@@ -384,7 +392,7 @@ class Array:
                 ostr += (
                     "Step %04d:" % n
                     + hist_asciicontrast(
-                        td.squeeze(), bins=40, range=hrange, disprange=False
+                        td.data.squeeze(), bins=40, range=hrange, disprange=False
                     )
                     + "\n"
                 )
@@ -407,6 +415,18 @@ class Array:
         if self.scan:
             s += self.scan.__repr__()
         return s
+
+
+def load_from_h5(parent_h5py, name):
+    h5 = ArrayH5Dataset(parent_h5py, name)
+    parameter, step_lengths = Scan._load_from_h5(parent_h5py)
+    return Array(
+        index=h5.index,
+        data=h5.get_data_da(),
+        parameter=parameter,
+        step_lengths=step_lengths,
+        name=name,
+    )
 
 
 def escaped(func, convertOutput2EscData="auto"):
@@ -435,7 +455,7 @@ def escaped(func, convertOutput2EscData="auto"):
         if not sorter is None:
             ixsorter = allEscs.index(sorter)
             allEscs.pop(ixsorter)
-            ixmaster, ixslaves, stepLengthsNew = matchIDs(
+            ixmaster, ixslaves, stepLengthsNew = match_indexes(
                 sorter.index, [t.index for t in allEscs]
             )
             ixslaves.insert(ixsorter, ixmaster)
@@ -469,7 +489,7 @@ def escaped(func, convertOutput2EscData="auto"):
                         index=ids_res,
                         step_lengths=stepLengths,
                         parameter=scan.parameter,
-                        eventDim=0,
+                        index_dim=0,
                     ),
                 )
 
@@ -478,6 +498,14 @@ def escaped(func, convertOutput2EscData="auto"):
             elif len(output) == 0:
                 output = None
         return output
+
+    return wrapped
+
+
+def _scan_wrap(func, **default_kws):
+    def wrapped(scan, **kwargs):
+        default_kws.update(kwargs)
+        return [func(step.data, **default_kws) for step in scan]
 
     return wrapped
 
@@ -536,6 +564,38 @@ class Scan:
                 )
         self.parameter = parameter
         self._array = array
+        self._add_methods()
+
+    def _add_methods(self):
+        # if isinstance(data, np.ndarray):
+        #     for m in [
+        #         "nansum",
+        #         "nanmean",
+        #         "nanstd",
+        #         "sum",
+        #         "mean",
+        #         "std",
+        #         "median",
+        #         "percentile",
+        #         "max",
+        #         "min",
+        #     ]:
+        #         self.__dict__[m] = partial(
+        #             _scan_wrap(np.__dict__[m],axis=0), self
+        #         )
+        # elif isinstance(data, da.Array):
+        for m in [
+            "nanmean",
+            "nansum",
+            "nanstd",
+            "sum",
+            "mean",
+            "std",
+            "max",
+            "min",
+            # "count",
+        ]:
+            self.__dict__[m] = partial(_scan_wrap(da.__dict__[m], axis=0), self)
 
     def append_step(self, parameter, step_length):
         self.step_lengths.append(step_length)
@@ -554,19 +614,37 @@ class Scan:
                 sel = len(self) + sel
             return self.get_step_array(sel)
         else:
-            return [self.get_step_array(n) for n in sel]
+            return concatenate([self.get_step_array(n) for n in sel])
 
     def get_step_array(self, n):
         """array getter for scan"""
         assert n >= 0, "Step index needs to be positive"
         if n == 0 and self.step_lengths is None:
-            return self._array.data[:]
-        assert not self.step_lengths is None, "No step sizes defined."
-        if not n < len(self.step_lengths):
+            data = self._array.data[:]
+            index = self._array.index[:]
+            step_lengths = self._array.step_lengths
+            parameter = self._array.parameter
+
+        # assert not self.step_lengths is None, "No step sizes defined."
+        elif not n < len(self.step_lengths):
             raise IndexError(f"Only {len(self.step_lengths)} steps")
-        return self._array.data[
-            sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
-        ]
+        else:
+            data = self._array.data[
+                sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            ]
+            index = self._array.index[
+                sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            ]
+            step_lengths = [self.step_lengths[n]]
+            parameter = {}
+            for par_name, par in self.parameter.items():
+                parameter[par_name] = {}
+                parameter[par_name]["values"] = [par["values"][n]]
+                if "attributes" in par.keys():
+                    parameter[par_name]["attributes"] = par["attributes"]
+        return Array(
+            data=data, index=index, parameter=parameter, step_lengths=step_lengths
+        )
 
     def _check_consistency(self):
         for par, pardict in self.parameter.items():
@@ -698,7 +776,7 @@ def to_dataframe(*args):
 
 
 @escaped
-def matchArrays(*args):
+def match_arrays(*args):
     return args
 
 
@@ -716,18 +794,20 @@ def concatenate(arraylist):
                 raise Exception(
                     "Scans can not be concatenated due to mismatch in parameters!"
                 )
-            for par_name, par_dict in array.scan.parameter:
+            for par_name, par_dict in array.scan.parameter.items():
                 parameter[par_name]["values"].extend(list(par_dict["values"]))
-                if not parameter[par_name]["attributes"] == par_dict["attributes"]:
+                if hasattr(par_dict, "attributes") and (
+                    not parameter[par_name]["attributes"] == par_dict["attributes"]
+                ):
                     raise Exception(
                         f"parameter attributes of {par_name} don't fit toghether in concatenated arrays."
                     )
+        step_lengths.extend(list(array.scan.step_lengths))
 
-        if not step_lengths:
-            step_lengths.extend(list(array.scan.step_lengths))
+    return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
 
 
-def matchIDs(ids_master, ids_slaves, stepLengths_master=None):
+def match_indexes(ids_master, ids_slaves, stepLengths_master=None):
     ids_res = ids_master
     for tid in ids_slaves:
         ids_res = ids_res[np.in1d(ids_res, tid, assume_unique=True)]
@@ -747,7 +827,7 @@ def matchIDs(ids_master, ids_slaves, stepLengths_master=None):
     return inds_master, inds_slaves, stepLensNew
 
 
-def get_unique_Ids(index, array_data, stepLengths=None, delete_Ids=[0]):
+def get_unique_indexes(index, array_data, stepLengths=None, delete_Ids=[0]):
     index, idxs = np.unique(index, return_index=True)
     good_Ids = np.ones_like(idxs, dtype=bool)
     for bad_Id in delete_Ids:
@@ -780,23 +860,47 @@ def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
             return escaped(func, *args, **kwargs)
 
 
-def digitize(array, bins, foo=da.digitize, **kwargs):
+def digitize(array, bins, foo=np.digitize, include_outlier_bins=False, sort_groups_by_index=True,**kwargs):
     """digitization function for escape arrays. checking for 1D arrays"""
-    if not np.prod(np.asarray(array.shape)) == array.shape[array.eventDim]:
+    if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be digitized in a sensible way."
         )
     darray = array.data.ravel()
+    if include_outlier_bins:
+        direction = np.sign(bins[-1]-bins[0])
+        bins = np.concatenate([np.atleast_1d(direction*np.inf),bins,np.atleast_1d(direction*-np.inf)])
     inds = foo(darray, bins, **kwargs)
-    ix = inds.argsort()
-    bins, counts = da.unique(inds, return_counts=True)
-    return Array(data=array.data[ix], index=array.index[ix], step_lengths=counts)
+    ix = inds.argsort()[(0<inds)&(inds<len(bins))]
+    bin_nos, counts = np.unique(inds[(0<inds)&(inds<len(bins))]-1, return_counts=True)
+    if sort_groups_by_index:
+        for n,bin_no in enumerate(bin_nos):
+            tmn = sum(counts[:n])
+            tmx = sum(counts[:n+1])
+            tix = array.index[ix[tmn:tmx]].argsort()
+            ix[tmn:tmx] = ix[tmn:tmx][tix]
+    bin_left = bins[1:]
+    bin_right = bins[:-1]
+    bin_center = (bin_left+bin_right)/2
+        
+    parameter = {
+        f"bin_center_{array.name}": {"values": bin_center[bin_nos], "attributes": kwargs},
+        f"bin_left_{array.name}": {"values": bin_left[bin_nos], "attributes": kwargs},
+        f"bin_right_{array.name}": {"values": bin_right[bin_nos], "attributes": kwargs},
+    }
+
+    return Array(
+        data=array.data[ix],
+        index=array.index[ix],
+        parameter=parameter,
+        step_lengths=counts,
+    )
 
 
 def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
     """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of 
     filter functions that take one argument as input and """
-    if not np.prod(np.asarray(array.shape)) == array.shape[array.eventDim]:
+    if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be filtered in a sensible way."
         )
@@ -813,9 +917,26 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
         data=array.data[ix],
         index=array.index[ix],
         step_lengths=stepLengths,
-        eventDim=array.eventDim,
+        index_dim=array.index_dim,
         parameter=scan.parameter,
     )
+
+
+def broadcast_to(ndarray_list, arraydef):
+    if isinstance(arraydef, Array):
+        index = arraydef.index
+        step_lengths = arraydef.scan.step_lengths
+        parameter = arraydef.scan.parameter
+    if not len(ndarray_list) == len(step_lengths):
+        raise Exception(
+            "Cannot broadcast list of arrays that does not fit length of array scan"
+        )
+    data = []
+    for ndarray, step_length in zip(ndarray_list, step_lengths):
+        tbc = da.atleast_1d(ndarray)
+        data.append(da.broadcast_to(tbc, [step_length] + list(tbc.shape)))
+    data = da.concatenate(data, axis=0)
+    return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
 
 
 class ArrayH5Dataset:
@@ -895,7 +1016,7 @@ class ArrayH5Dataset:
 
         return da.concatenate(allarrays)
 
-    def create_Array(self):
+    def create_array(self):
         return Array(data=self.get_data_da(), index=self.index)
 
 

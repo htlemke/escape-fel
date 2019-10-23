@@ -101,7 +101,6 @@ def parseSFh5File_v01_old(
             elif not len(datasets[name][0].shape) == len(
                 dstores[name]["data"][0].shape
             ):
-                print("damn")
                 logger.debug("Found inconsistent dataset in {}".format(name))
             else:
                 dstores[name]["data"].append(datasets[name][0])
@@ -182,13 +181,16 @@ def parseScanEco_v01(
         ts.append(Thread(target=get_datasets_from_files, args=[n]))
     for t in ts:
         t.start()
-    while len(all_parses.keys()) < len(s["scan_files"]):
-        n = len(all_parses.keys())
+    while len(all_parses) < len(s["scan_files"]):
         m = len(s["scan_files"])
+        n = len(all_parses)
         files_bar.update(n - files_bar.n)
+        # files_bar.update(n)
         sleep(0.01)
     for t in ts:
         t.join()
+    # while not files_bar.n==files_bar.total:
+        # sleep(.01)
     files_bar.update(files_bar.total - files_bar.n)
 
     # datasets_scan.append(datasets)
@@ -212,7 +214,6 @@ def parseScanEco_v01(
         }
     )
     parameter.update({"scan_step_info": {"values": []}})
-    print(parameter)
 
     for stepNo, (scan_values, scan_readbacks, scan_step_info) in enumerate(
         zip(s["scan_values"], s["scan_readbacks"], s["scan_step_info"])
@@ -272,7 +273,6 @@ def parseScanEco_v01(
             ):
                 logger.debug("Found inconsistent dataset in {}".format(name))
             elif not datasets[name][0].shape[0] == datasets[name][1].shape[0]:
-                print("really shit")
                 logger.debug("Found inconsistent dataset in {}".format(name))
             else:
                 for par_name, value in zip(
