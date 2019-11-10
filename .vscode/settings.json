@@ -1,0 +1,4 @@
+{
+    "python.pythonPath": "/sf/bernina/anaconda/anaconda3/bin/python",
+    "python.formatting.provider": "black"
+}

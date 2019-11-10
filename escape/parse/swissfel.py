@@ -8,9 +8,10 @@ from dask import bag as db
 
 from .. import Array, Scan
 import numpy as np
-from copy import copy
+from copy import deepcopy as copy
 import logging
 import warnings
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from tqdm.autonotebook import tqdm
@@ -19,7 +20,8 @@ from time import sleep
 
 logger = logging.getLogger(__name__)
 
-def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
+
+def readScanEcoJson_v01(file_name_json, exclude_from_files=[]):
     p = pathlib.Path(file_name_json)
     assert p.is_file(), "Input string does not describe a valid file path."
     with p.open(mode="r") as f:
@@ -30,10 +32,10 @@ def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
     assert len(s["scan_files"]) == len(
         s["scan_readbacks"]
     ), "number of files and scan readbacks don't match in {}".format(file_name_json)
-    for step in s['scan_files']:
+    for step in s["scan_files"]:
         for sstr in exclude_from_files:
             kill = []
-            for i,tf in enumerate(step):
+            for i, tf in enumerate(step):
                 if sstr in tf:
                     kill.append(i)
             for k in kill[-1::-1]:
@@ -41,11 +43,9 @@ def readScanEcoJson_v01(file_name_json,exclude_from_files=[]):
 
     return s, p
 
+
 def parseSFh5File_v01_old(
-    files,
-    memlimit_0D_MB=5,
-    memlimit_mD_MB=132,
-    createEscArrays=True,
+    files, memlimit_0D_MB=5, memlimit_mD_MB=132, createEscArrays=True
 ):
     """Data parser assuming the standard swissfel h5 format for raw data"""
     if (type(files) is str) or (not np.iterable(files)):
@@ -98,8 +98,9 @@ def parseSFh5File_v01_old(
             if datasets[name][0].size == 0:
                 logger.debug("Found empty dataset in {}".format(name))
                 # dirty hack for inconsitency in writer
-            elif not len(datasets[name][0].shape) == len(dstores[name]["data"][0].shape):
-                print('damn')
+            elif not len(datasets[name][0].shape) == len(
+                dstores[name]["data"][0].shape
+            ):
                 logger.debug("Found inconsistent dataset in {}".format(name))
             else:
                 dstores[name]["data"].append(datasets[name][0])
@@ -120,34 +121,38 @@ def parseSFh5File_v01_old(
     else:
         return dstores
 
+
 def parseScanEco_v01(
     file_name_json=None,
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_0D_MB=5,
     memlimit_mD_MB=10,
     createEscArrays=True,
-    scan_info = None,
+    scan_info=None,
     scan_info_filepath=None,
-    exclude_from_files = [],
+    exclude_from_files=[],
 ):
-    
+
     if file_name_json:
         """Data parser assuming eco-written files from pilot phase 1"""
-        s, scan_info_filepath = readScanEcoJson_v01(file_name_json,exclude_from_files=exclude_from_files)
+        s, scan_info_filepath = readScanEcoJson_v01(
+            file_name_json, exclude_from_files=exclude_from_files
+        )
     else:
         s = scan_info
 
     datasets_scan = []
-    
-    files_bar = tqdm(s["scan_files"], desc='Scan steps')
 
-    all_parses = {}    
+    files_bar = tqdm(s["scan_files"], desc="Scan steps")
+
+    all_parses = {}
+
     def get_datasets_from_files(n):
         lastpath = None
         searchpaths = None
         files = s["scan_files"][n]
         datasets = {}
-        for n_file,f in enumerate(files):
+        for n_file, f in enumerate(files):
             fp = pathlib.Path(f)
             fn = pathlib.Path(fp.name)
             if not searchpaths:
@@ -169,25 +174,46 @@ def parseScanEco_v01(
                 logger.info("Successfully parsed file %s" % file_path.resolve())
             except:
                 logger.warning(f"could not read {file_path.absolute().as_posix()}.")
-        all_parses[n] =  datasets
+        all_parses[n] = datasets
+
     ts = []
     for n in range(len(s["scan_files"])):
-        ts.append(Thread(target=get_datasets_from_files,args=[n]))
+        ts.append(Thread(target=get_datasets_from_files, args=[n]))
     for t in ts:
         t.start()
-    while len(all_parses.keys())<len(s["scan_files"]):
-        n = len(all_parses.keys())
+    while len(all_parses) < len(s["scan_files"]):
         m = len(s["scan_files"])
-        files_bar.update(n-files_bar.n)
-        sleep(.01)
+        n = len(all_parses)
+        files_bar.update(n - files_bar.n)
+        # files_bar.update(n)
+        sleep(0.01)
     for t in ts:
         t.join()
-    files_bar.update(files_bar.total-files_bar.n)
-    
+    # while not files_bar.n==files_bar.total:
+        # sleep(.01)
+    files_bar.update(files_bar.total - files_bar.n)
+
     # datasets_scan.append(datasets)
 
     names = set()
     dstores = {}
+
+    # general scan info
+    parameter = {
+        parname: {"values": [], "attributes": {"Id": id_name}}
+        for parname, id_name in zip(
+            s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
+        )
+    }
+    parameter.update(
+        {
+            f"{parname}_readback": {"values": [], "attributes": {"Id": id_name}}
+            for parname, id_name in zip(
+                s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
+            )
+        }
+    )
+    parameter.update({"scan_step_info": {"values": []}})
 
     for stepNo, (scan_values, scan_readbacks, scan_step_info) in enumerate(
         zip(s["scan_values"], s["scan_readbacks"], s["scan_step_info"])
@@ -198,7 +224,9 @@ def parseScanEco_v01(
         oldnames = names.intersection(tnames)
         for name in newnames:
             if datasets[name][0].size == 0:
-                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                logger.debug(
+                    "Found empty dataset in {} in cycle {}".format(name, stepNo)
+                )
             else:
                 size_data = (
                     np.dtype(datasets[name][0].dtype).itemsize
@@ -217,28 +245,16 @@ def parseScanEco_v01(
                 if chunk_size[0] == 1:
                     chunk_size[0] = int(memlimit_mD_MB // size_element)
                 dstores[name] = {}
-                dstores[name]["scan"] = Scan(
-                    parameter_names=[str(ts) for ts in s["scan_parameters"]["name"]]
-                    + [f"{tn}_readback" for tn in s["scan_parameters"]["name"]],
-                    parameter_attrs={
-                        tn: {"Id": ti}
-                        for tn, ti in zip(
-                            s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
-                        )
-                    },
-                )
-                # dirty hack for inconsitency in writer
-                if (
-                    len(scan_readbacks)
-                    > len(dstores[name]["scan"]._parameter_names) / 2
+
+                # ToDo: get rid of bad definition in eco scan! (readbacks are just added as values but not as names).
+
+                dstores[name]["parameter"] = copy(parameter)
+                for par_name, value in zip(
+                    parameter.keys(),
+                    copy(scan_values) + copy(scan_readbacks) + [copy(scan_step_info)],
                 ):
-                    scan_readbacks = scan_readbacks[
-                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
-                    ]
-                dstores[name]["scan"]._append(
-                    copy(scan_values) + copy(scan_readbacks),
-                    scan_step_info=copy(scan_step_info),
-                )
+                    dstores[name]["parameter"][par_name]["values"].append(value)
+
                 dstores[name]["data"] = []
                 dstores[name]["data"].append(datasets[name][0])
                 dstores[name]["data_chunks"] = chunk_size
@@ -249,25 +265,21 @@ def parseScanEco_v01(
                 names.add(name)
         for name in oldnames:
             if datasets[name][0].size == 0:
-                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
-            elif not len(datasets[name][0].shape) == len(dstores[name]["data"][0].shape):
+                logger.debug(
+                    "Found empty dataset in {} in cycle {}".format(name, stepNo)
+                )
+            elif not len(datasets[name][0].shape) == len(
+                dstores[name]["data"][0].shape
+            ):
                 logger.debug("Found inconsistent dataset in {}".format(name))
             elif not datasets[name][0].shape[0] == datasets[name][1].shape[0]:
-                print('really shit')
                 logger.debug("Found inconsistent dataset in {}".format(name))
             else:
-                # dirty hack for inconsitency in writer
-                if (
-                    len(scan_readbacks)
-                    > len(dstores[name]["scan"]._parameter_names) / 2
+                for par_name, value in zip(
+                    parameter.keys(),
+                    copy(scan_values) + copy(scan_readbacks) + [copy(scan_step_info)],
                 ):
-                    scan_readbacks = scan_readbacks[
-                        : int(len(dstores[name]["scan"]._parameter_names) / 2)
-                    ]
-                dstores[name]["scan"]._append(
-                    copy(scan_values) + copy(scan_readbacks),
-                    scan_step_info=copy(scan_step_info),
-                )
+                    dstores[name]["parameter"][par_name]["values"].append(value)
                 dstores[name]["data"].append(datasets[name][0])
                 dstores[name]["eventIds"].append(datasets[name][1])
                 dstores[name]["stepLengths"].append(len(datasets[name][0]))
@@ -280,7 +292,7 @@ def parseScanEco_v01(
                 containers[name].get_data,
                 index=containers[name].get_eventIds,
                 step_lengths=dat["stepLengths"],
-                scan=dat["scan"],
+                parameter=dat["parameter"],
             )
         return escArrays
     else:
@@ -293,14 +305,16 @@ def parseScanEco_v01_old(
     memlimit_0D_MB=5,
     memlimit_mD_MB=10,
     createEscArrays=True,
-    scan_info = None,
+    scan_info=None,
     scan_info_filepath=None,
-    exclude_from_files = [],
+    exclude_from_files=[],
 ):
-    
+
     if file_name_json:
         """Data parser assuming eco-written files from pilot phase 1"""
-        s, scan_info_filepath = readScanEcoJson_v01(file_name_json,exclude_from_files=exclude_from_files)
+        s, scan_info_filepath = readScanEcoJson_v01(
+            file_name_json, exclude_from_files=exclude_from_files
+        )
     else:
         s = scan_info
     lastpath = None
@@ -308,13 +322,13 @@ def parseScanEco_v01_old(
 
     datasets_scan = []
 
-    files_bar = tqdm(s["scan_files"], desc='Scan steps')
+    files_bar = tqdm(s["scan_files"], desc="Scan steps")
     for files in files_bar:
         datasets = {}
-        for n_file,f in enumerate(files):
+        for n_file, f in enumerate(files):
             fp = pathlib.Path(f)
             fn = pathlib.Path(fp.name)
-            files_bar.set_postfix_str(f'file ({n_file+1}/{len(files)})')
+            files_bar.set_postfix_str(f"file ({n_file+1}/{len(files)})")
             if not searchpaths:
                 searchpaths = [fp.parent] + [
                     scan_info_filepath.parent / pathlib.Path(tp.format(fp.parent.name))
@@ -347,7 +361,9 @@ def parseScanEco_v01_old(
         oldnames = names.intersection(tnames)
         for name in newnames:
             if datasets[name][0].size == 0:
-                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                logger.debug(
+                    "Found empty dataset in {} in cycle {}".format(name, stepNo)
+                )
             else:
                 size_data = (
                     np.dtype(datasets[name][0].dtype).itemsize
@@ -398,7 +414,9 @@ def parseScanEco_v01_old(
                 names.add(name)
         for name in oldnames:
             if datasets[name][0].size == 0:
-                logger.debug("Found empty dataset in {} in cycle {}".format(name, stepNo))
+                logger.debug(
+                    "Found empty dataset in {} in cycle {}".format(name, stepNo)
+                )
             else:
                 # dirty hack for inconsitency in writer
                 if (
@@ -435,7 +453,7 @@ class LazyContainer:
     def __init__(self, dat):
         self.dat = dat
 
-    def get_data(self,**kwargs):
+    def get_data(self, **kwargs):
         return da.concatenate(
             [
                 da.from_array(td, chunks=self.dat["data_chunks"])
@@ -445,13 +463,17 @@ class LazyContainer:
 
     def get_eventIds(self):
         ids = {}
-        def getids(n,dset):
+
+        def getids(n, dset):
             ids[n] = dset[...].ravel()
-        ts = [Thread(target=getids,args=[n,td]) for n,td in enumerate(self.dat["eventIds"])]
+
+        ts = [
+            Thread(target=getids, args=[n, td])
+            for n, td in enumerate(self.dat["eventIds"])
+        ]
         for t in ts:
             t.start()
         for t in ts:
             t.join()
         return np.concatenate([ids[n] for n in range(len(self.dat["eventIds"]))])
 
-    

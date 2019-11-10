@@ -5,18 +5,21 @@ import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
 import logging
 from itertools import chain
+from numbers import Number
 from functools import partial
 import re
 
 logger = logging.getLogger(__name__)
 
+
 class ArraySelector:
-    def __init__(self,arrayitem,dims=None):
+    def __init__(self, arrayitem, dims=None):
         """ Container object for selecting array subsets in functions mapped on escape Arrays."""
         self.arrayitem = arrayitem
         self.dims = dims
-    def __call__(self,sel):
-        if max(self.dims) <= (len(sel)-1):
+
+    def __call__(self, sel):
+        if max(self.dims) <= (len(sel) - 1):
             return self.arrayitem.__getitem__(tuple(sel[n] for n in self.dims))
         else:
             return self.arrayitem
@@ -28,59 +31,61 @@ class Array:
         data=None,
         index=None,
         step_lengths=None,
-        scan=None,
-        eventDim=None,
+        parameter=None,
+        index_dim=None,
         name=None,
     ):
-        if eventDim is None:
+        if index_dim is None:
             logger.debug(
-                "No event dimension eventDim defined,\
+                "No event dimension event_dim defined,\
                     assuming 0th Dimension."
             )
-            self.eventDim = 0
+            self.index_dim = 0
         else:
-            self.eventDim = eventDim
+            self.index_dim = index_dim
         if not (callable(data) or callable(index)):
-            assert data.shape[self.eventDim] == len(
+            assert data.shape[self.index_dim] == len(
                 index
-            ), "lengths of data and event IDs must mutch!"
+            ), "lengths of data and event IDs must match!"
         if not step_lengths is None:
             if not callable(index):
                 assert sum(step_lengths) == len(
                     index
                 ), "StepsLength need to add up to dataset length!"
-            if scan is None:
+            if parameter is None:
                 logger.debug(
                     "No information about event groups (steps) \
                     available!"
                 )
-        self._eventIds = index
+        else:
+            step_lengths = [len(index)]
+        self._index = index
         self._data = data
         self._data_selector = None
-        self.step_lengths = step_lengths
-        self.scan = scan
+             
+        self.scan = Scan(parameter, step_lengths, self)
         self.name = name
         self._add_methods()
 
     @property
-    def eventIds(self):
-        if isinstance(self._eventIds, da.Array):
-            self._eventIds = self._eventIds.compute()
-            self._eventIds, self._data, self.step_lengths = get_unique_Ids(
-                self._eventIds, self.data, self.step_lengths
+    def index(self):
+        if isinstance(self._index, da.Array):
+            self._index = self._index.compute()
+            self._index, self._data, self.step_lengths = get_unique_indexes(
+                self._index, self.data, self.scan.step_lengths
             )
-        elif callable(self._eventIds):
-            self._eventIds = self._eventIds()
-            self._eventIds, self._data, self.step_lengths = get_unique_Ids(
-                self._eventIds, self.data, self.step_lengths
+        elif callable(self._index):
+            self._index = self._index()
+            self._index, self._data, self.scan.step_lengths = get_unique_indexes(
+                self._index, self.data, self.scan.step_lengths
             )
-        return self._eventIds
+        return self._index
 
     @property
     def data(self):
         if callable(self._data):
             op = self._data(data_selector=self._data_selector)
-            if len(op)==2 and op[1]=='nopersist':
+            if len(op) == 2 and op[1] == "nopersist":
                 self._add_methods(op[0])
                 return op[0]
             else:
@@ -90,15 +95,39 @@ class Array:
         else:
             return self._data
 
-    def _add_methods(self,data=None):
+    def _add_methods(self, data=None):
         if data is None:
             data = self._data
         if isinstance(data, np.ndarray):
-            for m in ["nansum","nanmean","nanstd","sum","mean", "std", "median", "percentile", "max", "min"]:
-                self.__dict__[m] = partial(escaped(np.__dict__[m], convertOutput2EscData=[0]),self)
+            for m in [
+                "nansum",
+                "nanmean",
+                "nanstd",
+                "sum",
+                "mean",
+                "std",
+                "median",
+                "percentile",
+                "max",
+                "min",
+            ]:
+                self.__dict__[m] = partial(
+                    escaped(np.__dict__[m], convertOutput2EscData=[0]), self
+                )
         elif isinstance(data, da.Array):
-            for m in ["nanmean","nansum","nanstd","sum","mean", "std", "max", "min"]:
-                self.__dict__[m] = partial(escaped(da.__dict__[m], convertOutput2EscData=[0]),self)
+            for m in [
+                "nanmean",
+                "nansum",
+                "nanstd",
+                "sum",
+                "mean",
+                "std",
+                "max",
+                "min",
+            ]:
+                self.__dict__[m] = partial(
+                    escaped(da.__dict__[m], convertOutput2EscData=[0]), self
+                )
 
     def get_step_data(self, n):
         assert n >= 0, "Step index needs to be positive"
@@ -108,7 +137,7 @@ class Array:
         assert n < len(self.step_lengths), f"Only {len(self.step_lengths)} steps"
         return self.data[sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])]
 
-    #TODO: get_steps() method that returns arrays for step selection or an iterator over all.
+    # TODO: get_steps() method that returns arrays for step selection or an iterator over all.
 
     def step_data(self):
         """returns iterator over all steps"""
@@ -122,10 +151,10 @@ class Array:
         pass
 
     def __len__(self):
-        return len(self.eventIds)
+        return len(self.index)
 
     def __getitem__(self, *args, **kwargs):
-        
+
         # this is multi dimensional itemgetting
         if type(args[0]) is tuple:
             # expanding ellipses --> TODO: multiple ellipses possible?
@@ -143,7 +172,7 @@ class Array:
             for n, targ in enumerate(args[0]):
                 if targ:
                     eventIx += 1
-                if eventIx == self.eventDim:
+                if eventIx == self.index_dim:
                     break
 
             if type(args[0][eventIx]) is int:
@@ -154,12 +183,12 @@ class Array:
                     rargs[eventIx] = slice(rargs[eventIx], rargs[eventIx] + 1)
                 args = (tuple(rargs),)
             events = args[0][eventIx]
-            events_type = 'eventIx'
+            events_type = "eventIx"
 
         # Single dimension itemgetting, which is by default along
         # event dimension, raise error if inconsistent with data shape
         else:
-            assert self.eventDim == 0, "requesting slice not along event dimension!"
+            assert self.index_dim == 0, "requesting slice not along event dimension!"
             # making sure slices are taken in a way the event dimention is not squeezed away.
             if type(args[0]) is int:
                 rargs = list(args)
@@ -169,36 +198,36 @@ class Array:
                     rargs[0] = slice(rargs[0], rargs[0] + 1)
                 args = tuple(rargs)
             events = args[0]
-            events_type = 'none'
-            #expand all dimensions for potential use in derived functions
-
+            events_type = "none"
+            # expand all dimensions for potential use in derived functions
 
         if isinstance(events, slice):
             events = list(range(*events.indices(len(self))))
         elif isinstance(events, np.ndarray) and events.dtype == bool:
             events = events.nonzero()[0]
         elif isinstance(events, Array):
-            inds_self,[inds_selector],dum = matchIDs(self.eventIds,[events.eventIds])
+            inds_self, [inds_selector], dum = match_indexes(self.index, [events.index])
             events = inds_self[events.data[inds_selector].nonzero()[0]]
-            if events_type=='eventIx':
+            if events_type == "eventIx":
                 args[0][eventIx] = events
-            elif events_type=='none':
+            elif events_type == "none":
                 args = (events,)
             else:
-                raise Exception("Issue in escape array getitem using another escape array!")
-
+                raise Exception(
+                    "Issue in escape array getitem using another escape array!"
+                )
 
         stepLengths, scan = get_scan_step_selections(
-            events, self.step_lengths, scan=self.scan
+            events, self.scan.step_lengths, scan=self.scan
         )
         # Save indices for potential use in derived functions
-        self._data_selector=args
+        self._data_selector = args
         return Array(
             data=self.data.__getitem__(*args),
-            index=self.eventIds.__getitem__(events),
+            index=self.index.__getitem__(events),
             step_lengths=stepLengths,
-            scan=scan,
-            eventDim=self.eventDim,
+            parameter=scan.parameter,
+            index_dim=self.index_dim,
         )
 
     @property
@@ -216,13 +245,13 @@ class Array:
             axes = args[0]
         else:
             axes = args
-        neweventDim = axes.index(self.eventDim)
+        new_index_dim = axes.index(self.index_dim)
         return Array(
             data=self.data.transpose(*args),
-            index=self.eventIds,
-            step_lengths=self.step_lengths,
-            scan=self.scan,
-            eventDim=neweventDim,
+            index=self.index,
+            step_lengths=self.scan.step_lengths,
+            parameter=self.scan.parameter,
+            index_dim=new_index_dim,
         )
 
     @property
@@ -233,13 +262,13 @@ class Array:
         with ProgressBar():
             return Array(
                 data=self.data.compute(),
-                index=self.eventIds,
-                step_lengths=self.step_lengths,
-                scan=self.scan,
-                eventDim=self.eventDim,
+                index=self.index,
+                step_lengths=self.scan.step_lengths,
+                parameter=self.scan.parameter,
+                index_dim=self.index_dim,
             )
 
-    def map_event_blocks(
+    def map_index_blocks(
         self,
         foo,
         *args,
@@ -249,19 +278,19 @@ class Array:
         event_dim="same",
         **kwargs,
     ):
-        """map a function which works for a chunk of the Array (events along eventDim). This is only really relevant for dask array array data."""
+        """map a function which works for a chunk of the Array (events along index_dim). This is only really relevant for dask array array data."""
 
         # Getting chunks in the event dimension
         if event_dim == "same":
-            event_dim = self.eventDim
-        chunks_edim = self.data.chunks[self.eventDim]
+            event_dim = self.index_dim
+        chunks_edim = self.data.chunks[self.index_dim]
 
         # making sure that chunks in other dimensions are "flat"
         shp = self.data.shape
         newchunks = []
         rechunk = False
         for dim, dimchunks in enumerate(self.data.chunks):
-            if dim == self.eventDim:
+            if dim == self.index_dim:
                 newchunks.append(dimchunks)
             else:
                 rechunk = len(dimchunks) > 1 or rechunk
@@ -273,65 +302,87 @@ class Array:
             newchunks = self.data.chunks
 
         # checking if any inputs are to be selected
-        if any([isinstance(x,ArraySelector) for x in chain(args,kwargs.values())]):
+        if any([isinstance(x, ArraySelector) for x in chain(args, kwargs.values())]):
+
             def get_data(data_selector=None):
-                args_sel = [ta if not isinstance(ta,ArraySelector) else ta(data_selector) for ta in args]
+                args_sel = [
+                    ta if not isinstance(ta, ArraySelector) else ta(data_selector)
+                    for ta in args
+                ]
                 kwargs_sel = {}
-                for tk,tv in kwargs.items():
-                    if isinstance(tv,ArraySelector):
+                for tk, tv in kwargs.items():
+                    if isinstance(tv, ArraySelector):
                         kwargs_sel[tk] = tv(data_selector)
                     else:
                         kwargs_sel[tk] = tv
-                return (data.map_blocks(foo,*args_sel,chunks=newchunks,drop_axis=drop_axis,new_axis=new_axis,**kwargs_sel),'nopersist')
+                return (
+                    data.map_blocks(
+                        foo,
+                        *args_sel,
+                        chunks=chunks,
+                        drop_axis=drop_axis,
+                        new_axis=new_axis,
+                        **kwargs_sel,
+                    ),
+                    "nopersist",
+                )
+
             return Array(
                 data=get_data,
-                index=self.eventIds,
+                index=self.index,
                 step_lengths=self.step_lengths,
-                scan=self.scan,
-                eventDim=event_dim,
+                parameter=self.scan.parameter,
+                index_dim=event_dim,
             )
         else:
             return Array(
                 data=data.map_blocks(
                     foo,
                     *args,
-                    chunks=newchunks,
+                    chunks=chunks,
                     drop_axis=drop_axis,
                     new_axis=new_axis,
                     **kwargs,
                 ),
-                index=self.eventIds,
-                step_lengths=self.step_lengths,
-                scan=self.scan,
-                eventDim=event_dim,
+                index=self.index,
+                step_lengths=self.scan.step_lengths,
+                parameter=self.scan.parameter,
+                index_dim=event_dim,
             )
 
-    def store(self, filename_or_parent=None, name=None, unit=None, **kwargs):
-        """work in progess!!! unusable!!!, should allow easy saving and even appending of array data."""
-        if not self.store:
-            pass
-        parent = filename_or_parent
-        grp = parent.require_group(name)
-        if 'data' in grp.keys():
-            print(f'Dataset {name} already exists, data:')
-            print(str(grp['data']))
-            if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
-                del grp['data']
-                del grp['event_ids']
-            else:
-                return
-        grp['event_ids'] = self.eventIds
-        if isinstance(self.data,np.array):
-            grp['data'] = self.data
-        elif isinstance(self.data,da.array):
-            dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
-            self.data.store(dset)
+    def store(self, parent_h5py=None, name=None, unit=None, **kwargs):
+        """work in progess!!! gettgin there slowly, should allow easy saving and even appending of array data."""
+        if not hasattr(self, "h5"):
+            self.h5 = ArrayH5Dataset(parent_h5py, name)
+        with ProgressBar():
+            self.h5.append(self.data, self.index, self.scan)
+        self._data = self.h5.get_data_da()
+        self._index = self.h5.index
+        self.scan._save_to_h5(parent_h5py[name])
 
+    @classmethod
+    def load_from_h5(cls, parent_h5py, name):
+        h5 = ArrayH5Dataset(parent_h5py, name)
+        parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
+        return cls(
+            index=h5.index,
+            data=h5.get_data_da(),
+            parameter=parameter,
+            step_lengths=step_lengths,
+            name=name,
+        )
 
+    def ones(self):
+        return Array(
+            data=np.ones(len(self)),
+            index=self.index,
+            step_lengths=self.scan.step_lengths,
+            parameter=self.scan.parameter,
+        )
 
     def _get_ana_str(self, perc_limits=[5, 95]):
         sqaxes = list(range(self.data.ndim))
-        sqaxes.pop(self.eventDim)
+        sqaxes.pop(self.index_dim)
         try:
             d = self.data.squeeze(axis=tuple(sqaxes))
         except:
@@ -340,11 +391,11 @@ class Array:
             ostr = ""
             hrange = np.percentile(d[~np.isnan(d)], perc_limits)
             formnum = lambda num: "{:<9}".format("%0.4g" % (num))
-            for n, td in enumerate(self.step_data()):
+            for n, td in enumerate(self.scan):
                 ostr += (
                     "Step %04d:" % n
                     + hist_asciicontrast(
-                        td.squeeze(), bins=40, range=hrange, disprange=False
+                        td.data.squeeze(), bins=40, range=hrange, disprange=False
                     )
                     + "\n"
                 )
@@ -367,6 +418,18 @@ class Array:
         if self.scan:
             s += self.scan.__repr__()
         return s
+
+
+def load_from_h5(parent_h5py, name):
+    h5 = ArrayH5Dataset(parent_h5py, name)
+    parameter, step_lengths = Scan._load_from_h5(parent_h5py)
+    return Array(
+        index=h5.index,
+        data=h5.get_data_da(),
+        parameter=parameter,
+        step_lengths=step_lengths,
+        name=name,
+    )
 
 
 def escaped(func, convertOutput2EscData="auto"):
@@ -395,11 +458,11 @@ def escaped(func, convertOutput2EscData="auto"):
         if not sorter is None:
             ixsorter = allEscs.index(sorter)
             allEscs.pop(ixsorter)
-            ixmaster, ixslaves, stepLengthsNew = matchIDs(
-                sorter.eventIds, [t.eventIds for t in allEscs]
+            ixmaster, ixslaves, stepLengthsNew = match_indexes(
+                sorter.index, [t.index for t in allEscs]
             )
             ixslaves.insert(ixsorter, ixmaster)
-            ids_res = sorter.eventIds[ixmaster]
+            ids_res = sorter.index[ixmaster]
             for n, arg in argsIsEsc:
                 args.pop(n)
                 args.insert(n, arg.data[ixslaves.pop(0)])
@@ -412,7 +475,7 @@ def escaped(func, convertOutput2EscData="auto"):
         output = list(output)
         if convertOutput2EscData:
             stepLengths, scan = get_scan_step_selections(
-                ixmaster, sorter.stepLengths, scan=sorter.scan
+                ixmaster, sorter.scan.step_lengths, scan=sorter.scan
             )
             if convertOutput2EscData is "auto":
                 convertOutput2EscData = []
@@ -428,8 +491,8 @@ def escaped(func, convertOutput2EscData="auto"):
                         data=toutput,
                         index=ids_res,
                         step_lengths=stepLengths,
-                        scan=scan,
-                        eventDim=0,
+                        parameter=scan.parameter,
+                        index_dim=0,
                     ),
                 )
 
@@ -438,6 +501,14 @@ def escaped(func, convertOutput2EscData="auto"):
             elif len(output) == 0:
                 output = None
         return output
+
+    return wrapped
+
+
+def _scan_wrap(func, **default_kws):
+    def wrapped(scan, **kwargs):
+        default_kws.update(kwargs)
+        return [func(step.data, **default_kws) for step in scan]
 
     return wrapped
 
@@ -485,6 +556,158 @@ for opSing, symbol in _operatorsSingle:
     )
 
 class Scan:
+    def __init__(self, parameter={}, step_lengths=None, array=None):
+        self.step_lengths = step_lengths
+        if parameter:
+            for par, pardict in parameter.items():
+                if not len(pardict["values"]) == len(self):
+                    raise Exception(
+                        f"Parameter array length of {par} does not fit the defined steps."
+                    )
+        else:
+            parameter = {'none':{'values':[1]*len(step_lengths)}}
+        self.parameter = parameter
+        self._array = array
+        self._add_methods()
+
+    def _add_methods(self):
+        # if isinstance(data, np.ndarray):
+        #     for m in [
+        #         "nansum",
+        #         "nanmean",
+        #         "nanstd",
+        #         "sum",
+        #         "mean",
+        #         "std",
+        #         "median",
+        #         "percentile",
+        #         "max",
+        #         "min",
+        #     ]:
+        #         self.__dict__[m] = partial(
+        #             _scan_wrap(np.__dict__[m],axis=0), self
+        #         )
+        # elif isinstance(data, da.Array):
+        for m in [
+            "nanmean",
+            "nansum",
+            "nanstd",
+            "sum",
+            "mean",
+            "std",
+            "max",
+            "min",
+            # "count",
+        ]:
+            self.__dict__[m] = partial(_scan_wrap(da.__dict__[m], axis=0), self)
+
+    def append_step(self, parameter, step_length):
+        self.step_lengths.append(step_length)
+        for par, pardict in parameter:
+            self.parameter[par]["values"].append(pardict["values"])
+
+    def __len__(self):
+        return len(self.step_lengths)
+
+    def __getitem__(self, sel):
+        """array getter for scan"""
+        if isinstance(sel, slice):
+            sel = range(*sel.indices(len(self)))
+        if isinstance(sel, Number):
+            if sel < 0:
+                sel = len(self) + sel
+            return self.get_step_array(sel)
+        else:
+            return concatenate([self.get_step_array(n) for n in sel])
+
+    def get_step_array(self, n):
+        """array getter for scan"""
+        assert n >= 0, "Step index needs to be positive"
+        if n == 0 and self.step_lengths is None:
+            data = self._array.data[:]
+            index = self._array.index[:]
+            step_lengths = self._array.step_lengths
+            parameter = self._array.parameter
+
+        # assert not self.step_lengths is None, "No step sizes defined."
+        elif not n < len(self.step_lengths):
+            raise IndexError(f"Only {len(self.step_lengths)} steps")
+        else:
+            data = self._array.data[
+                sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            ]
+            index = self._array.index[
+                sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            ]
+            step_lengths = [self.step_lengths[n]]
+            parameter = {}
+            for par_name, par in self.parameter.items():
+                parameter[par_name] = {}
+                parameter[par_name]["values"] = [par["values"][n]]
+                if "attributes" in par.keys():
+                    parameter[par_name]["attributes"] = par["attributes"]
+        return Array(
+            data=data, index=index, parameter=parameter, step_lengths=step_lengths
+        )
+
+    def _check_consistency(self):
+        for par, pardict in self.parameter.items():
+            if not len(self) == len(pardict["values"]):
+                raise Exception(f"Scan length does not fit parameter {par}")
+
+    def get_parameter_selection(self, selection):
+        selection = np.atleast_1d(selection)
+        if selection.dtype == bool:
+            selection = selection.nonzero()[0]
+        par_out = {}
+        for par, pardict in self.parameter.items():
+            par_out[par] = {}
+            par_out[par]["values"] = [pardict["values"][i] for i in selection]
+            if "attributes" in pardict.keys():
+                par_out[par]["attributes"] = pardict["attributes"]
+        return par_out
+
+    def _save_to_h5(self, group):
+        self._check_consistency()
+        if "scan" in group.keys():
+            del group["scan"]
+        scan_group = group.require_group("scan")
+        scan_group["step_lengths"] = self.step_lengths
+        par_group = scan_group.require_group("parameter")
+        for parname, pardict in self.parameter.items():
+            tpg = par_group.require_group(parname)
+            try:
+                tpg["values"] = pardict["values"]
+            except:
+                tpg["values"] = [np.nan] * len(self)
+
+            if "attributes" in pardict.keys():
+                tpg.require_group("attributes")
+                for attname, attvalue in pardict["attributes"].items():
+                    tpg["attributes"][attname] = attvalue
+
+    @staticmethod
+    def _load_from_h5(group):
+        if not "scan" in group.keys():
+            raise Exception("Did not find group scan!")
+        step_lengths = group["scan"]["step_lengths"][()]
+        parameter = {}
+        for parname, pargroup in group["scan"]["parameter"].items():
+            values = pargroup["values"]
+            if not len(values) == len(step_lengths):
+                raise Exception(
+                    f"The length of data array in {parname} parameter in scan does not fit!"
+                )
+            parameter[parname] = {}
+            parameter[parname]["values"] = list(values[()])
+            if "attributes" in pargroup.keys():
+                parameter[parname]["attributes"] = {}
+                for att_name, att_data in pargroup["attributes"].items():
+                    parameter[parname]["attributes"][att_name] = att_data[()]
+        return parameter, step_lengths
+
+
+class Scan_old:
     def __init__(
         self,
         parameter={},
@@ -607,11 +830,38 @@ def to_dataframe(*args):
 
 
 @escaped
-def matchArrays(*args):
+def match_arrays(*args):
     return args
 
 
-def matchIDs(ids_master, ids_slaves, stepLengths_master=None):
+def concatenate(arraylist):
+    data = da.concatenate([array.data for array in arraylist], axis=0)
+    index = da.concatenate([array.index for array in arraylist])
+    parameter = {}
+    step_lengths = []
+
+    for array in arraylist:
+        if not parameter:
+            parameter.update(array.scan.parameter)
+        else:
+            if not all(tk in parameter.keys() for tk in array.scan.parameter.keys()):
+                raise Exception(
+                    "Scans can not be concatenated due to mismatch in parameters!"
+                )
+            for par_name, par_dict in array.scan.parameter.items():
+                parameter[par_name]["values"].extend(list(par_dict["values"]))
+                if hasattr(par_dict, "attributes") and (
+                    not parameter[par_name]["attributes"] == par_dict["attributes"]
+                ):
+                    raise Exception(
+                        f"parameter attributes of {par_name} don't fit toghether in concatenated arrays."
+                    )
+        step_lengths.extend(list(array.scan.step_lengths))
+
+    return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
+
+
+def match_indexes(ids_master, ids_slaves, stepLengths_master=None):
     ids_res = ids_master
     for tid in ids_slaves:
         ids_res = ids_res[np.in1d(ids_res, tid, assume_unique=True)]
@@ -631,16 +881,16 @@ def matchIDs(ids_master, ids_slaves, stepLengths_master=None):
     return inds_master, inds_slaves, stepLensNew
 
 
-def get_unique_Ids(eventIds, array_data, stepLengths=None, delete_Ids=[0]):
-    eventIds, idxs = np.unique(eventIds, return_index=True)
+def get_unique_indexes(index, array_data, stepLengths=None, delete_Ids=[0]):
+    index, idxs = np.unique(index, return_index=True)
     good_Ids = np.ones_like(idxs, dtype=bool)
     for bad_Id in delete_Ids:
-        good_Ids[eventIds == bad_Id] = False
-    eventIds = eventIds[good_Ids]
+        good_Ids[index == bad_Id] = False
+    index = index[good_Ids]
     idxs = idxs[good_Ids]
     if stepLengths:
         stepLengths = np.bincount(np.digitize(idxs, bins=np.cumsum(stepLengths)))
-    return eventIds, array_data[idxs], stepLengths
+    return index, array_data[idxs], stepLengths
 
 
 def get_scan_step_selections(ix, stepLengths, scan=None):
@@ -648,10 +898,12 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
     stepLengths = np.bincount(
         np.digitize(ix, bins=np.cumsum(stepLengths)), minlength=len(stepLengths)
     )
+    stepLengths = stepLengths[~(stepLengths == 0)]
     if scan:
         validsteps = ~(stepLengths == 0)
-        scan = Scan(**scan.get_steps(validsteps))
-    stepLengths = stepLengths[~(stepLengths == 0)]
+        scan = Scan(
+            parameter=scan.get_parameter_selection(validsteps), step_lengths=stepLengths
+        )
     return stepLengths, scan
 
 
@@ -662,23 +914,47 @@ def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
             return escaped(func, *args, **kwargs)
 
 
-def digitize(array, bins, foo=da.digitize, **kwargs):
+def digitize(array, bins, foo=np.digitize, include_outlier_bins=False, sort_groups_by_index=True,**kwargs):
     """digitization function for escape arrays. checking for 1D arrays"""
-    if not np.prod(np.asarray(array.shape)) == array.shape[array.eventDim]:
+    if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be digitized in a sensible way."
         )
     darray = array.data.ravel()
+    if include_outlier_bins:
+        direction = np.sign(bins[-1]-bins[0])
+        bins = np.concatenate([np.atleast_1d(direction*np.inf),bins,np.atleast_1d(direction*-np.inf)])
     inds = foo(darray, bins, **kwargs)
-    ix = inds.argsort()
-    bins, counts = da.unique(inds, return_counts=True)
-    return Array(data=array.data[ix], index=array.eventIds[ix], step_lengths=counts)
+    ix = inds.argsort()[(0<inds)&(inds<len(bins))]
+    bin_nos, counts = np.unique(inds[(0<inds)&(inds<len(bins))]-1, return_counts=True)
+    if sort_groups_by_index:
+        for n,bin_no in enumerate(bin_nos):
+            tmn = sum(counts[:n])
+            tmx = sum(counts[:n+1])
+            tix = array.index[ix[tmn:tmx]].argsort()
+            ix[tmn:tmx] = ix[tmn:tmx][tix]
+    bin_left = bins[1:]
+    bin_right = bins[:-1]
+    bin_center = (bin_left+bin_right)/2
+        
+    parameter = {
+        f"bin_center_{array.name}": {"values": bin_center[bin_nos], "attributes": kwargs},
+        f"bin_left_{array.name}": {"values": bin_left[bin_nos], "attributes": kwargs},
+        f"bin_right_{array.name}": {"values": bin_right[bin_nos], "attributes": kwargs},
+    }
+
+    return Array(
+        data=array.data[ix],
+        index=array.index[ix],
+        parameter=parameter,
+        step_lengths=counts,
+    )
 
 
 def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
     """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of 
     filter functions that take one argument as input and """
-    if not np.prod(np.asarray(array.shape)) == array.shape[array.eventDim]:
+    if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be filtered in a sensible way."
         )
@@ -693,15 +969,32 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
     stepLengths, scan = get_scan_step_selections(ix, array.stepLengths, scan=array.scan)
     return Array(
         data=array.data[ix],
-        index=array.eventIds[ix],
+        index=array.index[ix],
         step_lengths=stepLengths,
-        eventDim=array.eventDim,
-        scan=scan,
+        index_dim=array.index_dim,
+        parameter=scan.parameter,
     )
 
 
+def broadcast_to(ndarray_list, arraydef):
+    if isinstance(arraydef, Array):
+        index = arraydef.index
+        step_lengths = arraydef.scan.step_lengths
+        parameter = arraydef.scan.parameter
+    if not len(ndarray_list) == len(step_lengths):
+        raise Exception(
+            "Cannot broadcast list of arrays that does not fit length of array scan"
+        )
+    data = []
+    for ndarray, step_length in zip(ndarray_list, step_lengths):
+        tbc = da.atleast_1d(ndarray)
+        data.append(da.broadcast_to(tbc, [step_length] + list(tbc.shape)))
+    data = da.concatenate(data, axis=0)
+    return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
+
+
 class ArrayH5Dataset:
-    def __init__(self,parent,name):
+    def __init__(self, parent, name):
         self.parent = parent
         self.grp = parent.require_group(name)
         self._data_finder = re.compile("^data_[0-9]{4}$")
@@ -715,73 +1008,84 @@ class ArrayH5Dataset:
                 self._n_i.append(int(key[-4:]))
         self._n_d.sort()
         self._n_i.sort()
-        if not self._n_d==self._n_i:
-            raise Exception('Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!')
+        if not self._n_d == self._n_i:
+            raise Exception(
+                "Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!"
+            )
+
     @property
     def index(self):
         if self._n_i:
-            return np.concatenate([np.asarray(self.grp[f'index_{n:04d}'][:]) for n in self._n_i], axis=0)
+            return np.concatenate(
+                [np.asarray(self.grp[f"index_{n:04d}"][:]) for n in self._n_i], axis=0
+            )
         else:
-            return np.asarray([],dtype=int)
+            return np.asarray([], dtype=int)
 
-    def append(self,data,event_ids,scan=None):
+    def append(self, data, event_ids, scan=None):
         ids_stored = self.index
-        if len(event_ids)<len(ids_stored):
+        if len(event_ids) < len(ids_stored):
             raise Exception("fewer event_ids to append than already stored!")
-        if not (event_ids[:len(ids_stored)]==ids_stored).all():
+        if not (event_ids[: len(ids_stored)] == ids_stored).all():
             raise Exception("new event_ids don't extend existing ones!")
-        if len(event_ids)==len(ids_stored):
-            print('Nothing new to append.')
+        if len(event_ids) == len(ids_stored):
+            print("Nothing new to append.")
             return
         n_new = len(self._n_i)
-        self.grp[f'index_{n_new:04d}'] = event_ids[len(ids_stored):]
-        if isinstance(data,np.ndarray):
-            self.grp[f'data_{n_new:04d}'] = data[len(ids_stored):,...]
-        elif isinstance(data,da.Array):
-            new_data = data[len(ids_stored):,...]
-            dset = self.grp.create_dataset(f'data_{n_new:04d}',shape=new_data.shape,chunks=new_data.chunks,dtype=new_data.dtype)
-            da.store(new_data,dset)
+        self.grp[f"index_{n_new:04d}"] = event_ids[len(ids_stored) :]
+        if isinstance(data, np.ndarray):
+            self.grp[f"data_{n_new:04d}"] = data[len(ids_stored) :, ...]
+        elif isinstance(data, da.Array):
+            new_data = data[len(ids_stored) :, ...]
+            # ToDo, smarter chunking when writing small data
+            new_chunks = tuple(c[0] for c in new_data.chunks)
+            dset = self.grp.create_dataset(
+                f"data_{n_new:04d}",
+                shape=new_data.shape,
+                chunks=new_chunks,
+                dtype=new_data.dtype,
+            )
+            da.store(new_data, dset)
+        if scan:
+            scan._save_to_h5(self.grp)
         self._n_i.append(n_new)
         self._n_d.append(n_new)
-    
-    
+
     def get_data_da(self, memlimit_MB=50):
         allarrays = []
         for n in self._n_i:
-            ds = self.grp[f'data_{n:04d}']
+            ds = self.grp[f"data_{n:04d}"]
             if ds.chunks:
                 chunk_size = list(ds.chunks)
             else:
                 chunk_size = list(ds.shape)
             if chunk_size[0] == 1:
                 size_element = (
-                    np.dtype(ds.dtype).itemsize
-                    * np.prod(ds.shape[1:])
-                    / 1024 ** 2
+                    np.dtype(ds.dtype).itemsize * np.prod(ds.shape[1:]) / 1024 ** 2
                 )
 
                 chunk_size[0] = int(memlimit_MB // size_element)
 
-            allarrays.append(da.from_array(ds,chunks=chunk_size))
+            allarrays.append(da.from_array(ds, chunks=chunk_size))
 
         return da.concatenate(allarrays)
 
-    def create_Array(self):
-        return Array(data=self.get_data_da(),index=self.index)
+    def create_array(self):
+        return Array(data=self.get_data_da(), index=self.index)
+
 
 # if 'data' in grp.keys():
-            # print(f'Dataset {name} already exists, data:')
-            # print(str(grp['data']))
-            # if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
-                # del grp['data']
-                # del grp['event_ids']
-            # else:
-                # return
-        # grp['event_ids'] = self.eventIds
-        # if isinstance(self.data,np.array):
-            # grp['data'] = self.data
-        # elif isinstance(self.data,da.array):
-            # dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
-            # self.data.store(dset)
-
+# print(f'Dataset {name} already exists, data:')
+# print(str(grp['data']))
+# if input('Would you like to delete and overwrite the data ? (y/n)')=='y':
+# del grp['data']
+# del grp['event_ids']
+# else:
+# return
+# grp['event_ids'] = self.index
+# if isinstance(self.data,np.array):
+# grp['data'] = self.data
+# elif isinstance(self.data,da.array):
+# dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
+# self.data.store(dset)
 
