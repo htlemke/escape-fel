@@ -57,9 +57,12 @@ class Array:
                     "No information about event groups (steps) \
                     available!"
                 )
+        else:
+            step_lengths = [len(index)]
         self._index = index
         self._data = data
         self._data_selector = None
+             
         self.scan = Scan(parameter, step_lengths, self)
         self.name = name
         self._add_methods()
@@ -555,13 +558,15 @@ for opSing, symbol in _operatorsSingle:
 
 class Scan:
     def __init__(self, parameter={}, step_lengths=None, array=None):
-
-        self.step_lengths = list(step_lengths)
-        for par, pardict in parameter.items():
-            if not len(pardict["values"]) == len(self):
-                raise Exception(
-                    f"Parameter array length of {par} does not fit the defined steps."
-                )
+        self.step_lengths = step_lengths
+        if parameter:
+            for par, pardict in parameter.items():
+                if not len(pardict["values"]) == len(self):
+                    raise Exception(
+                        f"Parameter array length of {par} does not fit the defined steps."
+                    )
+        else:
+            parameter = {'none':{'values':[1]*len(step_lengths)}}
         self.parameter = parameter
         self._array = array
         self._add_methods()
