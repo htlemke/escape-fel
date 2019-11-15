@@ -705,6 +705,12 @@ class Scan:
                 for att_name, att_data in pargroup["attributes"].items():
                     parameter[parname]["attributes"][att_name] = att_data[()]
         return parameter, step_lengths
+    
+    def __repr__(self):
+        s = "Scan over {} steps".format(len(self))
+        s += "\n"
+        s += "Parameters {}".format(", ".join(self.parameter.keys()))
+        return s
 
 
 class Scan_old:
@@ -727,7 +733,7 @@ class Scan_old:
         """array getter for scan"""
         if isinstance(sel,slice):
 
-        pass
+            pass
 
     def get_step_array(self,n):
         """array getter for scan"""
