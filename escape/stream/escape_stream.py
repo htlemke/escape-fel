@@ -18,6 +18,22 @@ import matplotlib.pyplot as plt
 from collections import deque
 
 
+from multiprocessing import Process
+from .testStream import createStream
+class TestStream:
+    def __init__(self):
+        self.test_stream_running = None
+
+    def start(self):
+        if self.test_stream_running:
+            print('Stream already running')
+            return
+
+        self.test_stream_running = Process(target=createStream)
+        self.test_stream_running.start()
+
+test_stream = TestStream()
+
 def initEscDataInstances():
     eventWorker = EventWorker()
     sources = eventWorker._eventHandler.getSourceIDs()
