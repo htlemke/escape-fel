@@ -1,4 +1,4 @@
-name: calx-environment
+name: escape-environment
 channels:
   - conda-forge
 dependencies:
