@@ -70,7 +70,15 @@ class TestData:
         self.t = t
         self.i_pump = i_pump
         self.drift = drift
-        return {"i0":i0, "i":i, "t":t, "i_pump":i_pump, "pump_on":pump_on, "pulse_id":pulse_id, "drift":drift}
+        return {
+            "i0": i0,
+            "i": i,
+            "t": t,
+            "i_pump": i_pump,
+            "pump_on": pump_on,
+            "pulse_id": pulse_id,
+            "drift": drift,
+        }
 
     def getPar(self, pulseId, parameter=None):
         if not pulseId == self.pulseId:

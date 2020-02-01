@@ -62,7 +62,7 @@ class Array:
         self._index = index
         self._data = data
         self._data_selector = None
-             
+
         self.scan = Scan(parameter, step_lengths, self)
         self.name = name
         self._add_methods()
@@ -555,6 +555,7 @@ for opSing, symbol in _operatorsSingle:
         Array, "__%s__" % opSing.__name__, escaped(opSing, convertOutput2EscData=[0])
     )
 
+
 class Scan:
     def __init__(self, parameter={}, step_lengths=None, array=None):
         self.step_lengths = step_lengths
@@ -565,7 +566,7 @@ class Scan:
                         f"Parameter array length of {par} does not fit the defined steps."
                     )
         else:
-            parameter = {'none':{'values':[1]*len(step_lengths)}}
+            parameter = {"none": {"values": [1] * len(step_lengths)}}
         self.parameter = parameter
         self._array = array
         self._add_methods()
@@ -705,7 +706,7 @@ class Scan:
                 for att_name, att_data in pargroup["attributes"].items():
                     parameter[parname]["attributes"][att_name] = att_data[()]
         return parameter, step_lengths
-    
+
     def __repr__(self):
         s = "Scan over {} steps".format(len(self))
         s += "\n"
@@ -714,54 +715,55 @@ class Scan:
 
 
 class Scan_old:
-    def __init__(
-        self,
-        parameter={},
-        step_lengths=None,
-        array=None
-        ):
-        
+    def __init__(self, parameter={}, step_lengths=None, array=None):
 
-        self.step_lengths=step_lengths
-        for name,par in parameter.items():
-            if not len(par)==len(self.step_lengths):
-                raise Exception(f"Parameter array length of {name} does not fit the defined steps.")
+        self.step_lengths = step_lengths
+        for name, par in parameter.items():
+            if not len(par) == len(self.step_lengths):
+                raise Exception(
+                    f"Parameter array length of {name} does not fit the defined steps."
+                )
         self.parameter = parameter
         self._array = array
 
-    def __getitem__(self,sel):
+    def __getitem__(self, sel):
         """array getter for scan"""
-        if isinstance(sel,slice):
+        if isinstance(sel, slice):
 
             pass
 
-    def get_step_array(self,n):
+    def get_step_array(self, n):
         """array getter for scan"""
         assert n >= 0, "Step index needs to be positive"
         if n == 0 and self.step_lengths is None:
             return self._array.data[:]
-        assert not self.step_lengths  is None, "No step sizes defined."
+        assert not self.step_lengths is None, "No step sizes defined."
         assert n < len(self.step_lengths), f"Only {len(self.step_lengths)} steps"
-        return self._array.data[sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])]
-    
-    def _save_to_h5(self,group):
-        if 'scan' in group.keys():
-            del group['scan']
-        scan_group = group.require_group('scan')
-        scan_group['step_lengths'] = self.step_lengths
-        par_group = scan_group.require_group('parameter')
-        for parname,parvalue in self.parameter.items():
+        return self._array.data[
+            sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+        ]
+
+    def _save_to_h5(self, group):
+        if "scan" in group.keys():
+            del group["scan"]
+        scan_group = group.require_group("scan")
+        scan_group["step_lengths"] = self.step_lengths
+        par_group = scan_group.require_group("parameter")
+        for parname, parvalue in self.parameter.items():
             par_group[parname] = parvalue
-    
-    def _load_from_h5(self,group):
-        if not 'scan' in group.keys():
+
+    def _load_from_h5(self, group):
+        if not "scan" in group.keys():
             raise Exception("Did not find group scan!")
-        self.step_lengths = group['scan']['step_lengths'][()]
+        self.step_lengths = group["scan"]["step_lengths"][()]
         self.parameter = {}
-        for name,data in group['parameter'].items():
-            if not len(data)==len(self.step_lengths):
-                raise Exception(f"The length of data array in {name} parameter in scan does not fit!")
-            self.parameter['name'] = data[()]
+        for name, data in group["parameter"].items():
+            if not len(data) == len(self.step_lengths):
+                raise Exception(
+                    f"The length of data array in {name} parameter in scan does not fit!"
+                )
+            self.parameter["name"] = data[()]
+
 
 class Scan_old:
     def __init__(
@@ -920,7 +922,14 @@ def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
             return escaped(func, *args, **kwargs)
 
 
-def digitize(array, bins, foo=np.digitize, include_outlier_bins=False, sort_groups_by_index=True,**kwargs):
+def digitize(
+    array,
+    bins,
+    foo=np.digitize,
+    include_outlier_bins=False,
+    sort_groups_by_index=True,
+    **kwargs,
+):
     """digitization function for escape arrays. checking for 1D arrays"""
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
@@ -928,23 +937,34 @@ def digitize(array, bins, foo=np.digitize, include_outlier_bins=False, sort_grou
         )
     darray = array.data.ravel()
     if include_outlier_bins:
-        direction = np.sign(bins[-1]-bins[0])
-        bins = np.concatenate([np.atleast_1d(direction*np.inf),bins,np.atleast_1d(direction*-np.inf)])
+        direction = np.sign(bins[-1] - bins[0])
+        bins = np.concatenate(
+            [
+                np.atleast_1d(direction * np.inf),
+                bins,
+                np.atleast_1d(direction * -np.inf),
+            ]
+        )
     inds = foo(darray, bins, **kwargs)
-    ix = inds.argsort()[(0<inds)&(inds<len(bins))]
-    bin_nos, counts = np.unique(inds[(0<inds)&(inds<len(bins))]-1, return_counts=True)
+    ix = inds.argsort()[(0 < inds) & (inds < len(bins))]
+    bin_nos, counts = np.unique(
+        inds[(0 < inds) & (inds < len(bins))] - 1, return_counts=True
+    )
     if sort_groups_by_index:
-        for n,bin_no in enumerate(bin_nos):
+        for n, bin_no in enumerate(bin_nos):
             tmn = sum(counts[:n])
-            tmx = sum(counts[:n+1])
+            tmx = sum(counts[: n + 1])
             tix = array.index[ix[tmn:tmx]].argsort()
             ix[tmn:tmx] = ix[tmn:tmx][tix]
     bin_left = bins[1:]
     bin_right = bins[:-1]
-    bin_center = (bin_left+bin_right)/2
-        
+    bin_center = (bin_left + bin_right) / 2
+
     parameter = {
-        f"bin_center_{array.name}": {"values": bin_center[bin_nos], "attributes": kwargs},
+        f"bin_center_{array.name}": {
+            "values": bin_center[bin_nos],
+            "attributes": kwargs,
+        },
         f"bin_left_{array.name}": {"values": bin_left[bin_nos], "attributes": kwargs},
         f"bin_right_{array.name}": {"values": bin_right[bin_nos], "attributes": kwargs},
     }
@@ -1094,4 +1114,3 @@ class ArrayH5Dataset:
 # elif isinstance(self.data,da.array):
 # dset = grp.create_dataset('data',shape=self.data.shape,chunks=self.data.chunks,dtype=self.data.dtype)
 # self.data.store(dset)
-

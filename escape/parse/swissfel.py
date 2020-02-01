@@ -190,7 +190,7 @@ def parseScanEco_v01(
     for t in ts:
         t.join()
     # while not files_bar.n==files_bar.total:
-        # sleep(.01)
+    # sleep(.01)
     files_bar.update(files_bar.total - files_bar.n)
 
     # datasets_scan.append(datasets)
@@ -476,4 +476,3 @@ class LazyContainer:
         for t in ts:
             t.join()
         return np.concatenate([ids[n] for n in range(len(self.dat["eventIds"]))])
-
