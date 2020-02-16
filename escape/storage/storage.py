@@ -112,7 +112,7 @@ class Array:
                 "min",
             ]:
                 self.__dict__[m] = partial(
-                    escaped(np.__dict__[m], convertOutput2EscData=[0]), self
+                    escaped(np.__dict__[m], convertOutput2EscData='auto'), self
                 )
         elif isinstance(data, da.Array):
             for m in [
@@ -126,7 +126,7 @@ class Array:
                 "min",
             ]:
                 self.__dict__[m] = partial(
-                    escaped(da.__dict__[m], convertOutput2EscData=[0]), self
+                    escaped(da.__dict__[m], convertOutput2EscData='auto'), self
                 )
 
     def get_step_data(self, n):
