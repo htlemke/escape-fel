@@ -112,7 +112,7 @@ class Array:
                 "min",
             ]:
                 self.__dict__[m] = partial(
-                    escaped(np.__dict__[m], convertOutput2EscData='auto'), self
+                    escaped(np.__dict__[m], convertOutput2EscData="auto"), self
                 )
         elif isinstance(data, da.Array):
             for m in [
@@ -126,7 +126,7 @@ class Array:
                 "min",
             ]:
                 self.__dict__[m] = partial(
-                    escaped(da.__dict__[m], convertOutput2EscData='auto'), self
+                    escaped(da.__dict__[m], convertOutput2EscData="auto"), self
                 )
 
     def get_step_data(self, n):
@@ -842,6 +842,38 @@ def match_arrays(*args):
     return args
 
 
+def compute(*args):
+    """ compute multiple escape arrays. Interesting when calculating multiple small arrays from the same ancestor dask based array"""
+    with ProgressBar():
+        res = da.compute([ta.data for ta in args])
+    out = []
+    for ta, tr in zip(args, res):
+        out.append(
+            Array(
+                data=tr,
+                index=ta.index,
+                step_lengths=ta.scan.step_lengths,
+                parameter=ta.scan.parameter,
+                index_dim=ta.index_dim,
+            )
+        )
+    return tuple(out)
+
+
+def store(arrays, **kwargs):
+    """ NOT TESTED!
+    Storing of multiple escape arrays, efficient when they originate from the same ancestor"""
+    prep = [array.h5.append(array.data, array.index, prep_run=True) for array in arrays]
+    ndatas, dsets, n_news = zip(*prep)
+    with ProgressBar():
+        da.store(ndatas, dsets)
+    for array, n_new in zip(arrays, n_news):
+        array.scan._save_to_h5(array.h5.grp)
+        array._data = array.h5.get_data_da()
+        array._index = array.h5.index
+        array.h5._n_i.append(n_new)
+        array.h5._n_d.append(n_new)
+
 def concatenate(arraylist):
     data = da.concatenate([array.data for array in arraylist], axis=0)
     index = da.concatenate([array.index for array in arraylist])
@@ -1048,10 +1080,10 @@ class ArrayH5Dataset:
         else:
             return np.asarray([], dtype=int)
 
-    def append(self, data, event_ids, scan=None):
+    def append(self, data, event_ids, scan=None, prep_run=False):
         ids_stored = self.index
         if len(event_ids) < len(ids_stored):
-            raise Exception("fewer event_ids to append than already stored!")
+            raise Exception("fewer event_ids> to append than already stored!")
         if not (event_ids[: len(ids_stored)] == ids_stored).all():
             raise Exception("new event_ids don't extend existing ones!")
         if len(event_ids) == len(ids_stored):
@@ -1060,6 +1092,10 @@ class ArrayH5Dataset:
         n_new = len(self._n_i)
         self.grp[f"index_{n_new:04d}"] = event_ids[len(ids_stored) :]
         if isinstance(data, np.ndarray):
+            if prep_run:
+                raise Excpetion(
+                    "Trying dry_run on numpy array data on {self.grp.name}."
+                )
             self.grp[f"data_{n_new:04d}"] = data[len(ids_stored) :, ...]
         elif isinstance(data, da.Array):
             new_data = data[len(ids_stored) :, ...]
@@ -1071,6 +1107,8 @@ class ArrayH5Dataset:
                 chunks=new_chunks,
                 dtype=new_data.dtype,
             )
+            if prep_run:
+                return new_data, dset, n_new
             da.store(new_data, dset)
         if scan:
             scan._save_to_h5(self.grp)
