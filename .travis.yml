@@ -1,23 +1,61 @@
+ 
 language: python
-matrix:
-  include:
-  - python: 2.7
-    env: TOXENV=py27
-  - python: 3.5
-    env: TOXENV=py35
-  - python: 3.5
-    env: TOXENV=quality
-  - python: 3.6
-    env: TOXENV=py36
-cache:
-- pip
+python:
+  - 3.6
+
+# Build only tagged commits
+if: tag IS present
+
+before_install:
+  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - conda config --set always_yes yes
+  - conda config --set anaconda_upload no
+  - conda config --append channels paulscherrerinstitute
+
+install:
+  - conda update -q conda
+  - conda install -q python=$TRAVIS_PYTHON_VERSION conda-build anaconda-client
+
 script:
-- pytest
+  - conda build conda-recipe
+
 deploy:
-  provider: pypi
-  user: htlemke
-  distributions: sdist bdist_wheel
-  true:
+  provider: script
+  script: anaconda -t $ANACONDA_TOKEN upload $HOME/miniconda/conda-bld/**/photodiag-*.tar.bz2
+  on:
+    branch: master
     tags: true
-  password:
-    secure: "nqnxQC1dtuEPFoLbEJTEkXV/lTMQGg648pMJztfSwK4kZV1MteMeJRDRonZOpLtVsgi8gge5XCTdwrkU+euC84mDsoil7f5JocK7WVpvCn4f5cFcIArhQHXnVd3Y1ZwGqY6sXQ0iwkOQArwbxJ1329DEUyTG4Lg1ou6As+hF08sepJmOl2350JDo+uOMZcHPjVaf0iefLXU/5Htyyhsam6po9gFp1KBj7Ztn+Zve+HAeIH80GjdwBF2l1O9V1jDO34Y4Z52/GidEQ6JxKX/FiSTKd5lUPjqJUnFnWgGmlC6AOj1cbc4DG2rjgp7ifpwpFhHiFrdUSmQgv/LTZjo4kAYDxGdz/EnImI6BmFCOf0qqyCCGOf9opXl71S7T0S2yISlUXpgAB6wnwM6Dwb74mF9IRCc+eRYMXNI5T2KgqeIOwQPnJii0gLQ9/OZrze2A7s0wZ8HB1pEIk8elUOUVF7w628pAfHoPVBfGEc12R3s9GBWbL9HF7pF8ljft1BwNlRRp5glGp5ifFTgS8QJELe3aRd2T0unHAYCuEdYyIRcKp+VLSpUjkiOBXFpvxfL8SwPg4PQSoFVQcCjFYmGqcrZjdHx8a1C0yUqaZMGXbf7107nCcA3Nl1L/wt/mUeEPWryX974QMDH5g9oCLlw1zjQ+SQEldl/K5mtLdi20AJ8="
+
+notifications:
+  email: false
+
+
+#_____________________
+
+##OLD
+
+#language: python
+#matrix:
+  #include:
+  #- python: 2.7
+    #env: TOXENV=py27
+  #- python: 3.5
+    #env: TOXENV=py35
+  #- python: 3.5
+    #env: TOXENV=quality
+  #- python: 3.6
+    #env: TOXENV=py36
+#cache:
+#- pip
+#script:
+#- pytest
+#deploy:
+  #provider: pypi
+  #user: htlemke
+  #distributions: sdist bdist_wheel
+  #true:
+    #tags: true
+  #password:
+    #secure: "nqnxQC1dtuEPFoLbEJTEkXV/lTMQGg648pMJztfSwK4kZV1MteMeJRDRonZOpLtVsgi8gge5XCTdwrkU+euC84mDsoil7f5JocK7WVpvCn4f5cFcIArhQHXnVd3Y1ZwGqY6sXQ0iwkOQArwbxJ1329DEUyTG4Lg1ou6As+hF08sepJmOl2350JDo+uOMZcHPjVaf0iefLXU/5Htyyhsam6po9gFp1KBj7Ztn+Zve+HAeIH80GjdwBF2l1O9V1jDO34Y4Z52/GidEQ6JxKX/FiSTKd5lUPjqJUnFnWgGmlC6AOj1cbc4DG2rjgp7ifpwpFhHiFrdUSmQgv/LTZjo4kAYDxGdz/EnImI6BmFCOf0qqyCCGOf9opXl71S7T0S2yISlUXpgAB6wnwM6Dwb74mF9IRCc+eRYMXNI5T2KgqeIOwQPnJii0gLQ9/OZrze2A7s0wZ8HB1pEIk8elUOUVF7w628pAfHoPVBfGEc12R3s9GBWbL9HF7pF8ljft1BwNlRRp5glGp5ifFTgS8QJELe3aRd2T0unHAYCuEdYyIRcKp+VLSpUjkiOBXFpvxfL8SwPg4PQSoFVQcCjFYmGqcrZjdHx8a1C0yUqaZMGXbf7107nCcA3Nl1L/wt/mUeEPWryX974QMDH5g9oCLlw1zjQ+SQEldl/K5mtLdi20AJ8="

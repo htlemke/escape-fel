@@ -1,4 +1,7 @@
 {
-    "python.pythonPath": "/sf/bernina/anaconda/anaconda3/bin/python",
-    "python.formatting.provider": "black"
+    "python.pythonPath": "/home/lemke_h/anaconda3/bin/python",
+    "python.formatting.provider": "black",
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true
 }

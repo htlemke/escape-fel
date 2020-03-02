@@ -16,6 +16,7 @@ requirements:
         - numpy
         - dask
         - h5py
+        - tqdm
 
           #build:
           #  entry_points:
