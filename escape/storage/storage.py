@@ -348,7 +348,8 @@ class Array:
             )
 
     def store(self, parent_h5py=None, name=None, unit=None, **kwargs):
-        """work in progess!!! gettgin there slowly, should allow easy saving and even appending of array data."""
+        """ a way to store data, especially expensively computed data, into a new file. 
+        """
         if not hasattr(self, "h5"):
             self.h5 = ArrayH5Dataset(parent_h5py, name)
         with ProgressBar():
@@ -356,6 +357,16 @@ class Array:
         self._data = self.h5.get_data_da()
         self._index = self.h5.index
         self.scan._save_to_h5(parent_h5py[name])
+    
+    def set_h5_storage(self,parent_h5py,name=None):
+        if not hasattr(self, "h5"):
+            if not name:
+                name = self.name
+            self.h5 = ArrayH5Dataset(parent_h5py, name)
+        else:
+            logger.info(f"h5 storage already set at {self.h5.name} in {self.h5.file.filename}")
+
+        
 
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
