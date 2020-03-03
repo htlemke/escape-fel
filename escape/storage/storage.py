@@ -1,5 +1,6 @@
 import numpy as np
 from dask import array as da
+from dask import dataframe as ddf 
 from dask.diagnostics import ProgressBar
 import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
@@ -842,10 +843,12 @@ class Scan_old:
 
 def to_dataframe(*args):
     for arg in args:
-        if arg.data.shape > 1:
+        if not np.prod(arg.shape) == len(arg):
             raise (
                 NotImplementedError("Only 1D Arrays can be converted to dataframes.")
             )
+    dfs = [ddf.from_dask_array(arg.data.ravel(),columns=[arg.name],index=arg.index) for arg in args]
+    return ddf.concat(dfs, axis=0, join='outer', interleave_partitions=False)
 
 
 @escaped
@@ -879,11 +882,11 @@ def store(arrays, **kwargs):
     with ProgressBar():
         da.store(ndatas, dsets)
     for array, n_new in zip(arrays, n_news):
-        array.scan._save_to_h5(array.h5.grp)
-        array._data = array.h5.get_data_da()
-        array._index = array.h5.index
         array.h5._n_i.append(n_new)
         array.h5._n_d.append(n_new)
+        array._data = array.h5.get_data_da()
+        array._index = array.h5.index
+        array.scan._save_to_h5(array.h5.grp)
 
 def concatenate(arraylist):
     data = da.concatenate([array.data for array in arraylist], axis=0)
