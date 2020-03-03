@@ -26,6 +26,17 @@ class ArraySelector:
             return self.arrayitem
 
 
+def _apply_method(foo_np, foo_da, data, is_dask_array, *args, **kwargs):
+    if is_dask_array:
+        if not foo_da:
+            raise NotImplementedError(f'Function {foo_np.__name__} is not defined for dask based arrays!')
+        return escaped(foo_da,convertOutput2EscData="auto")(data, *args, **kwargs)
+    else:
+        if not foo_np:
+            raise NotImplementedError(f'Function {foo_da.__name__} is not defined for numpy based arrays!')
+        return escaped(foo_np,convertOutput2EscData="auto")(data, *args, **kwargs)
+
+
 class Array:
     def __init__(
         self,
@@ -66,7 +77,6 @@ class Array:
 
         self.scan = Scan(parameter, step_lengths, self)
         self.name = name
-        self._add_methods()
 
     @property
     def index(self):
@@ -87,68 +97,47 @@ class Array:
         if callable(self._data):
             op = self._data(data_selector=self._data_selector)
             if len(op) == 2 and op[1] == "nopersist":
-                self._add_methods(op[0])
                 return op[0]
             else:
                 self._data = op
-                self._add_methods()
                 return self._data
         else:
             return self._data
 
-    def _add_methods(self, data=None):
-        if data is None:
-            data = self._data
-        if isinstance(data, np.ndarray):
-            for m in [
-                "nansum",
-                "nanmean",
-                "nanstd",
-                "sum",
-                "mean",
-                "std",
-                "median",
-                "percentile",
-                "max",
-                "min",
-            ]:
-                self.__dict__[m] = partial(
-                    escaped(np.__dict__[m], convertOutput2EscData="auto"), self
-                )
-        elif isinstance(data, da.Array):
-            for m in [
-                "nanmean",
-                "nansum",
-                "nanstd",
-                "sum",
-                "mean",
-                "std",
-                "max",
-                "min",
-            ]:
-                self.__dict__[m] = partial(
-                    escaped(da.__dict__[m], convertOutput2EscData="auto"), self
-                )
+    def is_dask_array(self):
+        return isinstance(self.data, da.Array)
+    
+    def nansum(self,*args,**kwargs):
+        return _apply_method(np.nansum, da.nansum, self, self.is_dask_array(), *args, **kwargs)
+    def nanmean(self,*args,**kwargs):
+        return _apply_method(np.nanmean, da.nanmean, self, self.is_dask_array(), *args, **kwargs)
+    def nanstd(self,*args,**kwargs):
+        return _apply_method(np.nanstd, da.nanstd, self, self.is_dask_array(), *args, **kwargs)
+    def nanmedian(self,*args,**kwargs):
+        return _apply_method(np.nanmedian, None, self, self.is_dask_array(), *args, **kwargs)
+    def nanmin(self,*args,**kwargs):
+        return _apply_method(np.nanmin, da.nanmin, self, self.is_dask_array(), *args, **kwargs)
+    def nanmax(self,*args,**kwargs):
+        return _apply_method(np.nanmax, da.nanmax, self, self.is_dask_array(), *args, **kwargs)
+    def sum(self,*args,**kwargs):
+        return _apply_method(np.sum, da.sum, self, self.is_dask_array(), *args, **kwargs)
+    def mean(self,*args,**kwargs):
+        return _apply_method(np.mean, da.mean, self, self.is_dask_array(), *args, **kwargs)
+    def std(self,*args,**kwargs):
+        return _apply_method(np.std, da.std, self, self.is_dask_array(), *args, **kwargs)
+    def median(self,*args,**kwargs):
+        return _apply_method(np.median, None, self, self.is_dask_array(), *args, **kwargs)
+    def min(self,*args,**kwargs):
+        return _apply_method(np.min, da.min, self, self.is_dask_array(), *args, **kwargs)
+    def max(self,*args,**kwargs):
+        return _apply_method(np.max, da.max, self, self.is_dask_array(), *args, **kwargs)
+    def percentile(self,*args,**kwargs):
+        return _apply_method(np.percentile, None, self, self.is_dask_array(), *args, **kwargs)
 
-    def get_step_data(self, n):
-        assert n >= 0, "Step index needs to be positive"
-        if n == 0 and self.step_lengths is None:
-            return self.data[:]
-        assert not self.step_lengths is None, "No step sizes defined."
-        assert n < len(self.step_lengths), f"Only {len(self.step_lengths)} steps"
-        return self.data[sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])]
-
-    # TODO: get_steps() method that returns arrays for step selection or an iterator over all.
-
-    def step_data(self):
-        """returns iterator over all steps"""
-        n = 0
-        while n < len(self.step_lengths):
-            yield self.get_step_data(n)
-            n += 1
 
     def update(self, array):
-        """Update one escape array from another. Only array elements not existing  in the present array will be added to it."""
+        """Update one escape array from another. Only array elements not
+         existing  in the present array will be added to it."""
         pass
 
     def __len__(self):
@@ -581,38 +570,35 @@ class Scan:
             parameter = {"none": {"values": [1] * len(step_lengths)}}
         self.parameter = parameter
         self._array = array
-        self._add_methods()
+        # self._add_methods()
+    
 
-    def _add_methods(self):
-        # if isinstance(data, np.ndarray):
-        #     for m in [
-        #         "nansum",
-        #         "nanmean",
-        #         "nanstd",
-        #         "sum",
-        #         "mean",
-        #         "std",
-        #         "median",
-        #         "percentile",
-        #         "max",
-        #         "min",
-        #     ]:
-        #         self.__dict__[m] = partial(
-        #             _scan_wrap(np.__dict__[m],axis=0), self
-        #         )
-        # elif isinstance(data, da.Array):
-        for m in [
-            "nanmean",
-            "nansum",
-            "nanstd",
-            "sum",
-            "mean",
-            "std",
-            "max",
-            "min",
-            # "count",
-        ]:
-            self.__dict__[m] = partial(_scan_wrap(da.__dict__[m], axis=0), self)
+    def nansum(self,*args,**kwargs):
+        return [step.nansum(*args,**kwargs) for step in self]
+    def nanmean(self,*args,**kwargs):
+        return [step.nanmean(*args,**kwargs) for step in self]
+    def nanstd(self,*args,**kwargs):
+        return [step.nanstd(*args,**kwargs) for step in self]
+    def nanmedian(self,*args,**kwargs):
+        return [step.nanmedian(*args,**kwargs) for step in self]
+    def nanmin(self,*args,**kwargs):
+        return [step.nanmin(*args,**kwargs) for step in self]
+    def nanmax(self,*args,**kwargs):
+        return [step.nanmax(*args,**kwargs) for step in self]
+    def sum(self,*args,**kwargs):
+        return [step.sum(*args,**kwargs) for step in self]
+    def mean(self,*args,**kwargs):
+        return [step.mean(*args,**kwargs) for step in self]
+    def std(self,*args,**kwargs):
+        return [step.std(*args,**kwargs) for step in self]
+    def median(self,*args,**kwargs):
+        return [step.median(*args,**kwargs) for step in self]
+    def min(self,*args,**kwargs):
+        return [step.min(*args,**kwargs) for step in self]
+    def max(self,*args,**kwargs):
+        return [step.max(*args,**kwargs) for step in self]
+    def mean(self,*args,**kwargs):
+        return [step.mean(*args,**kwargs) for step in self]
 
     def append_step(self, parameter, step_length):
         self.step_lengths.append(step_length)
@@ -725,123 +711,8 @@ class Scan:
         s += "Parameters {}".format(", ".join(self.parameter.keys()))
         return s
 
-
-class Scan_old:
-    def __init__(self, parameter={}, step_lengths=None, array=None):
-
-        self.step_lengths = step_lengths
-        for name, par in parameter.items():
-            if not len(par) == len(self.step_lengths):
-                raise Exception(
-                    f"Parameter array length of {name} does not fit the defined steps."
-                )
-        self.parameter = parameter
-        self._array = array
-
-    def __getitem__(self, sel):
-        """array getter for scan"""
-        if isinstance(sel, slice):
-
-            pass
-
-    def get_step_array(self, n):
-        """array getter for scan"""
-        assert n >= 0, "Step index needs to be positive"
-        if n == 0 and self.step_lengths is None:
-            return self._array.data[:]
-        assert not self.step_lengths is None, "No step sizes defined."
-        assert n < len(self.step_lengths), f"Only {len(self.step_lengths)} steps"
-        return self._array.data[
-            sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
-        ]
-
-    def _save_to_h5(self, group):
-        if "scan" in group.keys():
-            del group["scan"]
-        scan_group = group.require_group("scan")
-        scan_group["step_lengths"] = self.step_lengths
-        par_group = scan_group.require_group("parameter")
-        for parname, parvalue in self.parameter.items():
-            par_group[parname] = parvalue
-
-    def _load_from_h5(self, group):
-        if not "scan" in group.keys():
-            raise Exception("Did not find group scan!")
-        self.step_lengths = group["scan"]["step_lengths"][()]
-        self.parameter = {}
-        for name, data in group["parameter"].items():
-            if not len(data) == len(self.step_lengths):
-                raise Exception(
-                    f"The length of data array in {name} parameter in scan does not fit!"
-                )
-            self.parameter["name"] = data[()]
-
-
-class Scan_old:
-    def __init__(
-        self,
-        parameter_names=None,
-        values=None,
-        parameter_attrs=None,
-        scan_step_info=None,
-    ):
-        """
-        """
-        self._parameter_names = parameter_names
-        self._parameter_attrs = {}
-        for name, attr in parameter_attrs.items():
-            assert (
-                str(name) in self._parameter_names
-            ), f"Attribute {name} not in scan parameter names."
-            self._parameter_attrs[str(name)] = attr
-        if values is None:
-            values = []
-        self._values = values
-        if scan_step_info is None:
-            scan_step_info = []
-        self._step_info = scan_step_info
-
-    def _append(self, values, scan_step_info=None):
-        assert len(values) == len(
-            self._parameter_names
-        ), "number of values doesn't fit no of parameter names"
-        self._values.append(values)
-        self._step_info.append(scan_step_info)
-
-    def keys(self):
-        return self._parameter_names
-
-    def get_steps(self, selection):
-        selection = np.atleast_1d(selection)
-        if selection.dtype == bool:
-            selection = selection.nonzero()[0]
-        return {
-            "parameter_names": self._parameter_names,
-            "parameter_attrs": self._parameter_attrs,
-            "values": [self._values[i] for i in selection],
-            "scan_step_info": [self._step_info[i] for i in selection],
-        }
-
-    def __len(self):
-        return len(self._values)
-
-    def __len__(self):
-        return len(self._values)
-
-    def __getitem__(self, item):
-        if type(item) is slice or type(item) is int:
-            return np.asarray(self._values).T[item]
-        elif type(item) is str:
-            return np.asarray(self._values).T[self._parameter_names.index(item)]
-
-    def __repr__(self):
-        s = "Scan over {} steps".format(len(self))
-        s += "\n"
-        s += "Parameters {}".format(", ".join(self._parameter_names))
-        return s
-
-
 def to_dataframe(*args):
+    """ work in progress"""
     for arg in args:
         if not np.prod(arg.shape) == len(arg):
             raise (
@@ -849,7 +720,6 @@ def to_dataframe(*args):
             )
     dfs = [ddf.from_dask_array(arg.data.ravel(),columns=[arg.name],index=arg.index) for arg in args]
     return ddf.concat(dfs, axis=0, join='outer', interleave_partitions=False)
-
 
 @escaped
 def match_arrays(*args):
