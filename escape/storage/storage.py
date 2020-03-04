@@ -1,6 +1,6 @@
 import numpy as np
 from dask import array as da
-from dask import dataframe as ddf 
+from dask import dataframe as ddf
 from dask.diagnostics import ProgressBar
 import operator
 from ..utilities import hist_asciicontrast, Hist_ascii
@@ -29,12 +29,16 @@ class ArraySelector:
 def _apply_method(foo_np, foo_da, data, is_dask_array, *args, **kwargs):
     if is_dask_array:
         if not foo_da:
-            raise NotImplementedError(f'Function {foo_np.__name__} is not defined for dask based arrays!')
-        return escaped(foo_da,convertOutput2EscData="auto")(data, *args, **kwargs)
+            raise NotImplementedError(
+                f"Function {foo_np.__name__} is not defined for dask based arrays!"
+            )
+        return escaped(foo_da, convertOutput2EscData="auto")(data, *args, **kwargs)
     else:
         if not foo_np:
-            raise NotImplementedError(f'Function {foo_da.__name__} is not defined for numpy based arrays!')
-        return escaped(foo_np,convertOutput2EscData="auto")(data, *args, **kwargs)
+            raise NotImplementedError(
+                f"Function {foo_da.__name__} is not defined for numpy based arrays!"
+            )
+        return escaped(foo_np, convertOutput2EscData="auto")(data, *args, **kwargs)
 
 
 class Array:
@@ -82,7 +86,7 @@ class Array:
     def index(self):
         if isinstance(self._index, da.Array):
             self._index = self._index.compute()
-            self._index, self._data, self.step_lengths = get_unique_indexes(
+            self._index, self._data, self.scan.step_lengths = get_unique_indexes(
                 self._index, self.data, self.scan.step_lengths
             )
         elif callable(self._index):
@@ -94,46 +98,88 @@ class Array:
 
     @property
     def data(self):
+        # TODO: try getting the properties outside of storage in the
+        # specific parser section
         if callable(self._data):
+            # TODO: cludgy solution need fix at some point.
             op = self._data(data_selector=self._data_selector)
             if len(op) == 2 and op[1] == "nopersist":
                 return op[0]
             else:
                 self._data = op
+                dummy = self.index
                 return self._data
         else:
+            dummy = self.index
             return self._data
 
     def is_dask_array(self):
         return isinstance(self.data, da.Array)
-    
-    def nansum(self,*args,**kwargs):
-        return _apply_method(np.nansum, da.nansum, self, self.is_dask_array(), *args, **kwargs)
-    def nanmean(self,*args,**kwargs):
-        return _apply_method(np.nanmean, da.nanmean, self, self.is_dask_array(), *args, **kwargs)
-    def nanstd(self,*args,**kwargs):
-        return _apply_method(np.nanstd, da.nanstd, self, self.is_dask_array(), *args, **kwargs)
-    def nanmedian(self,*args,**kwargs):
-        return _apply_method(np.nanmedian, None, self, self.is_dask_array(), *args, **kwargs)
-    def nanmin(self,*args,**kwargs):
-        return _apply_method(np.nanmin, da.nanmin, self, self.is_dask_array(), *args, **kwargs)
-    def nanmax(self,*args,**kwargs):
-        return _apply_method(np.nanmax, da.nanmax, self, self.is_dask_array(), *args, **kwargs)
-    def sum(self,*args,**kwargs):
-        return _apply_method(np.sum, da.sum, self, self.is_dask_array(), *args, **kwargs)
-    def mean(self,*args,**kwargs):
-        return _apply_method(np.mean, da.mean, self, self.is_dask_array(), *args, **kwargs)
-    def std(self,*args,**kwargs):
-        return _apply_method(np.std, da.std, self, self.is_dask_array(), *args, **kwargs)
-    def median(self,*args,**kwargs):
-        return _apply_method(np.median, None, self, self.is_dask_array(), *args, **kwargs)
-    def min(self,*args,**kwargs):
-        return _apply_method(np.min, da.min, self, self.is_dask_array(), *args, **kwargs)
-    def max(self,*args,**kwargs):
-        return _apply_method(np.max, da.max, self, self.is_dask_array(), *args, **kwargs)
-    def percentile(self,*args,**kwargs):
-        return _apply_method(np.percentile, None, self, self.is_dask_array(), *args, **kwargs)
 
+    def nansum(self, *args, **kwargs):
+        return _apply_method(
+            np.nansum, da.nansum, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def nanmean(self, *args, **kwargs):
+        return _apply_method(
+            np.nanmean, da.nanmean, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def nanstd(self, *args, **kwargs):
+        return _apply_method(
+            np.nanstd, da.nanstd, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def nanmedian(self, *args, **kwargs):
+        return _apply_method(
+            np.nanmedian, None, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def nanmin(self, *args, **kwargs):
+        return _apply_method(
+            np.nanmin, da.nanmin, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def nanmax(self, *args, **kwargs):
+        return _apply_method(
+            np.nanmax, da.nanmax, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def sum(self, *args, **kwargs):
+        return _apply_method(
+            np.sum, da.sum, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def mean(self, *args, **kwargs):
+        return _apply_method(
+            np.mean, da.mean, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def std(self, *args, **kwargs):
+        return _apply_method(
+            np.std, da.std, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def median(self, *args, **kwargs):
+        return _apply_method(
+            np.median, None, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def min(self, *args, **kwargs):
+        return _apply_method(
+            np.min, da.min, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def max(self, *args, **kwargs):
+        return _apply_method(
+            np.max, da.max, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def percentile(self, *args, **kwargs):
+        return _apply_method(
+            np.percentile, None, self, self.is_dask_array(), *args, **kwargs
+        )
 
     def update(self, array):
         """Update one escape array from another. Only array elements not
@@ -350,16 +396,16 @@ class Array:
         self._data = self.h5.get_data_da()
         self._index = self.h5.index
         self.scan._save_to_h5(parent_h5py[name])
-    
-    def set_h5_storage(self,parent_h5py,name=None):
+
+    def set_h5_storage(self, parent_h5py, name=None):
         if not hasattr(self, "h5"):
             if not name:
                 name = self.name
             self.h5 = ArrayH5Dataset(parent_h5py, name)
         else:
-            logger.info(f"h5 storage already set at {self.h5.name} in {self.h5.file.filename}")
-
-        
+            logger.info(
+                f"h5 storage already set at {self.h5.name} in {self.h5.file.filename}"
+            )
 
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
@@ -571,34 +617,45 @@ class Scan:
         self.parameter = parameter
         self._array = array
         # self._add_methods()
-    
 
-    def nansum(self,*args,**kwargs):
-        return [step.nansum(*args,**kwargs) for step in self]
-    def nanmean(self,*args,**kwargs):
-        return [step.nanmean(*args,**kwargs) for step in self]
-    def nanstd(self,*args,**kwargs):
-        return [step.nanstd(*args,**kwargs) for step in self]
-    def nanmedian(self,*args,**kwargs):
-        return [step.nanmedian(*args,**kwargs) for step in self]
-    def nanmin(self,*args,**kwargs):
-        return [step.nanmin(*args,**kwargs) for step in self]
-    def nanmax(self,*args,**kwargs):
-        return [step.nanmax(*args,**kwargs) for step in self]
-    def sum(self,*args,**kwargs):
-        return [step.sum(*args,**kwargs) for step in self]
-    def mean(self,*args,**kwargs):
-        return [step.mean(*args,**kwargs) for step in self]
-    def std(self,*args,**kwargs):
-        return [step.std(*args,**kwargs) for step in self]
-    def median(self,*args,**kwargs):
-        return [step.median(*args,**kwargs) for step in self]
-    def min(self,*args,**kwargs):
-        return [step.min(*args,**kwargs) for step in self]
-    def max(self,*args,**kwargs):
-        return [step.max(*args,**kwargs) for step in self]
-    def mean(self,*args,**kwargs):
-        return [step.mean(*args,**kwargs) for step in self]
+    def nansum(self, *args, **kwargs):
+        return [step.nansum(*args, **kwargs) for step in self]
+
+    def nanmean(self, *args, **kwargs):
+        return [step.nanmean(*args, **kwargs) for step in self]
+
+    def nanstd(self, *args, **kwargs):
+        return [step.nanstd(*args, **kwargs) for step in self]
+
+    def nanmedian(self, *args, **kwargs):
+        return [step.nanmedian(*args, **kwargs) for step in self]
+
+    def nanmin(self, *args, **kwargs):
+        return [step.nanmin(*args, **kwargs) for step in self]
+
+    def nanmax(self, *args, **kwargs):
+        return [step.nanmax(*args, **kwargs) for step in self]
+
+    def sum(self, *args, **kwargs):
+        return [step.sum(*args, **kwargs) for step in self]
+
+    def mean(self, *args, **kwargs):
+        return [step.mean(*args, **kwargs) for step in self]
+
+    def std(self, *args, **kwargs):
+        return [step.std(*args, **kwargs) for step in self]
+
+    def median(self, *args, **kwargs):
+        return [step.median(*args, **kwargs) for step in self]
+
+    def min(self, *args, **kwargs):
+        return [step.min(*args, **kwargs) for step in self]
+
+    def max(self, *args, **kwargs):
+        return [step.max(*args, **kwargs) for step in self]
+
+    def mean(self, *args, **kwargs):
+        return [step.mean(*args, **kwargs) for step in self]
 
     def append_step(self, parameter, step_length):
         self.step_lengths.append(step_length)
@@ -711,6 +768,7 @@ class Scan:
         s += "Parameters {}".format(", ".join(self.parameter.keys()))
         return s
 
+
 def to_dataframe(*args):
     """ work in progress"""
     for arg in args:
@@ -718,8 +776,12 @@ def to_dataframe(*args):
             raise (
                 NotImplementedError("Only 1D Arrays can be converted to dataframes.")
             )
-    dfs = [ddf.from_dask_array(arg.data.ravel(),columns=[arg.name],index=arg.index) for arg in args]
-    return ddf.concat(dfs, axis=0, join='outer', interleave_partitions=False)
+    dfs = [
+        ddf.from_dask_array(arg.data.ravel(), columns=[arg.name], index=arg.index)
+        for arg in args
+    ]
+    return ddf.concat(dfs, axis=0, join="outer", interleave_partitions=False)
+
 
 @escaped
 def match_arrays(*args):
@@ -757,6 +819,7 @@ def store(arrays, **kwargs):
         array._data = array.h5.get_data_da()
         array._index = array.h5.index
         array.scan._save_to_h5(array.h5.grp)
+
 
 def concatenate(arraylist):
     data = da.concatenate([array.data for array in arraylist], axis=0)
