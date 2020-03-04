@@ -42,7 +42,7 @@ def jf_correct(array,
         cor_gain_dark_mask=True, 
         cor_tile_gaps = True,
         cor_geometry = True,
-        comp_parallel = True,
+        comp_parallel = False,
         jf_id=None, 
         gain_file=None, 
         dark_file=None, 
@@ -62,6 +62,7 @@ def jf_correct(array,
         o = h.process(*args,**kwargs)
         o[np.broadcast_to(h.get_pixel_mask(cor_tile_gaps,cor_geometry),o.shape)]=np.nan
         return o
+
     
     return array.map_index_blocks(
         proc_and_mask,
@@ -69,6 +70,7 @@ def jf_correct(array,
         gap_pixels=cor_tile_gaps,
         geometry=cor_geometry,
         parallel=comp_parallel,
+        new_element_size=h.get_shape_out(cor_tile_gaps,cor_geometry),
         **kwargs
     )
     

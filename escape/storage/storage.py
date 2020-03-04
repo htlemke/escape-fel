@@ -110,7 +110,6 @@ class Array:
                 dummy = self.index
                 return self._data
         else:
-            dummy = self.index
             return self._data
 
     def is_dask_array(self):
@@ -308,10 +307,12 @@ class Array:
         self,
         foo,
         *args,
-        chunks=None,
+        # chunks=None,
         drop_axis=None,
         new_axis=None,
+        new_element_size=None,
         event_dim="same",
+
         **kwargs,
     ):
         """map a function which works for a chunk of the Array (events along index_dim). This is only really relevant for dask array array data."""
@@ -323,6 +324,9 @@ class Array:
 
         # making sure that chunks in other dimensions are "flat"
         shp = self.data.shape
+        if new_element_size:
+            new_size = list(new_element_size)
+            new_size.insert(self.index_dim,None)
         newchunks = []
         rechunk = False
         for dim, dimchunks in enumerate(self.data.chunks):
@@ -330,15 +334,23 @@ class Array:
                 newchunks.append(dimchunks)
             else:
                 rechunk = len(dimchunks) > 1 or rechunk
-                newchunks.append((sum(dimchunks),))
+                if new_element_size:
+                    newchunks.append((new_size[dim],))
+                else:
+                    newchunks.append((sum(dimchunks),))
         if rechunk:
             data = self.data.rechunk(tuple(newchunks))
         else:
             data = self.data
-            newchunks = self.data.chunks
+
+        if new_element_size:
+            chunks = newchunks
+        else:
+            chunks = None
 
         # checking if any inputs are to be selected
         if any([isinstance(x, ArraySelector) for x in chain(args, kwargs.values())]):
+            print('Is arg selector')
 
             def get_data(data_selector=None):
                 args_sel = [
@@ -391,11 +403,12 @@ class Array:
         """
         if not hasattr(self, "h5"):
             self.h5 = ArrayH5Dataset(parent_h5py, name)
+
         with ProgressBar():
             self.h5.append(self.data, self.index, self.scan)
         self._data = self.h5.get_data_da()
         self._index = self.h5.index
-        self.scan._save_to_h5(parent_h5py[name])
+        self.scan._save_to_h5(self.h5.grp)
 
     def set_h5_storage(self, parent_h5py, name=None):
         if not hasattr(self, "h5"):
