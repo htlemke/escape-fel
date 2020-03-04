@@ -1,8 +1,10 @@
 from jungfrau_utils.corrections import apply_gain_pede_numba
+from jungfrau_utils.data_handler import JFDataHandler
 import h5py
 from ..storage.storage import ArraySelector
 from pathlib import Path
 import numpy as np
+import logging
 
 
 def ispath(x):
@@ -29,14 +31,60 @@ def correct_gain_dark_mask(array, gain=None, dark=None, mask=None):
     maskpath = ispath(mask)
     if maskpath:
         mask = h5py.File(maskpath, "r")["pixel_mask"][...]
-    return array.map_event_blocks(
+    return array.map_index_blocks(
         _apply_gain_pede_numba_stack,
         G=ArraySelector(gain, (1, 2)),
         P=ArraySelector(dark, (1, 2)),
         pixel_mask=ArraySelector(mask, (1, 2)),
     )
 
+def jf_correct(array,
+        cor_gain_dark_mask=True, 
+        cor_tile_gaps = True,
+        cor_geometry = True,
+        comp_parallel = True,
+        jf_id=None, 
+        gain_file=None, 
+        dark_file=None, 
+        mask=None, 
+        module_map=None,
+        **kwargs
+        ):
+    h = JFDataHandler(jf_id)
+    h.gain_file = gain_file
+    h.pedestal_file = dark_file
+    if mask:
+        h.pixel_mask=mask
+    if module_map:
+        h.module_map = module_map
 
+    def proc_and_mask(*args,**kwargs):
+        o = h.process(*args,**kwargs)
+        o[np.broadcast_to(h.get_pixel_mask(cor_tile_gaps,cor_geometry),o.shape)]=np.nan
+        return o
+    
+    return array.map_index_blocks(
+        proc_and_mask,
+        conversion=cor_gain_dark_mask,
+        gap_pixels=cor_tile_gaps,
+        geometry=cor_geometry,
+        parallel=comp_parallel,
+        **kwargs
+    )
+    
+    
+
+
+
+
+# class JfCorrector:
+#     def __init__(self,jf_id,gain=None,dark=None,mask=None):
+#         self.id = jf_id
+#         self.gain = gain
+#         self.dark = dark
+#         self.mask = mask
+           
+        
 # import h5py
 # from jungfrau_utils import apply_gain_pede, apply_geometry
 # h5py.enable_ipython_completer()
