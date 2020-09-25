@@ -10,6 +10,8 @@ from numbers import Number
 from functools import partial
 import re
 
+from matplotlib import pyplot as plt
+
 logger = logging.getLogger(__name__)
 
 
@@ -669,6 +671,20 @@ class Scan:
 
     def mean(self, *args, **kwargs):
         return [step.mean(*args, **kwargs) for step in self]
+    
+    def count(self):
+        return [len(step) for step in self]
+
+    def plot(self,*args, **kwargs):
+        y = np.asarray(self.mean(axis=0)).ravel()
+        names = list(self.parameter.keys())
+        name = names[0]
+        x = np.asarray(self.parameter[name]['values']).ravel()
+        yerr = np.asarray(self.std(axis=0)).ravel()/np.sqrt(np.asarray(self.count()))
+        plt.errorbar(x,y,yerr=yerr,*args,**kwargs)
+        plt.xlabel(name)
+        if self._array.name:
+            plt.ylabel(self._array.name)
 
     def append_step(self, parameter, step_length):
         self.step_lengths.append(step_length)
