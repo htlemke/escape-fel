@@ -820,7 +820,7 @@ def match_arrays(*args):
 def compute(*args):
     """ compute multiple escape arrays. Interesting when calculating multiple small arrays from the same ancestor dask based array"""
     with ProgressBar():
-        res = da.compute([ta.data for ta in args])
+        res = da.compute(*[ta.data for ta in args])
     out = []
     for ta, tr in zip(args, res):
         out.append(

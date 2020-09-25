@@ -6,8 +6,8 @@ class EventHandler_SFEL:
     code into a standardized object with well-defined methods for
     initialisation and reading."""
 
-    def __init__(self, host="localhost", port=9999):
-        self.source = Source("localhost", 9999)
+    def __init__(self, host="localhost", port=9999, **kwargs):
+        self.source = Source(host, port, **kwargs)
         self.read_Ids = []
 
     def getSourceIDs(self):
