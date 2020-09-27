@@ -17,6 +17,7 @@ with warnings.catch_warnings():
     from tqdm.autonotebook import tqdm
 from threading import Thread
 from time import sleep
+import bitshuffle.h5
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ def parseScanEco_v01(
     file_name_json=None,
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_0D_MB=5,
-    memlimit_mD_MB=10,
+    memlimit_mD_MB=50,
     createEscArrays=True,
     scan_info=None,
     scan_info_filepath=None,

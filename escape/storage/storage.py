@@ -697,7 +697,7 @@ class Scan:
             std.append(tstd)
         return np.asarray(avg),np.asarray(std)
 
-    def plot(self,weights=None,scanpar_name=None,norm_samples = True,*args, **kwargs):
+    def plot(self,weights=None,scanpar_name=None,norm_samples = True, axis=None,*args, **kwargs):
         if not scanpar_name:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
@@ -711,11 +711,12 @@ class Scan:
             yerr = ystd/np.sqrt(np.asarray(self.count()))
         else:
             yerr = ystd
-
-        plt.errorbar(x,y,yerr=yerr,*args,**kwargs)
-        plt.xlabel(scanpar_name)
+        if not axis:
+            axis=plt.gca()
+        axis.errorbar(x,y,yerr=yerr,*args,**kwargs)
+        axis.set_xlabel(scanpar_name)
         if self._array.name:
-            plt.ylabel(self._array.name)
+            axis.set_ylabel(self._array.name)
 
     def hist(self,
         cut_percentage=0,
