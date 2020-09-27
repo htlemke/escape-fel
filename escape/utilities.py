@@ -1,6 +1,129 @@
 import numpy as np
 from bisect import bisect
 from random import randint
+import matplotlib.pyplot as plt
+
+
+
+def weighted_avg_and_std(values, weights):
+    """
+    Return the weighted average and standard deviation.
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights)
+    variance = np.average((values-average)**2, weights=weights)  # Fast and numerically precise
+    return (average, np.sqrt(variance))
+
+
+def corr_nonlin(data, polypar, data_0=0, correct_0=0):
+    """ unses parameters found by corrNonlinGetPar to correct data;
+    example of usage (assuming mon is non linear and loff is
+    the laseroff filter
+    d = ixppy.dataset("xppc3614-r0102.stripped.h5")
+    loff = d.eventCode.code_91.filter(True)
+    mon = d.ipm3.sum;
+    dio = d.diodeU.channel0;
+    poly = ixppy.tools.corrNonlinGetPar(dio*loff,mon*loff,plot=True)
+    mon_corr = ixppy.corrNonlin(mon,poly)"""
+    m = 1 / np.polyval(np.polyder(polypar), data_0)
+    return m * (np.polyval(polypar, data) - correct_0) + data_0
+
+
+def corr_nonlin_get_par(
+    data, correct, order=2, data_0=0, correct_0=0, displayWarning=True, plot=False
+):
+    """ Find parameters for non linear correction
+    *data* should be an 1D array (use .ravel() in case) of the
+    detectors that is suspected to be non linear
+    *correct* is the detector that is sussposed to be linear
+    *data_0" is an offset to use for the data (used only if plotting"
+    *correct_0* offset of the "linear detector"""
+    # poor man wrapping :D #
+    try:
+        data = data.ravel()
+    except AttributeError:
+        pass
+    try:
+        correct = correct.ravel()
+    except AttributeError:
+        pass
+    p = np.polyfit(data, correct, order)
+    if order >= 2 and p[-3] < 0:
+        logbook(
+            "corrNonlinGetPar: consistency problem, second order coefficient should \
+    be > 0, please double check result (plot=True) or try inverting the data and the\
+    correct arguments",
+            level=2,
+            func="toolsDetectors.corrNonlinGetPar",
+        )
+    p[-1] = p[-1] - correct_0
+    if plot:
+        d = corrNonlin(data, p, data_0=data_0, correct_0=correct_0)
+        plt.plot(correct, data, ".", label="before correction")
+        plt.plot(correct, d, ".", label="after correction")
+        poly_lin = np.polyfit(correct, d, 1)
+        xmin = min(correct.min(), 0)
+        xtemp = np.asarray((xmin, correct.max()))
+        plt.plot(xtemp, np.polyval(poly_lin, xtemp), label="linear fit")
+        plt.plot(
+            correct,
+            d - np.polyval(poly_lin, correct),
+            ".",
+            label="difference after-linear",
+        )
+        plt.xlabel("correct")
+        plt.ylabel("data")
+        plt.legend()
+    return p
+
+
+def edges_to_center(edges):
+    edges = np.asarray(edges)
+    centers = edges[:-1] + np.diff(edges)
+    return centers
+
+
+def hist_scan(
+    data,
+    cut_percentage=0,
+    N_intervals=20,
+    normalize_to=None,
+    plot_results=True,
+    plot_axis=None,
+):
+    x_scan = data.scan.parameter
+    xscan_name = list(x_scan.keys())[1]
+    x_scan = x_scan[xscan_name]["values"]
+    [hmin, hmax] = np.percentile(
+        data.data.ravel(), [cut_percentage, 100 - cut_percentage]
+    )
+    hbins = np.linspace(hmin, hmax, N_intervals + 1)
+    hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in data.scan]
+    if normalize_to is "max":
+        hdat = [td / td.max() for td in hdat]
+    elif normalize_to is "sum":
+        hdat = [td / td.sum() for td in hdat]
+    hdat = np.asarray(hdat)
+    if plot_results:
+        if not plot_axis:
+            plot_axis = plt.gca()
+        plot2D(x_scan, edges_to_center(hbins), hdat.T)
+    return x_scan, hbins, hdat
+
+
+def plot2D(x, y, C, *args, **kwargs):
+    def bin_array(arr):
+        return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
+
+    Xp, Yp = np.meshgrid(bin_array(x), bin_array(y))
+
+    return plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
+
+
+def get_index_modulo_array(data, mod, offset=0):
+    index = data.index
+    out_bool = np.mod(index, mod) == offset
+    return data[out_bool]
 
 greyscale = [
     " ",

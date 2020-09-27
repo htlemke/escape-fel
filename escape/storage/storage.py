@@ -9,6 +9,7 @@ from itertools import chain
 from numbers import Number
 from functools import partial
 import re
+from .. import utilities
 
 from matplotlib import pyplot as plt
 
@@ -181,6 +182,17 @@ class Array:
         return _apply_method(
             np.percentile, None, self, self.is_dask_array(), *args, **kwargs
         )
+    
+    def filter(self,*args,**kwargs):
+        return filter(self,*args,**kwargs)
+    
+    def digitize(self,bins,**kwargs):
+        return digitize(self,bins,**kwargs)
+    
+    def get_modulo_array(self,mod,offset=0):
+        index = self.index
+        out_bool = np.mod(index, mod) == offset
+        return self[out_bool]
 
     def update(self, array):
         """Update one escape array from another. Only array elements not
@@ -675,16 +687,64 @@ class Scan:
     def count(self):
         return [len(step) for step in self]
 
-    def plot(self,*args, **kwargs):
-        y = np.asarray(self.mean(axis=0)).ravel()
-        names = list(self.parameter.keys())
-        name = names[0]
-        x = np.asarray(self.parameter[name]['values']).ravel()
-        yerr = np.asarray(self.std(axis=0)).ravel()/np.sqrt(np.asarray(self.count()))
+    def weighted_avg_and_std(self,weights):
+        avg = []
+        std = []
+        for step in self:
+            (ta,tw) = match_arrays(step,weights)
+            (tavg,tstd) = utilities.weighted_avg_and_std(ta.data,tw.data)
+            avg.append(tavg)
+            std.append(tstd)
+        return np.asarray(avg),np.asarray(std)
+
+    def plot(self,weights=None,scanpar_name=None,norm_samples = True,*args, **kwargs):
+        if not scanpar_name:
+            names = list(self.parameter.keys())
+            scanpar_name = names[0]
+        x = np.asarray(self.parameter[scanpar_name]['values']).ravel()
+        if not weights:
+            y = np.asarray(self.mean(axis=0)).ravel()
+            ystd = np.asarray(self.std(axis=0)).ravel()
+        else:
+            y,ystd = self.weighted_avg_and_std(weights)
+        if norm_samples:
+            yerr = ystd/np.sqrt(np.asarray(self.count()))
+        else:
+            yerr = ystd
+
         plt.errorbar(x,y,yerr=yerr,*args,**kwargs)
-        plt.xlabel(name)
+        plt.xlabel(scanpar_name)
         if self._array.name:
             plt.ylabel(self._array.name)
+
+    def hist(self,
+        cut_percentage=0,
+        N_intervals=20,
+        normalize_to=None,
+        scanpar_name=None,
+        plot_results=True,
+        plot_axis=None,
+    ):
+        if not scanpar_name:
+            names = list(self.parameter.keys())
+            scanpar_name = names[0]
+        x_scan = np.asarray(self.parameter[scanpar_name]['values']).ravel()
+        [hmin, hmax] = np.percentile(
+            self._array.data.ravel(), [cut_percentage, 100 - cut_percentage]
+        )
+        hbins = np.linspace(hmin, hmax, N_intervals + 1)
+        hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in self]
+        if normalize_to is "max":
+            hdat = [td / td.max() for td in hdat]
+        elif normalize_to is "sum":
+            hdat = [td / td.sum() for td in hdat]
+        hdat = np.asarray(hdat)
+        if plot_results:
+            if not plot_axis:
+                plot_axis = plt.gca()
+            utilities.plot2D(x_scan, utilities.edges_to_center(hbins), hdat.T)
+            plt.xlabel(scanpar_name)
+        return x_scan, hbins, hdat
 
     def append_step(self, parameter, step_length):
         self.step_lengths.append(step_length)
@@ -705,6 +765,7 @@ class Scan:
         else:
             return concatenate([self.get_step_array(n) for n in sel])
 
+    
     def get_step_array(self, n):
         """array getter for scan"""
         assert n >= 0, "Step index needs to be positive"
@@ -815,6 +876,8 @@ def to_dataframe(*args):
 @escaped
 def match_arrays(*args):
     return args
+
+weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
 
 
 def compute(*args):
@@ -1000,7 +1063,7 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
     ix = da.logical_and(
         *[tfoo(darray, targ) for tfoo, targ in zip(foos_filtering, args)]
     ).nonzero()[0]
-    stepLengths, scan = get_scan_step_selections(ix, array.stepLengths, scan=array.scan)
+    stepLengths, scan = get_scan_step_selections(ix, array.scan.step_lengths, scan=array.scan)
     return Array(
         data=array.data[ix],
         index=array.index[ix],
