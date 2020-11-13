@@ -39,11 +39,11 @@ def correct_gain_dark_mask(array, gain=None, dark=None, mask=None):
     )
 
 def jf_correct(array,
+        jf_id=None, 
         cor_gain_dark_mask=True, 
         cor_tile_gaps = True,
         cor_geometry = True,
         comp_parallel = False,
-        jf_id=None, 
         gain_file=None, 
         dark_file=None, 
         mask=None, 
@@ -71,6 +71,7 @@ def jf_correct(array,
         geometry=cor_geometry,
         parallel=comp_parallel,
         new_element_size=h.get_shape_out(cor_tile_gaps,cor_geometry),
+        dtype=float,
         **kwargs
     )
     
