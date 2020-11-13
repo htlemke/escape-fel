@@ -34,15 +34,8 @@ class TestStream:
         self.test_stream_running = Process(target=createStream)
         self.test_stream_running.start()
 
-class Dummy:
-    def __init__(self):
-        print(list(globals().keys()))
-        self.ew = EventHandler_SFEL(host=None,channels=['SIN-CVME-TIFGUN-EVR0:BUNCH-1-OK'])
-   
-    #test_stream = TestStream()
-def get_eh():
-    print(list(globals().keys()))
-    return EventHandler_SFEL(host=None,channels=['SIN-CVME-TIFGUN-EVR0:BUNCH-1-OK'])
+
+test_stream = TestStream()
 
 
 def initEscDataInstances():
@@ -53,10 +46,6 @@ def initEscDataInstances():
         out[sourceId] = EscData(source=EventSource(sourceId, eventWorker))
     eventWorker.startEventLoop()
     return tools.Dict2obj(out)
-
-
-def init_dispatch_tester():
-    pass
 
 
 class Scan:
@@ -381,17 +370,15 @@ class FileSource:
 
 
 class EventWorker:
-    def __init__(self, eventHandler=None):
-        if not eventHandler:
-            eventHandler = EventHandler_SFEL(host=None,channels=['SIN-CVME-TIFGUN-EVR0:BUNCH-1-OK'])
+    def __init__(self, eventHandler=EventHandler_SFEL()):
         self._eventHandler = eventHandler
-        # self.eventCallbacks = []
-        # self.sources = []
-        # self.event = None
-        # self.initSourceFunc = self._eventHandler.registerSource
-        # self.eventGenerator = self._eventHandler.eventGenerator
-        # self._lastTime = time.time()
-        # self.runningFrequency = 0.0
+        self.eventCallbacks = []
+        self.sources = []
+        self.event = None
+        self.initSourceFunc = eventHandler.registerSource
+        self.eventGenerator = eventHandler.eventGenerator
+        self._lastTime = time.time()
+        self.runningFrequency = 0.0
 
     def registerSource(self, sourceID):
         self.initSourceFunc(sourceID)
