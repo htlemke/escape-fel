@@ -1,0 +1,9 @@
+name: escape-environment
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - h5py
+  - dask
+  - matplotlib
+  - pandas

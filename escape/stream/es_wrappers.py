@@ -1,4 +1,4 @@
-from bsread import Source
+from bsread import Source, dispatcher
 
 
 class EventHandler_SFEL:
@@ -6,20 +6,47 @@ class EventHandler_SFEL:
     code into a standardized object with well-defined methods for
     initialisation and reading."""
 
-    def __init__(self, host="localhost", port=9999):
-        self.source = Source("localhost", 9999)
-        self.read_Ids = []
+    def __init__(self,source_default_keys=dict(host="localhost", port=9999, config_port=None, conn_type='connect', mode=None, queue_size=100,
+                 copy=True, config_address=None, all_channels=False, receive_timeout=None,
+                 dispatcher_url='https://dispatcher-api.psi.ch/sf', dispatcher_verify_request=True,
+                 dispatcher_disble_compression=False)):
+        self.source_default_keys = source_default_keys
+        self.source = None
+        self.source_ids = []
 
-    def getSourceIDs(self):
+    def get_all_source_ids(self):
         """Dummy method which should interface to some interface providing
         availabe data seources (Detectors)."""
-        return ["i0", "i", "t", "i_pump", "pump_on", "pulseId", "labTime"]
+        return dispatcher.get_current_channels()
 
-    def registerSource(self, sourceID):
-        """Dummy method to register sources to be read in the loop iterator"""
-        pass
+    def register_source(self, source_id):
+        """method to register sources to be read in the loop iterator"""
+        
+        if not (source_id in self.source_ids):
+            self.source_ids.append(source_id)
 
-    def eventGenerator(self):
+        kwargs = self.source_default_keys.copy()
+        kwargs['channels'] = self.source_ids    
+
+        if self.source:
+            self.source.disconnect()
+        
+        self.source = Source(**kwargs)
+
+    def remove_source(self, source_id):
+        """method to remove sources from the loop iterator"""
+        
+        self.source_ids.pop(self.source_ids.index(source_id))
+
+        kwargs = self.source_default_keys.copy()
+        kwargs['channels'] = self.source_ids    
+
+        if self.source:
+            self.source.disconnect()
+        
+        self.source = Source(**kwargs)
+
+    def create_event_generator(self):
         self.stream = self.source.connect()
         return iter(EventGenerator_SFEL(self.stream))
 

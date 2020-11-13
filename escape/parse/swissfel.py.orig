@@ -190,7 +190,7 @@ def parseScanEco_v01(
     for t in ts:
         t.join()
     # while not files_bar.n==files_bar.total:
-    # sleep(.01)
+        # sleep(.01)
     files_bar.update(files_bar.total - files_bar.n)
 
     # datasets_scan.append(datasets)
@@ -292,7 +292,11 @@ def parseScanEco_v01(
                 containers[name].get_data,
                 index=containers[name].get_eventIds,
                 step_lengths=dat["stepLengths"],
+<<<<<<< HEAD
+                scan=dat["scan"],
+=======
                 parameter=dat["parameter"],
+>>>>>>> 8a8ba5c857061063fb0ea7334e27de7d9c8cd699
             )
         return escArrays
     else:
@@ -476,3 +480,4 @@ class LazyContainer:
         for t in ts:
             t.join()
         return np.concatenate([ids[n] for n in range(len(self.dat["eventIds"]))])
+

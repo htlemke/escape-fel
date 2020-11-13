@@ -1,3 +1,4 @@
+ 
 language: python
 python:
   - 3.6
@@ -29,3 +30,30 @@ deploy:
 
 notifications:
   email: false
+
+
+##OLD
+
+#language: python
+#matrix:
+  #include:
+  #- python: 2.7
+    #env: TOXENV=py27
+  #- python: 3.5
+    #env: TOXENV=py35
+  #- python: 3.5
+    #env: TOXENV=quality
+  #- python: 3.6
+    #env: TOXENV=py36
+#cache:
+#- pip
+#script:
+#- pytest
+#deploy:
+  #provider: pypi
+  #user: htlemke
+  #distributions: sdist bdist_wheel
+  #true:
+    #tags: true
+  #password:
+    #secure: "nqnxQC1dtuEPFoLbEJTEkXV/lTMQGg648pMJztfSwK4kZV1MteMeJRDRonZOpLtVsgi8gge5XCTdwrkU+euC84mDsoil7f5JocK7WVpvCn4f5cFcIArhQHXnVd3Y1ZwGqY6sXQ0iwkOQArwbxJ1329DEUyTG4Lg1ou6As+hF08sepJmOl2350JDo+uOMZcHPjVaf0iefLXU/5Htyyhsam6po9gFp1KBj7Ztn+Zve+HAeIH80GjdwBF2l1O9V1jDO34Y4Z52/GidEQ6JxKX/FiSTKd5lUPjqJUnFnWgGmlC6AOj1cbc4DG2rjgp7ifpwpFhHiFrdUSmQgv/LTZjo4kAYDxGdz/EnImI6BmFCOf0qqyCCGOf9opXl71S7T0S2yISlUXpgAB6wnwM6Dwb74mF9IRCc+eRYMXNI5T2KgqeIOwQPnJii0gLQ9/OZrze2A7s0wZ8HB1pEIk8elUOUVF7w628pAfHoPVBfGEc12R3s9GBWbL9HF7pF8ljft1BwNlRRp5glGp5ifFTgS8QJELe3aRd2T0unHAYCuEdYyIRcKp+VLSpUjkiOBXFpvxfL8SwPg4PQSoFVQcCjFYmGqcrZjdHx8a1C0yUqaZMGXbf7107nCcA3Nl1L/wt/mUeEPWryX974QMDH5g9oCLlw1zjQ+SQEldl/K5mtLdi20AJ8="
