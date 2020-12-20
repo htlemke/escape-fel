@@ -14,35 +14,36 @@ def ispath(x):
             return p
 
 
-def _apply_gain_pede_numba_stack(images, **kwargs):
-    result = np.zeros_like(images, dtype=float)
-    for n, i in enumerate(images):
-        result[n] = apply_gain_pede_numba(i, **kwargs)
-    return result
+def jf_correct_obj(array,
+        jf_id=None, 
+        cor_gain_dark_mask=True, 
+        cor_tile_gaps = True,
+        cor_geometry = True,
+        comp_parallel = False,
+        gain_file=None, 
+        dark_file=None, 
+        mask=None, 
+        module_map=None,
+        **kwargs
+        ):
+    h = JFDataHandler(jf_id)
+    h.gain_file = gain_file
+    h.pedestal_file = dark_file
+    if mask:
+        h.pixel_mask=mask
+    if module_map:
+        h.module_map = module_map
+    
+    return h
 
-
-def correct_gain_dark_mask(array, gain=None, dark=None, mask=None):
-    gainpath = ispath(gain)
-    if gainpath:
-        gain = h5py.File(gainpath, "r")["gains"][...]
-    darkpath = ispath(dark)
-    if darkpath:
-        dark = h5py.File(darkpath, "r")["gains"][...]
-    maskpath = ispath(mask)
-    if maskpath:
-        mask = h5py.File(maskpath, "r")["pixel_mask"][...]
-    return array.map_index_blocks(
-        _apply_gain_pede_numba_stack,
-        G=ArraySelector(gain, (1, 2)),
-        P=ArraySelector(dark, (1, 2)),
-        pixel_mask=ArraySelector(mask, (1, 2)),
-    )
-
+    
 def jf_correct(array,
         jf_id=None, 
         cor_gain_dark_mask=True, 
         cor_tile_gaps = True,
         cor_geometry = True,
+        cor_mask = True,
+        cor_
         comp_parallel = False,
         gain_file=None, 
         dark_file=None, 
@@ -69,6 +70,7 @@ def jf_correct(array,
         conversion=cor_gain_dark_mask,
         gap_pixels=cor_tile_gaps,
         geometry=cor_geometry,
+        mask = cor_mask,
         parallel=comp_parallel,
         new_element_size=h.get_shape_out(cor_tile_gaps,cor_geometry),
         dtype=float,
