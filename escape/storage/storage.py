@@ -691,13 +691,13 @@ class Scan:
         avg = []
         std = []
         for step in self:
-            (ta,tw) = match_arrays(step,weights)
-            (tavg,tstd) = utilities.weighted_avg_and_std(ta.data,tw.data)
+            (ta, tw) = match_arrays(step, weights)
+            (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data)
             avg.append(tavg)
             std.append(tstd)
         return np.asarray(avg),np.asarray(std)
 
-    def plot(self,weights=None,scanpar_name=None,norm_samples = True, axis=None,*args, **kwargs):
+    def plot(self, weights=None, scanpar_name=None,norm_samples = True, axis=None,*args, **kwargs):
         if not scanpar_name:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
