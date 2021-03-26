@@ -14,72 +14,70 @@ def ispath(x):
             return p
 
 
-def jf_correct_obj(array,
-        jf_id=None, 
-        cor_gain_dark_mask=True, 
-        cor_tile_gaps = True,
-        cor_geometry = True,
-        comp_parallel = False,
-        gain_file=None, 
-        dark_file=None, 
-        mask=None, 
-        module_map=None,
-        **kwargs
-        ):
+def jf_correct_obj(
+    array,
+    jf_id=None,
+    cor_gain_dark_mask=True,
+    cor_tile_gaps=True,
+    cor_geometry=True,
+    comp_parallel=False,
+    gain_file=None,
+    dark_file=None,
+    mask=None,
+    module_map=None,
+    **kwargs
+):
     h = JFDataHandler(jf_id)
     h.gain_file = gain_file
     h.pedestal_file = dark_file
     if mask:
-        h.pixel_mask=mask
+        h.pixel_mask = mask
     if module_map:
         h.module_map = module_map
-    
+
     return h
 
-    
-def jf_correct(array,
-        jf_id=None, 
-        cor_gain_dark_mask=True, 
-        cor_tile_gaps = True,
-        cor_geometry = True,
-        cor_mask = True,
-        cor_
-        comp_parallel = False,
-        gain_file=None, 
-        dark_file=None, 
-        mask=None, 
-        module_map=None,
-        **kwargs
-        ):
+
+def jf_correct(
+    array,
+    jf_id=None,
+    cor_gain_dark_mask=True,
+    cor_tile_gaps=True,
+    cor_geometry=True,
+    cor_mask=True,
+    comp_parallel=False,
+    gain_file=None,
+    dark_file=None,
+    mask=None,
+    module_map=None,
+    **kwargs
+):
     h = JFDataHandler(jf_id)
     h.gain_file = gain_file
     h.pedestal_file = dark_file
     if mask:
-        h.pixel_mask=mask
+        h.pixel_mask = mask
     if module_map:
         h.module_map = module_map
 
-    def proc_and_mask(*args,**kwargs):
-        o = h.process(*args,**kwargs)
-        o[np.broadcast_to(h.get_pixel_mask(cor_tile_gaps,cor_geometry),o.shape)]=np.nan
+    def proc_and_mask(*args, **kwargs):
+        o = h.process(*args, **kwargs)
+        o[
+            np.broadcast_to(h.get_pixel_mask(cor_tile_gaps, cor_geometry), o.shape)
+        ] = np.nan
         return o
 
-    
     return array.map_index_blocks(
         proc_and_mask,
         conversion=cor_gain_dark_mask,
         gap_pixels=cor_tile_gaps,
         geometry=cor_geometry,
-        mask = cor_mask,
+        mask=cor_mask,
         parallel=comp_parallel,
-        new_element_size=h.get_shape_out(cor_tile_gaps,cor_geometry),
+        new_element_size=h.get_shape_out(cor_tile_gaps, cor_geometry),
         dtype=float,
         **kwargs
     )
-    
-    
-
-
 
 
 # class JfCorrector:
@@ -88,8 +86,8 @@ def jf_correct(array,
 #         self.gain = gain
 #         self.dark = dark
 #         self.mask = mask
-           
-        
+
+
 # import h5py
 # from jungfrau_utils import apply_gain_pede, apply_geometry
 # h5py.enable_ipython_completer()
