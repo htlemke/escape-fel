@@ -370,9 +370,7 @@ class FileSource:
 
 
 class EventWorker:
-    def __init__(self, eventHandler=None):
-        if not eventHandler:
-            eventHandler=EventHandler_SFEL(host=None,channels=['SIN-CVME-TIFGUN-EVR0:BUNCH-1-OK'])
+    def __init__(self, eventHandler=EventHandler_SFEL()):
         self._eventHandler = eventHandler
         self.eventCallbacks = []
         self.sources = []

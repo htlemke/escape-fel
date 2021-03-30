@@ -7,6 +7,7 @@ import numpy as np
 import logging
 
 
+# <<<<<<< HEAD
 # def ispath(x):
     # if type(x) is str or isinstance(x, Path):
         # p = Path(x)
@@ -37,13 +38,46 @@ import logging
         # P=ArraySelector(dark, (1, 2)),
         # pixel_mask=ArraySelector(mask, (1, 2)),
     # )
+# =======
+# # def ispath(x):
+# #     if type(x) is str or isinstance(x, Path):
+# #         p = Path(x)
+# #         if p.exists():
+# #             return p
+
+
+# # def jf_correct_obj(array,
+# #         jf_id=None, 
+# #         cor_gain_dark_mask=True, 
+# #         cor_tile_gaps = True,
+# #         cor_geometry = True,
+# #         comp_parallel = False,
+# #         gain_file=None, 
+# #         dark_file=None, 
+# #         mask=None, 
+# #         module_map=None,
+# #         **kwargs
+# #         ):
+# #     h = JFDataHandler(jf_id)
+# #     h.gain_file = gain_file
+# #     h.pedestal_file = dark_file
+# #     if mask:
+# #         h.pixel_mask=mask
+# #     if module_map:
+# #         h.module_map = module_map
+    
+# #     return h
+# >>>>>>> ea0e0a15e78524d298291ece05f3125bd8ef2acb
+
 
 def jf_correct(array,
-        cor_gain_dark_mask=True, 
-       cor_tile_gaps = True,
-        cor_geometry = True,
-        comp_parallel = False,
         jf_id=None, 
+        cor_gain_dark_mask=True, 
+        cor_tile_gaps = True,
+        cor_geometry = True,
+        cor_mask = True,
+        cor_
+        comp_parallel = False,
         gain_file=None, 
         dark_file=None, 
         mask=None, 
@@ -69,8 +103,10 @@ def jf_correct(array,
         conversion=cor_gain_dark_mask,
         gap_pixels=cor_tile_gaps,
         geometry=cor_geometry,
+        mask = cor_mask,
         parallel=comp_parallel,
         new_element_size=h.get_shape_out(cor_tile_gaps,cor_geometry),
+        dtype=float,
         **kwargs
     )
     

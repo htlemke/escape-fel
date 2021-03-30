@@ -554,8 +554,12 @@ def escaped(func, convertOutput2EscData="auto"):
             if convertOutput2EscData is "auto":
                 convertOutput2EscData = []
                 for i, toutput in enumerate(output):
-                    if hasattr(toutput, "__len__") and len(ids_res) == len(toutput):
-                        convertOutput2EscData.append(i)
+                    try:
+                        lentoutput = len(toutput)
+                        if len(ids_res) == len(toutput):
+                            convertOutput2EscData.append(i)
+                    except TypeError:
+                        pass
 
             for n in convertOutput2EscData:
                 toutput = output.pop(n)
