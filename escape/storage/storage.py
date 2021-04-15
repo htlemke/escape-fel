@@ -477,6 +477,9 @@ class Array:
         else:
             return ""
 
+    def get_index_array(self):
+        return Array(data=self.index, index=self.index)
+
     def plot_corr(self, arr, ratio=False, axis=None, linespec=".", *args, **kwargs):
         yarr, xarr = match_arrays(self, arr)
         y = yarr.data
