@@ -182,21 +182,21 @@ class Array:
         return _apply_method(
             np.percentile, None, self, self.is_dask_array(), *args, **kwargs
         )
-    
-    def filter(self,*args,**kwargs):
-        return filter(self,*args,**kwargs)
-    
-    def digitize(self,bins,**kwargs):
-        return digitize(self,bins,**kwargs)
-    
-    def get_modulo_array(self,mod,offset=0):
+
+    def filter(self, *args, **kwargs):
+        return filter(self, *args, **kwargs)
+
+    def digitize(self, bins, **kwargs):
+        return digitize(self, bins, **kwargs)
+
+    def get_modulo_array(self, mod, offset=0):
         index = self.index
         out_bool = np.mod(index, mod) == offset
         return self[out_bool]
 
     def update(self, array):
         """Update one escape array from another. Only array elements not
-         existing  in the present array will be added to it."""
+        existing  in the present array will be added to it."""
         pass
 
     def __len__(self):
@@ -326,7 +326,6 @@ class Array:
         new_axis=None,
         new_element_size=None,
         event_dim="same",
-
         **kwargs,
     ):
         """map a function which works for a chunk of the Array (events along index_dim). This is only really relevant for dask array array data."""
@@ -340,7 +339,7 @@ class Array:
         shp = self.data.shape
         if new_element_size:
             new_size = list(new_element_size)
-            new_size.insert(self.index_dim,None)
+            new_size.insert(self.index_dim, None)
         newchunks = []
         rechunk = False
         for dim, dimchunks in enumerate(self.data.chunks):
@@ -364,7 +363,7 @@ class Array:
 
         # checking if any inputs are to be selected
         if any([isinstance(x, ArraySelector) for x in chain(args, kwargs.values())]):
-            print('Is arg selector')
+            print("Is arg selector")
 
             def get_data(data_selector=None):
                 args_sel = [
@@ -413,8 +412,7 @@ class Array:
             )
 
     def store(self, parent_h5py=None, name=None, unit=None, **kwargs):
-        """ a way to store data, especially expensively computed data, into a new file. 
-        """
+        """a way to store data, especially expensively computed data, into a new file."""
         if not hasattr(self, "h5"):
             self.h5 = ArrayH5Dataset(parent_h5py, name)
 
@@ -478,6 +476,21 @@ class Array:
             return ostr
         else:
             return ""
+
+    def plot_corr(self, arr, ratio=False, axis=None, linespec=".", *args, **kwargs):
+        yarr, xarr = match_arrays(self, arr)
+        y = yarr.data
+        x = xarr.data
+        if not axis:
+            axis = plt.gca()
+        if ratio:
+            axis.plot(x, y / x, linespec, *args, **kwargs)
+        else:
+            axis.plot(x, y, linespec, *args, **kwargs)
+        if arr.name:
+            axis.set_xlabel(arr.name)
+        if self.name and arr.name:
+            axis.set_ylabel(f"{self.name} / {arr.name}")
 
     def __repr__(self):
         s = "<%s.%s object at %s>" % (
@@ -687,42 +700,51 @@ class Scan:
 
     def mean(self, *args, **kwargs):
         return [step.mean(*args, **kwargs) for step in self]
-    
+
     def count(self):
         return [len(step) for step in self]
 
-    def weighted_avg_and_std(self,weights):
+    def weighted_avg_and_std(self, weights):
         avg = []
         std = []
         for step in self:
-            (ta,tw) = match_arrays(step,weights)
-            (tavg,tstd) = utilities.weighted_avg_and_std(ta.data,tw.data)
+            (ta, tw) = match_arrays(step, weights)
+            (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data)
             avg.append(tavg)
             std.append(tstd)
-        return np.asarray(avg),np.asarray(std)
+        return np.asarray(avg), np.asarray(std)
 
-    def plot(self,weights=None,scanpar_name=None,norm_samples = True, axis=None,*args, **kwargs):
+    def plot(
+        self,
+        weights=None,
+        scanpar_name=None,
+        norm_samples=True,
+        axis=None,
+        *args,
+        **kwargs,
+    ):
         if not scanpar_name:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
-        x = np.asarray(self.parameter[scanpar_name]['values']).ravel()
+        x = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
         if not weights:
             y = np.asarray(self.mean(axis=0)).ravel()
             ystd = np.asarray(self.std(axis=0)).ravel()
         else:
-            y,ystd = self.weighted_avg_and_std(weights)
+            y, ystd = self.weighted_avg_and_std(weights)
         if norm_samples:
-            yerr = ystd/np.sqrt(np.asarray(self.count()))
+            yerr = ystd / np.sqrt(np.asarray(self.count()))
         else:
             yerr = ystd
         if not axis:
-            axis=plt.gca()
-        axis.errorbar(x,y,yerr=yerr,*args,**kwargs)
+            axis = plt.gca()
+        axis.errorbar(x, y, yerr=yerr, *args, **kwargs)
         axis.set_xlabel(scanpar_name)
         if self._array.name:
             axis.set_ylabel(self._array.name)
 
-    def hist(self,
+    def hist(
+        self,
         cut_percentage=0,
         N_intervals=20,
         normalize_to=None,
@@ -733,7 +755,7 @@ class Scan:
         if not scanpar_name:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
-        x_scan = np.asarray(self.parameter[scanpar_name]['values']).ravel()
+        x_scan = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
         [hmin, hmax] = np.percentile(
             self._array.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
@@ -770,7 +792,6 @@ class Scan:
         else:
             return concatenate([self.get_step_array(n) for n in sel])
 
-    
     def get_step_array(self, n):
         """array getter for scan"""
         assert n >= 0, "Step index needs to be positive"
@@ -882,6 +903,7 @@ def to_dataframe(*args):
 def match_arrays(*args):
     return args
 
+
 weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
 
 
@@ -904,7 +926,7 @@ def compute(*args):
 
 
 def store(arrays, **kwargs):
-    """ NOT TESTED!
+    """NOT TESTED!
     Storing of multiple escape arrays, efficient when they originate from the same ancestor"""
     prep = [array.h5.append(array.data, array.index, prep_run=True) for array in arrays]
     ndatas, dsets, n_news = zip(*prep)
@@ -1054,8 +1076,8 @@ def digitize(
 
 
 def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
-    """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of 
-    filter functions that take one argument as input and """
+    """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of
+    filter functions that take one argument as input and"""
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be filtered in a sensible way."
@@ -1068,7 +1090,9 @@ def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
     ix = da.logical_and(
         *[tfoo(darray, targ) for tfoo, targ in zip(foos_filtering, args)]
     ).nonzero()[0]
-    stepLengths, scan = get_scan_step_selections(ix, array.scan.step_lengths, scan=array.scan)
+    stepLengths, scan = get_scan_step_selections(
+        ix, array.scan.step_lengths, scan=array.scan
+    )
     return Array(
         data=array.data[ix],
         index=array.index[ix],
