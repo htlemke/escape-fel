@@ -477,10 +477,14 @@ class Array:
         else:
             return ""
 
-    def get_index_array(self):
-        return Array(data=self.index, index=self.index)
+    def get_index_array(self,N_index_aggregation=None):
+        if N_index_aggregation:
+            tmp = Array(data=self.index, index=self.index)
+            return tmp.digitize(np.arange(min(tmp.data),max(tmp.data),N_index_aggregation))
+        else:
+            return Array(data=self.index, index=self.index)
 
-    def plot_corr(self, arr, ratio=False, axis=None, linespec=".", *args, **kwargs):
+    def plot_corr(self, arr, ratio=False, axis=None, linespec=".", polyfit_order=None, *args, **kwargs):
         yarr, xarr = match_arrays(self, arr)
         y = yarr.data
         x = xarr.data
@@ -490,10 +494,20 @@ class Array:
             axis.plot(x, y / x, linespec, *args, **kwargs)
         else:
             axis.plot(x, y, linespec, *args, **kwargs)
+            
         if arr.name:
             axis.set_xlabel(arr.name)
         if self.name and arr.name:
             axis.set_ylabel(f"{self.name} / {arr.name}")
+        if not polyfit_order is None:
+            pres = np.polyfit(x,y,polyfit_order)
+            xp = np.linspace(np.min(x),np.max(x),1000)
+            yp = np.polyval(pres,px)
+            if ratio:
+                plt.plot(xp,yp/xp,'r')
+            else:
+                plt.plot(xp,yp,'r')
+            return pres
 
     def __repr__(self):
         s = "<%s.%s object at %s>" % (
