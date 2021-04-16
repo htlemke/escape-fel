@@ -3,6 +3,8 @@ from bisect import bisect
 from random import randint
 import matplotlib.pyplot as plt
 
+from .plot_utilities import *
+
 
 
 def weighted_avg_and_std(values, weights):

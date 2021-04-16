@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from time import sleep
 
 
-class Ginput:
+class GinputNB:
     def __init__(self, fig=None):
         self.x = []
         self.y = []
