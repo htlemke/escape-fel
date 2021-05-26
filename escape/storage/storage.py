@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ArraySelector:
     def __init__(self, arrayitem, dims=None):
-        """ Container object for selecting array subsets in functions mapped on escape Arrays."""
+        """Container object for selecting array subsets in functions mapped on escape Arrays."""
         self.arrayitem = arrayitem
         self.dims = dims
 
@@ -477,14 +477,25 @@ class Array:
         else:
             return ""
 
-    def get_index_array(self,N_index_aggregation=None):
+    def get_index_array(self, N_index_aggregation=None):
         if N_index_aggregation:
             tmp = Array(data=self.index, index=self.index)
-            return tmp.digitize(np.arange(min(tmp.data),max(tmp.data),N_index_aggregation))
+            return tmp.digitize(
+                np.arange(min(tmp.data), max(tmp.data), N_index_aggregation)
+            )
         else:
             return Array(data=self.index, index=self.index)
 
-    def plot_corr(self, arr, ratio=False, axis=None, linespec=".", polyfit_order=None, *args, **kwargs):
+    def plot_corr(
+        self,
+        arr,
+        ratio=False,
+        axis=None,
+        linespec=".",
+        polyfit_order=None,
+        *args,
+        **kwargs,
+    ):
         yarr, xarr = match_arrays(self, arr)
         y = yarr.data
         x = xarr.data
@@ -494,19 +505,19 @@ class Array:
             axis.plot(x, y / x, linespec, *args, **kwargs)
         else:
             axis.plot(x, y, linespec, *args, **kwargs)
-            
+
         if arr.name:
             axis.set_xlabel(arr.name)
         if self.name and arr.name:
             axis.set_ylabel(f"{self.name} / {arr.name}")
         if not polyfit_order is None:
-            pres = np.polyfit(x,y,polyfit_order)
-            xp = np.linspace(np.min(x),np.max(x),1000)
-            yp = np.polyval(pres,px)
+            pres = np.polyfit(x, y, polyfit_order)
+            xp = np.linspace(np.min(x), np.max(x), 1000)
+            yp = np.polyval(pres, px)
             if ratio:
-                plt.plot(xp,yp/xp,'r')
+                plt.plot(xp, yp / xp, "r")
             else:
-                plt.plot(xp,yp,'r')
+                plt.plot(xp, yp, "r")
             return pres
 
     def __repr__(self):
@@ -903,7 +914,7 @@ class Scan:
 
 
 def to_dataframe(*args):
-    """ work in progress"""
+    """work in progress"""
     for arg in args:
         if not np.prod(arg.shape) == len(arg):
             raise (
@@ -925,7 +936,7 @@ weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
 
 
 def compute(*args):
-    """ compute multiple escape arrays. Interesting when calculating multiple small arrays from the same ancestor dask based array"""
+    """compute multiple escape arrays. Interesting when calculating multiple small arrays from the same ancestor dask based array"""
     with ProgressBar():
         res = da.compute(*[ta.data for ta in args])
     out = []
@@ -1166,6 +1177,9 @@ class ArrayH5Dataset:
             return np.asarray([], dtype=int)
 
     def append(self, data, event_ids, scan=None, prep_run=False):
+        """
+        expects to extend a former dataset, i.e. data includes data already existing,
+        this will likely change in future to also allow real appending of entirely new data."""
         ids_stored = self.index
         if len(event_ids) < len(ids_stored):
             raise Exception("fewer event_ids> to append than already stored!")
@@ -1178,7 +1192,7 @@ class ArrayH5Dataset:
         self.grp[f"index_{n_new:04d}"] = event_ids[len(ids_stored) :]
         if isinstance(data, np.ndarray):
             if prep_run:
-                raise Excpetion(
+                raise Exception(
                     "Trying dry_run on numpy array data on {self.grp.name}."
                 )
             self.grp[f"data_{n_new:04d}"] = data[len(ids_stored) :, ...]
