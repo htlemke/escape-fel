@@ -110,7 +110,6 @@ class Array:
                 return op[0]
             else:
                 self._data = op
-                dummy = self.index
                 return self._data
         else:
             return self._data
@@ -513,7 +512,7 @@ class Array:
         if not polyfit_order is None:
             pres = np.polyfit(x, y, polyfit_order)
             xp = np.linspace(np.min(x), np.max(x), 1000)
-            yp = np.polyval(pres, px)
+            yp = np.polyval(pres, xp)
             if ratio:
                 plt.plot(xp, yp / xp, "r")
             else:
@@ -592,7 +591,7 @@ def escaped(func, convertOutput2EscData="auto"):
             stepLengths, scan = get_scan_step_selections(
                 ixmaster, sorter.scan.step_lengths, scan=sorter.scan
             )
-            if convertOutput2EscData is "auto":
+            if convertOutput2EscData == "auto":
                 convertOutput2EscData = []
                 for i, toutput in enumerate(output):
                     try:
@@ -726,9 +725,6 @@ class Scan:
     def max(self, *args, **kwargs):
         return [step.max(*args, **kwargs) for step in self]
 
-    def mean(self, *args, **kwargs):
-        return [step.mean(*args, **kwargs) for step in self]
-
     def count(self):
         return [len(step) for step in self]
 
@@ -789,9 +785,9 @@ class Scan:
         )
         hbins = np.linspace(hmin, hmax, N_intervals + 1)
         hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in self]
-        if normalize_to is "max":
+        if normalize_to == "max":
             hdat = [td / td.max() for td in hdat]
-        elif normalize_to is "sum":
+        elif normalize_to == "sum":
             hdat = [td / td.sum() for td in hdat]
         hdat = np.asarray(hdat)
         if plot_results:
@@ -888,7 +884,7 @@ class Scan:
 
     @staticmethod
     def _load_from_h5(group):
-        if not "scan" in group.keys():
+        if "scan" not in group.keys():
             raise Exception("Did not find group scan!")
         step_lengths = group["scan"]["step_lengths"][()]
         parameter = {}
@@ -956,8 +952,11 @@ def compute(*args):
 def store(arrays, **kwargs):
     """NOT TESTED!
     Storing of multiple escape arrays, efficient when they originate from the same ancestor"""
-    prep = [array.h5.append(array.data, array.index, prep_run=True) for array in arrays]
-    ndatas, dsets, n_news = zip(*prep)
+    prep = [
+        array.h5.append(array.data, array.index, prep_run="store_numpy")
+        for array in arrays
+    ]
+    ndatas, dsets, n_news = zip(*[tprep for tprep in prep if tprep])
     with ProgressBar():
         da.store(ndatas, dsets)
     for array, n_new in zip(arrays, n_news):
@@ -1180,24 +1179,39 @@ class ArrayH5Dataset:
         """
         expects to extend a former dataset, i.e. data includes data already existing,
         this will likely change in future to also allow real appending of entirely new data."""
-        ids_stored = self.index
-        if len(event_ids) < len(ids_stored):
-            raise Exception("fewer event_ids> to append than already stored!")
-        if not (event_ids[: len(ids_stored)] == ids_stored).all():
-            raise Exception("new event_ids don't extend existing ones!")
-        if len(event_ids) == len(ids_stored):
-            print("Nothing new to append.")
-            return
         n_new = len(self._n_i)
-        self.grp[f"index_{n_new:04d}"] = event_ids[len(ids_stored) :]
+        ids_stored = self.index
+        in_previous_indexes = np.in1d(event_ids, ids_stored)
+        if ~in_previous_indexes.any():
+            # real appending data
+            new_event_ids = event_ids
+            new_data = data
+        elif in_previous_indexes.all():
+            # real extending of data
+
+            if len(event_ids) < len(ids_stored):
+                raise Exception("fewer event_ids to append than already stored!")
+            if not (event_ids[: len(ids_stored)] == ids_stored).all():
+                raise Exception("new event_ids don't extend existing ones!")
+            if len(event_ids) == len(ids_stored):
+                print("Nothing new to append.")
+                return
+
+            new_event_ids = event_ids[len(ids_stored) :]
+            new_data = data[len(ids_stored) :, ...]
+
+        self.grp[f"index_{n_new:04d}"] = new_event_ids
+
         if isinstance(data, np.ndarray):
             if prep_run:
-                raise Exception(
-                    "Trying dry_run on numpy array data on {self.grp.name}."
-                )
-            self.grp[f"data_{n_new:04d}"] = data[len(ids_stored) :, ...]
+                if prep_run == "store_numpy":
+                    pass
+                else:
+                    raise Exception(
+                        "Trying dry_run on numpy array data on {self.grp.name}."
+                    )
+            self.grp[f"data_{n_new:04d}"] = new_data
         elif isinstance(data, da.Array):
-            new_data = data[len(ids_stored) :, ...]
             # ToDo, smarter chunking when writing small data
             new_chunks = tuple(c[0] for c in new_data.chunks)
             dset = self.grp.create_dataset(
