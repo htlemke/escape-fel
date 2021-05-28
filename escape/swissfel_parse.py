@@ -54,11 +54,12 @@ def parse_bs_h5_file(fina, memlimit_MB=5):
             chunk_shapes = []
             slices = []
             for chunk_start in range(0, dset_size[0], chunk_length):
-                slice_0dim = slice(
-                    chunk_start, min(chunk_start + chunk_length, dset_size[0] + 1)
-                )
+                slice_0dim = [
+                    chunk_start,
+                    min(chunk_start + chunk_length, dset_size[0] + 1),
+                ]
                 chunk_shape = list(dset_size)
-                chunk_shape[0] = slice_0dim.stop - slice_0dim.start + 1
+                chunk_shape[0] = slice_0dim[1] - slice_0dim[0] + 1
                 slices.append(slice_0dim)
                 chunk_shapes.append(chunk_shape)
 
@@ -103,7 +104,7 @@ def dstore_to_darray(fina, dstore):
 
 
 def parse_filelist(flist):
-    return dask.compute([parse_bs_h5_file(fina) for fina in flist])
+    return dask.compute([parse_bs_h5_file(fina) for fina in flist])[0]
 
 
 def readScanEcoJson_v01(file_name_json):
