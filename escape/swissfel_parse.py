@@ -77,9 +77,9 @@ def parse_bs_h5_file(fina, memlimit_MB=5):
 
 
 @delayed
-def read_h5_chunk(fina, ds_path, slice):
+def read_h5_chunk(fina, ds_path, slice_args):
     with h5py.File(fina, "r") as fh:
-        dat = fh[ds_path][slice]
+        dat = fh[ds_path][slice(*slice_args)]
     return dat
 
 
