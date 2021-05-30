@@ -23,8 +23,24 @@ with warnings.catch_warnings():
 from threading import Thread
 from time import sleep
 import bitshuffle.h5
+from dask_jobqueue import SLURMCluster
+from distributed import Client
 
 logger = logging.getLogger(__name__)
+
+# cluter helpers
+
+
+class SwissFelCluster:
+    def __init__(self, cores=8, memory="24 GB", workers=5):
+        self.cluster = SLURMCluster(cores=cores, memory=memory)
+        self.client = Client(self.cluster)
+
+    def _repr_html_(self):
+        return self.client._repr_html_()
+
+
+# parsing stuff
 
 
 @delayed
@@ -38,6 +54,9 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
         logger.info("Successfully parsed file %s" % fina.resolve())
         dstores = {}
         for name, (ds_data, ds_index) in datasets.items():
+            print(
+                f"Shapes data and index datasets found:   {ds_data.shape}, {ds_index.shape}"
+            )
 
             if ds_data.size == 0:
                 logger.debug("Found empty dataset in {}".format(name))
@@ -51,22 +70,22 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
             )
             chunk_length = int(memlimit_MB // size_element)
             dset_size = ds_data.shape
-            ds_path = ds_data.name
             chunk_shapes = []
             slices = []
             for chunk_start in range(0, dset_size[0], chunk_length):
                 slice_0dim = [
                     chunk_start,
-                    min(chunk_start + chunk_length, dset_size[0] + 1),
+                    min(chunk_start + chunk_length, dset_size[0]),
                 ]
                 chunk_shape = list(dset_size)
-                chunk_shape[0] = slice_0dim[1] - slice_0dim[0] + 1
+                chunk_shape[0] = slice_0dim[1] - slice_0dim[0]
                 slices.append(slice_0dim)
                 chunk_shapes.append(chunk_shape)
 
             dstores[name] = {
                 "file_path": fina.resolve(),
-                "data_dsp": ds_path,
+                "data_dsp": ds_data.name,
+                "data_shape": ds_data.shape,
                 "data_dtype": dtype,
                 "data_chunks": {"slices": slices, "shapes": chunk_shapes},
                 "index_dsp": ds_index.name,
@@ -88,7 +107,7 @@ def read_h5_chunk(fina, ds_path, slice_args):
 def dstore_to_darray(dstore):
     fina = pathlib.Path(dstore["file_path"])
     index = dask.array.from_delayed(
-        read_h5_chunk(fina, dstore["index_dsp"], slice(None)),
+        read_h5_chunk(fina, dstore["index_dsp"], [None]),
         dstore["index_shape"],
         dtype=dstore["index_dtype"],
     )
@@ -221,7 +240,7 @@ def parseScanEcoV01(
             if ch not in dstore.keys():
                 continue
             arrays.append(dstore_to_darray(dstore[ch]))
-            s_sl.append(len(arrays[0]))
+            s_sl.append(len(arrays[-1][0]))
 
             for par_name, value in zip(
                 parameter.keys(),
@@ -229,15 +248,18 @@ def parseScanEcoV01(
             ):
                 tparameter[par_name]["values"].append(value)
 
-        index_array = dask.array.concatenate([tr[0] for tr in arrays], axis=0)
+        index_array = dask.array.concatenate([tr[0] for tr in arrays], axis=0).ravel()
         data_array = dask.array.concatenate([tr[1] for tr in arrays], axis=0)
 
-        escArrays[ch] = Array(
-            data_array,
-            index=index_array.compute,
-            step_lengths=s_sl,
-            parameter=tparameter,
-        )
+        try:
+            escArrays[ch] = Array(
+                data=data_array,
+                index=index_array,
+                step_lengths=s_sl,
+                parameter=tparameter,
+            )
+        except Exception as e:
+            print(f"Could not create escape.Array for {ch};\nError: {str(e)}")
 
     return escArrays
 
