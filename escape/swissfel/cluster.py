@@ -25,6 +25,8 @@ from time import sleep
 import bitshuffle.h5
 from dask_jobqueue import SLURMCluster
 from distributed import Client
+import socket
+import getpass
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +37,37 @@ class SwissFelCluster:
     def __init__(self, cores=8, memory="24 GB", workers=5):
         self.cluster = SLURMCluster(cores=cores, memory=memory)
         self.client = Client(self.cluster)
+        self.ip = socket.gethostbyname(socket.gethostname())
+        self.dashboard_port_scheduler = self.client._scheduler_identity.get("services")[
+            "dashboard"
+        ]
+        self.username = getpass.getuser()
 
     def _repr_html_(self):
         return self.client._repr_html_()
+
+    def scale_workers(self, N_workers):
+        self.cluster.scale(N_workers)
+
+    def create_dashboard_tunnel(self, ssh_host="ra"):
+        print(
+            "type following commant in a terminal, if port is taken, change first number in command."
+        )
+        print(
+            " ".join(
+                [
+                    "ssh",
+                    "-f",
+                    "-N",
+                    "-L",
+                    f"{self.dashboard_port_scheduler}:{self.ip}:{self.dashboard_port_scheduler}",
+                    f"{self.username}@{ssh_host}",
+                ]
+            )
+        )
+        print(
+            f"after successful tunneling open http://localhost:{self.dashboard_port_scheduler}"
+        )
 
 
 # parsing stuff
