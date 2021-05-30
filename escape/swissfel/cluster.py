@@ -56,17 +56,19 @@ class SwissFelCluster:
         print(
             " ".join(
                 [
+                    f"jupdbport={self.dashboard_port_scheduler}",
+                    "&&",
                     "ssh",
                     "-f",
-                    "-N",
                     "-L",
-                    f"{self.dashboard_port_scheduler}:{self.ip}:{self.dashboard_port_scheduler}",
+                    f"$jupdbport:{self.ip}:{self.dashboard_port_scheduler}",
                     f"{self.username}@{ssh_host}",
+                    "sleep 10",
+                    "&&",
+                    "firefox",
+                    "https://localhost:$jupdbport",
                 ]
             )
-        )
-        print(
-            f"after successful tunneling open http://localhost:{self.dashboard_port_scheduler}"
         )
 
 
