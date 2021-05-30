@@ -3,7 +3,7 @@ import pathlib
 from pathlib import Path
 
 from dask.array.routines import shape
-from .parse import utilities
+from ..parse import utilities
 import h5py
 from dask import array as da
 from dask import bag as db
@@ -11,7 +11,7 @@ from dask.diagnostics import ProgressBar
 from dask import delayed
 import dask
 
-from . import Array, Scan
+from .. import Array, Scan
 import numpy as np
 from copy import deepcopy as copy
 import logging
