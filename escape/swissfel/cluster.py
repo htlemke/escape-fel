@@ -66,7 +66,7 @@ class SwissFelCluster:
                     "sleep 10",
                     "&&",
                     "firefox",
-                    "https://localhost:$jupdbport",
+                    "http://localhost:$jupdbport",
                 ]
             )
         )
