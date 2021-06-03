@@ -2,9 +2,9 @@ import numpy as np
 from bisect import bisect
 from random import randint
 import matplotlib.pyplot as plt
-
+from pathlib import Path
 from .plot_utilities import *
-
+import pickle
 
 
 def weighted_avg_and_std(values, weights):
@@ -13,12 +13,14 @@ def weighted_avg_and_std(values, weights):
     values, weights -- Numpy ndarrays with the same shape.
     """
     average = np.average(values, weights=weights)
-    variance = np.average((values-average)**2, weights=weights)  # Fast and numerically precise
+    variance = np.average(
+        (values - average) ** 2, weights=weights
+    )  # Fast and numerically precise
     return (average, np.sqrt(variance))
 
 
 def corr_nonlin(data, polypar, data_0=0, correct_0=0):
-    """ unses parameters found by corrNonlinGetPar to correct data;
+    """unses parameters found by corrNonlinGetPar to correct data;
     example of usage (assuming mon is non linear and loff is
     the laseroff filter
     d = ixppy.dataset("xppc3614-r0102.stripped.h5")
@@ -34,7 +36,7 @@ def corr_nonlin(data, polypar, data_0=0, correct_0=0):
 def corr_nonlin_get_par(
     data, correct, order=2, data_0=0, correct_0=0, displayWarning=True, plot=False
 ):
-    """ Find parameters for non linear correction
+    """Find parameters for non linear correction
     *data* should be an 1D array (use .ravel() in case) of the
     detectors that is suspected to be non linear
     *correct* is the detector that is sussposed to be linear
@@ -115,17 +117,46 @@ def hist_scan(
 
 def plot2D(x, y, C, *args, **kwargs):
     def bin_array(arr):
+        arr = np.asarray(arr)
         return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
 
     Xp, Yp = np.meshgrid(bin_array(x), bin_array(y))
 
-    return plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
+    out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
+    try:
+        plt.xlabel(x.name)
+    except:
+        pass
+    try:
+        plt.ylabel(y.name)
+    except:
+        pass
+    return out
+
+
+def pickle_figure(filename, figure=None):
+    if not figure:
+        figure = plt.gcf()
+
+    filename = Path(filename)
+    if not filename.suffix == "pickfig":
+        filename = filename.parent / (filename.stem + ".pickfig")
+        print(filename.as_posix())
+    with open(filename, "wb") as f:
+        pickle.dump(figure, f)
+
+
+def unpickle_figure(filename):
+    filename = Path(filename)
+    with open(filename, "rb") as f:
+        return pickle.load(f)
 
 
 def get_index_modulo_array(data, mod, offset=0):
     index = data.index
     out_bool = np.mod(index, mod) == offset
     return data[out_bool]
+
 
 greyscale = [
     " ",
@@ -174,15 +205,15 @@ def hist_unicode(data, bins=10):
 
 class Hist_ascii(object):
     """
-  Ascii histogram
-  """
+    Ascii histogram
+    """
 
     def __init__(self, data, bins=50, percRange=None, range=None):
         """
-    Class constructor
-    :Parameters:
-    - `data`: array like object
-    """
+        Class constructor
+        :Parameters:
+        - `data`: array like object
+        """
         if not percRange is None:
             range = np.percentile(data, percRange)
         self.data = data
@@ -191,19 +222,19 @@ class Hist_ascii(object):
 
     def horizontal(self, height=4, character="|"):
         """Returns a multiline string containing a
-    a horizontal histogram representation of self.data
-    :Parameters:
-        - `height`: Height of the histogram in characters
-        - `character`: Character to use
-    >>> d = normal(size=1000)
-    >>> h = Histogram(d,bins=25)
-    >>> print h.horizontal(5,'|')
-    106      |||
-            |||||
-           |||||||
-          ||||||||||
-         |||||||||||||
-    -3.42       3.09"""
+        a horizontal histogram representation of self.data
+        :Parameters:
+            - `height`: Height of the histogram in characters
+            - `character`: Character to use
+        >>> d = normal(size=1000)
+        >>> h = Histogram(d,bins=25)
+        >>> print h.horizontal(5,'|')
+        106      |||
+                |||||
+               |||||||
+              ||||||||||
+             |||||||||||||
+        -3.42       3.09"""
         his = """"""
         bars = 1.0 * self.h[0] / np.max(self.h[0]) * height
 
@@ -228,26 +259,26 @@ class Hist_ascii(object):
 
     def vertical(self, height=20, character="|"):
         """
-    Returns a Multi-line string containing a
-    a vertical histogram representation of self.data
-    :Parameters:
-        - `height`: Height of the histogram in characters
-        - `character`: Character to use
-    >>> d = normal(size=1000)
-    >>> Histogram(d,bins=10)
-    >>> print h.vertical(15,'*')
-              236
-    -3.42:
-    -2.78:
-    -2.14: ***
-    -1.51: *********
-    -0.87: *************
-    -0.23: ***************
-    0.41 : ***********
-    1.04 : ********
-    1.68 : *
-    2.32 :
-    """
+        Returns a Multi-line string containing a
+        a vertical histogram representation of self.data
+        :Parameters:
+            - `height`: Height of the histogram in characters
+            - `character`: Character to use
+        >>> d = normal(size=1000)
+        >>> Histogram(d,bins=10)
+        >>> print h.vertical(15,'*')
+                  236
+        -3.42:
+        -2.78:
+        -2.14: ***
+        -1.51: *********
+        -0.87: *************
+        -0.23: ***************
+        0.41 : ***********
+        1.04 : ********
+        1.68 : *
+        2.32 :
+        """
         his = """"""
         xl = ["%.2f" % n for n in self.h[1]]
         lxl = [len(l) for l in xl]
