@@ -1,4 +1,6 @@
 import numpy as np
+import dask
+from dask.dataframe.core import DataFrame
 from dask import array as da
 from dask import dataframe as ddf
 from dask.diagnostics import ProgressBar
@@ -10,8 +12,10 @@ from numbers import Number
 from functools import partial
 import re
 from .. import utilities
-
+import h5py
 from matplotlib import pyplot as plt
+import pandas as pd
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +320,11 @@ class Array:
                 index_dim=self.index_dim,
             )
 
+    def persist(self):
+        self.data.persist()
+
+    # def get_progress()
+
     def map_index_blocks(
         self,
         foo,
@@ -443,9 +452,9 @@ class Array:
             name=name,
         )
 
-    def ones(self):
+    def ones(self, **kwargs):
         return Array(
-            data=np.ones(len(self)),
+            data=np.ones(len(self), **kwargs),
             index=self.index,
             step_lengths=self.scan.step_lengths,
             parameter=self.scan.parameter,
@@ -519,6 +528,32 @@ class Array:
                 plt.plot(xp, yp, "r")
             return pres
 
+    def hist(
+        self,
+        cut_percentage=0,
+        N_intervals=20,
+        normalize_to=None,
+        scanpar_name=None,
+        plot_results=True,
+        plot_axis=None,
+    ):
+        [hmin, hmax] = np.percentile(
+            self.data.ravel(), [cut_percentage, 100 - cut_percentage]
+        )
+        hbins = np.linspace(hmin, hmax, N_intervals + 1)
+        hdat, bin_edges = np.histogram(self.data.ravel(), bins=hbins)
+        if normalize_to == "max":
+            hdat = hdat / hdat.max()
+        elif normalize_to == "sum":
+            hdat = hdat / hdat.sum()
+
+        if plot_results:
+            if not plot_axis:
+                plot_axis = plt.gca()
+            plt.step(hbins[:-1], hdat)
+            plt.xlabel(self.name)
+        return hdat, hbins
+
     def __repr__(self):
         s = "<%s.%s object at %s>" % (
             self.__class__.__module__,
@@ -532,6 +567,20 @@ class Array:
         if self.scan:
             s += self.scan.__repr__()
         return s
+
+
+def load_from_h5_file(file_name, name, parent_group_name=""):
+    h5 = ArrayH5File(
+        file_name=file_name, parent_group_name=parent_group_name, name=name
+    )
+    parameter, step_lengths = Scan._load_from_h5(parent_h5py)
+    return Array(
+        index=h5.index,
+        data=h5.get_data_da(),
+        parameter=parameter,
+        step_lengths=step_lengths,
+        name=name,
+    )
 
 
 def load_from_h5(parent_h5py, name):
@@ -688,6 +737,12 @@ class Scan:
         self.parameter = parameter
         self._array = array
         # self._add_methods()
+
+    @property
+    def par_steps(self):
+        data = {name: value["values"] for name, value in self.parameter.items()}
+        data.update({"step_length": self.step_lengths})
+        return pd.DataFrame(data, index=list(range(len(self))))
 
     def nansum(self, *args, **kwargs):
         return [step.nansum(*args, **kwargs) for step in self]
@@ -1249,6 +1304,180 @@ class ArrayH5Dataset:
 
     def create_array(self):
         return Array(data=self.get_data_da(), index=self.index)
+
+
+class ArrayH5File:
+    def __init__(self, file_name, parent_group_name="", name=None):
+        self.file_name = Path(file_name)
+        self.parent_group_name = parent_group_name
+        self.name = name
+
+    @property
+    def group_name(self):
+        return (Path(self.parent_group_name) / Path(self.name)).as_posix()
+
+    def require_group(self):
+        with h5py.File(self.file_name, "a") as f:
+            f[self.parent_group_name].require_group(self.name)
+
+    def update_dataset_status(self):
+        # self.grp = parent.require_group(name)
+        self._data_finder = re.compile("^data_[0-9]{4}$")
+        self._index_finder = re.compile("^index_[0-9]{4}$")
+        self._n_d = []
+        self._n_i = []
+        with h5py.File(self.file_name, "r") as f:
+            keys = f[self.group_name].keys()
+        for key in keys:
+            if self._data_finder.match(key):
+                self._n_d.append(int(key[-4:]))
+            if self._index_finder.match(key):
+                self._n_i.append(int(key[-4:]))
+        self._n_d.sort()
+        self._n_i.sort()
+        if not self._n_d == self._n_i:
+            raise Exception(
+                "Corrupt escape ArrayH5Dataset, not equally sized data and index sub-datasets!"
+            )
+
+    @property
+    def index(self):
+        if self._n_i:
+            with h5py.File(self.file_name, "r") as f:
+                return np.concatenate(
+                    [
+                        np.asarray(f[self.group_name][f"index_{n:04d}"][:])
+                        for n in self._n_i
+                    ],
+                    axis=0,
+                )
+        else:
+            return np.asarray([], dtype=int)
+
+    def append(self, data, event_ids, scan=None, prep_run=False):
+        """
+        expects to extend a former dataset, i.e. data includes data already existing,
+        this will likely change in future to also allow real appending of entirely new data."""
+        n_new = len(self._n_i)
+        ids_stored = self.index
+        in_previous_indexes = np.in1d(event_ids, ids_stored)
+        if ~in_previous_indexes.any():
+            # real appending data
+            new_event_ids = event_ids
+            new_data = data
+        elif in_previous_indexes.all():
+            # real extending of data
+
+            if len(event_ids) < len(ids_stored):
+                raise Exception("fewer event_ids to append than already stored!")
+            if not (event_ids[: len(ids_stored)] == ids_stored).all():
+                raise Exception("new event_ids don't extend existing ones!")
+            if len(event_ids) == len(ids_stored):
+                print("Nothing new to append.")
+                return
+
+            new_event_ids = event_ids[len(ids_stored) :]
+            new_data = data[len(ids_stored) :, ...]
+
+        with h5py.File(self.file_name, "a") as f:
+            f[self.group_name + f"/index_{n_new:04d}"] = new_event_ids
+
+        if isinstance(data, np.ndarray):
+            if prep_run:
+                if prep_run == "store_numpy":
+                    pass
+                else:
+                    raise Exception(
+                        "Trying dry_run on numpy array data on {self.grp.name}."
+                    )
+            with h5py.File(self.file_name, "a") as f:
+                f[self.group_name + f"/data_{n_new:04d}"] = new_data
+        elif isinstance(data, da.Array):
+            # ToDo, smarter chunking when writing small data
+            new_chunks = tuple(c[0] for c in new_data.chunks)
+            location = {
+                "file_name": self.file_name,
+                "dataset_name": (self.group_name / f"data_{n_new:04d}").as_posix(),
+            }
+            if prep_run:
+                return new_data, location, n_new
+            else:
+                data.to_hdf5(self.file_name, location["dataset_name"])
+        if scan:
+            scan._save_to_h5(self.grp)
+        self._n_i.append(n_new)
+        self._n_d.append(n_new)
+
+    def get_data_da(self, memlimit_MB=50):
+        allarrays = []
+        for n in self._n_i:
+            ds_name = self.group_name + f"/data_{n:04d}"
+            tda = self.h5store_to_da(
+                h5store=self.analyze_h5_dataset(ds_name, memlimit_MB=memlimit_MB)
+            )
+            allarrays.append(tda)
+
+        return da.concatenate(allarrays)
+
+    def create_array(self):
+        return Array(data=self.get_data_da(), index=self.index)
+
+    @dask.delayed
+    def analyze_h5_dataset(self, dataset_path, memlimit_MB=100):
+        """Data parser assuming the standard swissfel h5 format for raw data"""
+        with h5py.File(self.file_name, mode="r") as fh:
+            ds_data = fh[dataset_path]
+            if memlimit_MB:
+                dtype = np.dtype(ds_data.dtype)
+                size_element = (
+                    np.dtype(ds_data.dtype).itemsize
+                    * np.prod(ds_data.shape[1:])
+                    / 1024 ** 2
+                )
+                chunk_length = int(memlimit_MB // size_element)
+                dset_size = ds_data.shape
+
+                chunk_shapes = []
+                slices = []
+                for chunk_start in range(0, dset_size[0], chunk_length):
+                    slice_0dim = [
+                        chunk_start,
+                        min(chunk_start + chunk_length, dset_size[0]),
+                    ]
+                    chunk_shape = list(dset_size)
+                    chunk_shape[0] = slice_0dim[1] - slice_0dim[0]
+                    slices.append(slice_0dim)
+                    chunk_shapes.append(chunk_shape)
+
+            h5store = {
+                "file_path": self.file_name,
+                "dataset_name": ds_data.name,
+                "dataset_shape": ds_data.shape,
+                "dataset_dtype": dtype,
+                "dataset_chunks": {"slices": slices, "shapes": chunk_shapes},
+            }
+        return h5store
+
+    @dask.delayed
+    def read_h5_chunk(self, ds_path, slice_args):
+        with h5py.File(self.file_name, "r") as fh:
+            dat = fh[ds_path][slice(*slice_args)]
+        return dat
+
+    def h5store_to_da(self, h5store):
+        fina = Path(h5store["file_path"])
+        arrays = [
+            dask.array.from_delayed(
+                self.read_h5_chunk(fina, tslice),
+                tshape,
+                dtype=h5store["dataset_dtype"],
+            )
+            for tslice, tshape in zip(
+                h5store["dataset_chunks"]["slices"], h5store["dataset_chunks"]["shapes"]
+            )
+        ]
+        data = dask.array.concatenate(arrays, axis=0)
+        return data
 
 
 # if 'data' in grp.keys():

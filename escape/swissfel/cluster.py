@@ -3,12 +3,14 @@ import pathlib
 from pathlib import Path
 
 from dask.array.routines import shape
+import distributed
 from ..parse import utilities
 import h5py
 from dask import array as da
 from dask import bag as db
-from dask.diagnostics import ProgressBar
+from distributed import progress
 from dask import delayed
+from dask.diagnostics import ProgressBar
 import dask
 
 from .. import Array, Scan
@@ -34,9 +36,12 @@ logger = logging.getLogger(__name__)
 
 
 class SwissFelCluster:
-    def __init__(self, cores=8, memory="24 GB", workers=5):
-        self.cluster = SLURMCluster(cores=cores, memory=memory)
-        self.client = Client(self.cluster)
+    def __init__(self, local=True, cores=8, memory="24 GB", workers=5):
+        if local:
+            self.client = distributed.Client()
+        else:
+            self.cluster = SLURMCluster(cores=cores, memory=memory)
+            self.client = Client(self.cluster)
         self.ip = socket.gethostbyname(socket.gethostname())
         self.dashboard_port_scheduler = self.client._scheduler_identity.get("services")[
             "dashboard"
@@ -86,9 +91,6 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
         logger.info("Successfully parsed file %s" % fina.resolve())
         dstores = {}
         for name, (ds_data, ds_index) in datasets.items():
-            print(
-                f"Shapes data and index datasets found:   {ds_data.shape}, {ds_index.shape}"
-            )
 
             if ds_data.size == 0:
                 logger.debug("Found empty dataset in {}".format(name))
@@ -192,6 +194,7 @@ def parseScanEcoV01(
     scan_info=None,
     scan_info_filepath=None,
     exclude_from_files=[],
+    checknstore_parsing_result=False,
 ):
 
     if file_name_json:
@@ -202,6 +205,29 @@ def parseScanEcoV01(
     else:
         s = scan_info
     # breakpoint()
+
+    if checknstore_parsing_result:
+        if checknstore_parsing_result == "same_directory":
+            parse_res_file = scan_info_filepath.parent.resolve() / Path(
+                scan_info_filepath.stem + "_parse_result.json"
+            )
+        elif checknstore_parsing_result == "work_directory":
+            tp = scan_info_filepath.parent.resolve()
+            while tp.stem not in ["res", "raw", "work"]:
+                tp = tp.parent
+            parse_res_file = (
+                tp
+                / Path("scan_info")
+                / Path(scan_info_filepath.stem + "_parse_result.json")
+            )
+
+            parse_res_file = scan_info_filepath.parent.resolve() / Path(
+                scan_info_filepath.stem + "_parse_result.json"
+            )
+            parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+    if checknstore_parsing_result:
+        with open(parse_res_file, "r") as fp:
+            chs = json.load(chs, fp)
 
     dstores = []
     for files_step in s["scan_files"]:
@@ -240,6 +266,10 @@ def parseScanEcoV01(
     chs = set()
     for dstore in dstores_flat:
         chs = chs.union(chs, set(list(dstore.keys())))
+
+    if checknstore_parsing_result:
+        with open(parse_res_file, "w") as fp:
+            json.dump(chs, fp)
 
     # general scan info
     parameter = {
