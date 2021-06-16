@@ -531,16 +531,19 @@ class Array:
     def hist(
         self,
         cut_percentage=0,
-        N_intervals=20,
+        bins='auto',
         normalize_to=None,
         scanpar_name=None,
         plot_results=True,
         plot_axis=None,
     ):
+        if self.is_dask_array():
+            raise Exception('escape array needs to be numpy type for histogramming, compute first.')
         [hmin, hmax] = np.percentile(
             self.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
-        hbins = np.linspace(hmin, hmax, N_intervals + 1)
+        hbins = np.histogram_bin_edges(self.data.ravel(),bins,range=[hmin,hmax])
+        # hbins = np.linspace(hmin, hmax, N_intervals + 1)
         hdat, bin_edges = np.histogram(self.data.ravel(), bins=hbins)
         if normalize_to == "max":
             hdat = hdat / hdat.max()
@@ -825,12 +828,14 @@ class Scan:
     def hist(
         self,
         cut_percentage=0,
-        N_intervals=20,
+        bins='auto',
         normalize_to=None,
         scanpar_name=None,
         plot_results=True,
         plot_axis=None,
     ):
+        if self._array.is_dask_array():
+            raise Exception('escape array needs to be numpy type for histogramming, compute first.')
         if not scanpar_name:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
@@ -838,7 +843,9 @@ class Scan:
         [hmin, hmax] = np.percentile(
             self._array.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
-        hbins = np.linspace(hmin, hmax, N_intervals + 1)
+        # hbins = np.linspace(hmin, hmax, N_intervals + 1)
+        hbins = np.histogram_bin_edges(self._array.data.ravel(),bins,range=[hmin,hmax])
+
         hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in self]
         if normalize_to == "max":
             hdat = [td / td.max() for td in hdat]
