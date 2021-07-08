@@ -310,10 +310,10 @@ class Array:
     def T(self):
         return self.transpose()
 
-    def compute(self):
+    def compute(self, **kwargs):
         with ProgressBar():
             return Array(
-                data=self.data.compute(),
+                data=self.data.compute(**kwargs),
                 index=self.index,
                 step_lengths=self.scan.step_lengths,
                 parameter=self.scan.parameter,
@@ -336,7 +336,8 @@ class Array:
         event_dim="same",
         **kwargs,
     ):
-        """map a function which works for a chunk of the Array (events along index_dim). This is only really relevant for dask array array data."""
+        """map a function which works for a chunk of the Array
+        (events along index_dim). This is only really relevant for dask array array data."""
 
         # Getting chunks in the event dimension
         if event_dim == "same":
@@ -419,13 +420,13 @@ class Array:
                 index_dim=event_dim,
             )
 
-    def store(self, parent_h5py=None, name=None, unit=None, **kwargs):
+    def store(self, parent_h5py=None, name=None, unit=None, lock=True, **kwargs):
         """a way to store data, especially expensively computed data, into a new file."""
         if not hasattr(self, "h5"):
             self.h5 = ArrayH5Dataset(parent_h5py, name)
 
         with ProgressBar():
-            self.h5.append(self.data, self.index, self.scan)
+            self.h5.append(self.data, self.index, self.scan, lock=lock, **kwargs)
         self._data = self.h5.get_data_da()
         self._index = self.h5.index
         self.scan._save_to_h5(self.h5.grp)
@@ -440,10 +441,35 @@ class Array:
                 f"h5 storage already set at {self.h5.name} in {self.h5.file.filename}"
             )
 
+    def store_file(self, parent_h5py=None, name=None, unit=None, **kwargs):
+        """a way to store data, especially expensively computed data, into a new file."""
+        if not hasattr(self, "h5"):
+            self.h5 = ArrayH5Dataset(parent_h5py, name)
+
+        with ProgressBar():
+            self.h5.append(self.data, self.index, self.scan)
+        self._data = self.h5.get_data_da()
+        self._index = self.h5.index
+
+    def set_h5_storage_file(self, file_name, parent_group_name, name=None):
+        if not hasattr(self, "h5"):
+            if not name:
+                name = self.name
+            self.h5 = ArrayH5File(file_name, parent_group_name, name)
+        else:
+            logger.info(
+                f"h5 storage already set at {self.h5.name} in {self.h5.file_name}"
+            )
+
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
         h5 = ArrayH5Dataset(parent_h5py, name)
-        parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
+        try:
+            parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
+        except:
+            print("could not read scan metadata")
+            parameter = None
+            step_lengths = None
         return cls(
             index=h5.index,
             data=h5.get_data_da(),
@@ -531,18 +557,20 @@ class Array:
     def hist(
         self,
         cut_percentage=0,
-        bins='auto',
+        bins="auto",
         normalize_to=None,
         scanpar_name=None,
         plot_results=True,
         plot_axis=None,
     ):
         if self.is_dask_array():
-            raise Exception('escape array needs to be numpy type for histogramming, compute first.')
+            raise Exception(
+                "escape array needs to be numpy type for histogramming, compute first."
+            )
         [hmin, hmax] = np.percentile(
             self.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
-        hbins = np.histogram_bin_edges(self.data.ravel(),bins,range=[hmin,hmax])
+        hbins = np.histogram_bin_edges(self.data.ravel(), bins, range=[hmin, hmax])
         # hbins = np.linspace(hmin, hmax, N_intervals + 1)
         hdat, bin_edges = np.histogram(self.data.ravel(), bins=hbins)
         if normalize_to == "max":
@@ -828,14 +856,16 @@ class Scan:
     def hist(
         self,
         cut_percentage=0,
-        bins='auto',
+        bins="auto",
         normalize_to=None,
         scanpar_name=None,
         plot_results=True,
         plot_axis=None,
     ):
         if self._array.is_dask_array():
-            raise Exception('escape array needs to be numpy type for histogramming, compute first.')
+            raise Exception(
+                "escape array needs to be numpy type for histogramming, compute first."
+            )
         if not scanpar_name:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
@@ -844,7 +874,9 @@ class Scan:
             self._array.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
         # hbins = np.linspace(hmin, hmax, N_intervals + 1)
-        hbins = np.histogram_bin_edges(self._array.data.ravel(),bins,range=[hmin,hmax])
+        hbins = np.histogram_bin_edges(
+            self._array.data.ravel(), bins, range=[hmin, hmax]
+        )
 
         hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in self]
         if normalize_to == "max":
@@ -994,7 +1026,8 @@ weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
 
 
 def compute(*args):
-    """compute multiple escape arrays. Interesting when calculating multiple small arrays from the same ancestor dask based array"""
+    """compute multiple escape arrays. Interesting when calculating multiple small arrays
+    from the same ancestor dask based array"""
     with ProgressBar():
         res = da.compute(*[ta.data for ta in args])
     out = []
@@ -1011,7 +1044,7 @@ def compute(*args):
     return tuple(out)
 
 
-def store(arrays, **kwargs):
+def store(arrays, lock=True, **kwargs):
     """NOT TESTED!
     Storing of multiple escape arrays, efficient when they originate from the same ancestor"""
     prep = [
@@ -1020,7 +1053,7 @@ def store(arrays, **kwargs):
     ]
     ndatas, dsets, n_news = zip(*[tprep for tprep in prep if tprep])
     with ProgressBar():
-        da.store(ndatas, dsets)
+        da.store(ndatas, dsets, lock=lock, **kwargs)
     for array, n_new in zip(arrays, n_news):
         array.h5._n_i.append(n_new)
         array.h5._n_d.append(n_new)
@@ -1030,8 +1063,11 @@ def store(arrays, **kwargs):
 
 
 def concatenate(arraylist):
-    data = da.concatenate([array.data for array in arraylist], axis=0)
-    index = da.concatenate([array.index for array in arraylist])
+    if all([ta.is_dask_array() for ta in arraylist]):
+        data = da.concatenate([array.data for array in arraylist], axis=0)
+    else:
+        data = np.concatenate([array.data for array in arraylist], axis=0)
+    index = np.concatenate([array.index for array in arraylist])
     parameter = {}
     step_lengths = []
 
@@ -1165,7 +1201,8 @@ def digitize(
 
 
 def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
-    """general filter function for escape arrays. checking for 1D arrays, applies arbitrary number of
+    """general filter function for escape arrays. checking for 1D arrays, applies
+    arbitrary number of
     filter functions that take one argument as input and"""
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
@@ -1211,7 +1248,10 @@ def broadcast_to(ndarray_list, arraydef):
 class ArrayH5Dataset:
     def __init__(self, parent, name):
         self.parent = parent
-        self.grp = parent.require_group(name)
+        try:
+            self.grp = parent[name]
+        except:
+            self.grp = parent.require_group(name)
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._index_finder = re.compile("^index_[0-9]{4}$")
         self._n_d = []
@@ -1237,7 +1277,7 @@ class ArrayH5Dataset:
         else:
             return np.asarray([], dtype=int)
 
-    def append(self, data, event_ids, scan=None, prep_run=False):
+    def append(self, data, event_ids, scan=None, prep_run=False, lock=True, **kwargs):
         """
         expects to extend a former dataset, i.e. data includes data already existing,
         this will likely change in future to also allow real appending of entirely new data."""
@@ -1284,7 +1324,7 @@ class ArrayH5Dataset:
             )
             if prep_run:
                 return new_data, dset, n_new
-            da.store(new_data, dset)
+            da.store(new_data, dset, lock=lock, **kwargs)
         if scan:
             scan._save_to_h5(self.grp)
         self._n_i.append(n_new)
@@ -1318,6 +1358,8 @@ class ArrayH5File:
         self.file_name = Path(file_name)
         self.parent_group_name = parent_group_name
         self.name = name
+        self.require_group()
+        self.update_dataset_status()
 
     @property
     def group_name(self):
@@ -1335,11 +1377,11 @@ class ArrayH5File:
         self._n_i = []
         with h5py.File(self.file_name, "r") as f:
             keys = f[self.group_name].keys()
-        for key in keys:
-            if self._data_finder.match(key):
-                self._n_d.append(int(key[-4:]))
-            if self._index_finder.match(key):
-                self._n_i.append(int(key[-4:]))
+            for key in keys:
+                if self._data_finder.match(key):
+                    self._n_d.append(int(key[-4:]))
+                if self._index_finder.match(key):
+                    self._n_i.append(int(key[-4:]))
         self._n_d.sort()
         self._n_i.sort()
         if not self._n_d == self._n_i:
@@ -1404,14 +1446,15 @@ class ArrayH5File:
             new_chunks = tuple(c[0] for c in new_data.chunks)
             location = {
                 "file_name": self.file_name,
-                "dataset_name": (self.group_name / f"data_{n_new:04d}").as_posix(),
+                "dataset_name": self.group_name + f"/data_{n_new:04d}",
             }
             if prep_run:
                 return new_data, location, n_new
             else:
                 data.to_hdf5(self.file_name, location["dataset_name"])
         if scan:
-            scan._save_to_h5(self.grp)
+            with h5py.File(self.file_name, "a") as f:
+                scan._save_to_h5(f[self.group_name])
         self._n_i.append(n_new)
         self._n_d.append(n_new)
 
@@ -1419,9 +1462,8 @@ class ArrayH5File:
         allarrays = []
         for n in self._n_i:
             ds_name = self.group_name + f"/data_{n:04d}"
-            tda = self.h5store_to_da(
-                h5store=self.analyze_h5_dataset(ds_name, memlimit_MB=memlimit_MB)
-            )
+            h5store = self.analyze_h5_dataset(ds_name, memlimit_MB=memlimit_MB)
+            tda = self.h5store_to_da(h5store=h5store)
             allarrays.append(tda)
 
         return da.concatenate(allarrays)
@@ -1429,7 +1471,7 @@ class ArrayH5File:
     def create_array(self):
         return Array(data=self.get_data_da(), index=self.index)
 
-    @dask.delayed
+    # @dask.delayed
     def analyze_h5_dataset(self, dataset_path, memlimit_MB=100):
         """Data parser assuming the standard swissfel h5 format for raw data"""
         with h5py.File(self.file_name, mode="r") as fh:
@@ -1472,10 +1514,9 @@ class ArrayH5File:
         return dat
 
     def h5store_to_da(self, h5store):
-        fina = Path(h5store["file_path"])
         arrays = [
             dask.array.from_delayed(
-                self.read_h5_chunk(fina, tslice),
+                self.read_h5_chunk(h5store["dataset_name"], tslice),
                 tshape,
                 dtype=h5store["dataset_dtype"],
             )

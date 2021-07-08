@@ -252,7 +252,7 @@ def parseScanEcoV01(
             dstores_step.append(parse_bs_h5_file(file_path))
         dstores.append(dstores_step)
     with ProgressBar():
-        dstores = dask.compute(dstores)[0]
+        dstores = dask.compute(dstores, scheduler="processes")[0]
 
     # flatten files in step
     dstores_flat = []
