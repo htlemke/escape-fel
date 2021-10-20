@@ -1,6 +1,5 @@
 import numpy as np
 import dask
-from dask.dataframe.core import DataFrame
 from dask import array as da
 from dask import dataframe as ddf
 from dask.diagnostics import ProgressBar
@@ -9,7 +8,6 @@ from ..utilities import hist_asciicontrast, Hist_ascii
 import logging
 from itertools import chain
 from numbers import Number
-from functools import partial
 import re
 from .. import utilities
 import h5py
@@ -88,6 +86,11 @@ class Array:
 
         self.scan = Scan(parameter, step_lengths, self)
         self.name = name
+        self._touched = False
+
+    def _touch(self):
+        if not self._touched:
+            dum = self.index
 
     @property
     def index(self):
@@ -105,6 +108,7 @@ class Array:
 
     @property
     def data(self):
+        self._touch()
         # TODO: try getting the properties outside of storage in the
         # specific parser section
         if callable(self._data):
@@ -203,6 +207,7 @@ class Array:
         pass
 
     def __len__(self):
+        self._touch()
         return len(self.index)
 
     def __getitem__(self, *args, **kwargs):
@@ -284,6 +289,7 @@ class Array:
 
     @property
     def shape(self, *args, **kwargs):
+        self._touch()
         return self.data.shape
 
     @property
@@ -519,6 +525,19 @@ class Array:
             )
         else:
             return Array(data=self.index, index=self.index)
+
+    def correct_for_references(
+        self, isref_bool, N_index_aggregation=None, operation=operator.truediv
+    ):
+        refs = self[isref_bool]
+        noref = self[~isref_bool]
+        indxs = self.get_index_array(N_index_aggregation=N_index_aggregation)
+        indxs = indxs[[slice(None), *([None] * (self.ndim - 1))]]
+
+        return concatenate(
+            operation(tanr, tar)
+            for tanr, tar in zip(indsrt * noref, (indxs * ref).scan.mean(axis=0))
+        )
 
     def plot_corr(
         self,
