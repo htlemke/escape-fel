@@ -618,6 +618,20 @@ class Array:
             s += self.scan.__repr__()
         return s
 
+    # def _repr_html_(self):
+    #     s = "<%s.%s object at %s>" % (
+    #         self.__class__.__module__,
+    #         self.__class__.__name__,
+    #         hex(id(self)),
+    #     )
+    #     s += " {}; shape {}".format(self.name, self.shape)
+    #     s += "\n"
+    #     if isinstance(self.data, np.ndarray):
+    #         s += self._get_ana_str()
+    #     if self.scan:
+    #         s += self.scan.__repr__()
+    #     return s
+
 
 def load_from_h5_file(file_name, name, parent_group_name=""):
     h5 = ArrayH5File(
@@ -722,6 +736,138 @@ def escaped(func, convertOutput2EscData="auto"):
     return wrapped
 
 
+def scan_escaped(func):
+    def wrapped(*args, **kwargs):
+        args = [ta for ta in args]
+        kwargs = {tk: tv for tk, tv in kwargs.items()}
+        argsIsEsc = [(n, arg) for n, arg in enumerate(args) if isinstance(arg, Scan)]
+        kwargsIsEsc = {
+            key: kwarg for key, kwarg in kwargs.items() if isinstance(kwarg, Scan)
+        }
+        allEscs = [a for n, a in argsIsEsc]
+        allEscs.extend(kwargsIsEsc.values())
+
+        scan_lens = []
+        for tscan in allEscs:
+            scan_lens.append(len(tscan))
+        if not np.unique(scan_lens):
+            raise Exception(
+                "Scan instances do not have same length, bring them on the same scan parameter set, e.g. using the digitize method!"
+            )
+        scan_len = scan_lens[0]
+        args_same_len = []
+        for ta in args:
+            try:
+                tlen = len(ta)
+            except TypeError:
+                continue
+            if tlen == scan_len:
+                args_same_len.append(ta)
+        kwargs_same_len = {}
+        for tn, ta in kwargs.items():
+            try:
+                tlen = len(ta)
+            except TypeError:
+                continue
+            if tlen == scan_len:
+                kwargs_same_len[tn] = ta
+        res = []
+        for i_step in range(scan_len):
+            targs = []
+            for ta in args:
+                if id(ta) in [id(tmp) for tmp in args_same_len]:
+                    targs.append(ta[i_step])
+                else:
+                    targs.append(ta)
+            tkwargs = {}
+            for tn, ta in kwargs.items():
+                if id(ta) in [id(tmp) for tmp in kwargs_same_len.values()]:
+                    tkwargs[tn] = ta[i_step]
+                else:
+                    tkwargs[tn] = ta
+            tres = func(*targs, **tkwargs)
+            if not isinstance(tres, tuple):
+                tres = (tres,)
+            res.append(tres)
+        fres = []
+        for tres in zip(*res):
+            if isinstance(tres[0], Array):
+                fres.append(concatenate(list(tres)))
+            else:
+                fres.append(tres)
+
+        if len(fres) > 1:
+            return tuple(fres)
+        else:
+            return fres[0]
+
+    return wrapped
+
+    # if escSorter is "first":
+    # if len(allEscs) > 0:
+    # sorter = allEscs[0]
+    # else:
+    # sorter = None
+    # print(
+    # "Did not find any Array instance \
+    # in input parameters!"
+    # )
+    # else:
+    # sorter = escSorter
+    # if not sorter is None:
+    # ixsorter = allEscs.index(sorter)
+    # allEscs.pop(ixsorter)
+    # ixmaster, ixslaves, stepLengthsNew = match_indexes(
+    # sorter.index, [t.index for t in allEscs]
+    # )
+    # ixslaves.insert(ixsorter, ixmaster)
+    # ids_res = sorter.index[ixmaster]
+    # for n, arg in argsIsEsc:
+    # args.pop(n)
+    # args.insert(n, arg.data[ixslaves.pop(0)])
+    # for key, kwarg in kwargsIsEsc.items():
+    # kwargs.pop(key)
+    # kwargs[key] = kwarg.data[ixslaves.pop(0)]
+    # output = func(*args, **kwargs)
+    # if not type(output) is tuple:
+    # output = (output,)
+    # output = list(output)
+    # if convertOutput2EscData:
+    # stepLengths, scan = get_scan_step_selections(
+    # ixmaster, sorter.scan.step_lengths, scan=sorter.scan
+    # )
+    # if convertOutput2EscData == "auto":
+    # convertOutput2EscData = []
+    # for i, toutput in enumerate(output):
+    # try:
+    # lentoutput = len(toutput)
+    # if len(ids_res) == len(toutput):
+    # convertOutput2EscData.append(i)
+    # except TypeError:
+    # pass
+
+    # for n in convertOutput2EscData:
+    # toutput = output.pop(n)
+    # output.insert(
+    # n,
+    # Array(
+    # data=toutput,
+    # index=ids_res,
+    # step_lengths=stepLengths,
+    # parameter=scan.parameter,
+    # index_dim=0,
+    # ),
+    # )
+
+    # if len(output) == 1:
+    # output = output[0]
+    # elif len(output) == 0:
+    # output = None
+    # return output
+
+    # return wrapped
+
+
 def _scan_wrap(func, **default_kws):
     def wrapped(scan, **kwargs):
         default_kws.update(kwargs)
@@ -766,6 +912,7 @@ for opJoin, symbol in _operatorsJoin:
     setattr(
         Array, "__%s__" % opJoin.__name__, escaped(opJoin, convertOutput2EscData=[0])
     )
+
 
 for opSing, symbol in _operatorsSingle:
     setattr(
@@ -889,7 +1036,7 @@ class Scan:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
         x_scan = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
-        [hmin, hmax] = np.percentile(
+        [hmin, hmax] = np.nanpercentile(
             self._array.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
         # hbins = np.linspace(hmin, hmax, N_intervals + 1)
@@ -1020,6 +1167,47 @@ class Scan:
         s += "\n"
         s += "Parameters {}".format(", ".join(self.parameter.keys()))
         return s
+
+    # def __add__(self,other):
+    # return scan_escaped(operator.add)(self,other)
+
+
+_operatorsJoin = [
+    (operator.add, "+"),
+    (operator.truediv, "/"),
+    (operator.floordiv, "//"),
+    (operator.and_, "&"),
+    (operator.xor, "^"),
+    (operator.or_, "|"),
+    (operator.pow, "**"),
+    (operator.is_, "is"),
+    (operator.is_not, "is not"),
+    (operator.lshift, "<<"),
+    (operator.mod, "%"),
+    (operator.mul, "*"),
+    (operator.rshift, ">>"),
+    (operator.sub, "-"),
+    (operator.lt, "<"),
+    (operator.le, "<="),
+    (operator.ne, "!="),
+    (operator.ge, ">="),
+    (operator.gt, ">"),
+    # (operator.contains, "in"),
+    # (operator.eq, "=="),
+]
+
+
+_operatorsSingle = [
+    (operator.invert, "~"),
+    (operator.neg, "-"),
+    (operator.not_, "not"),
+    (operator.pos, "pos"),
+]
+for opJoin, symbol in _operatorsJoin:
+    setattr(Scan, "__%s__" % opJoin.__name__, scan_escaped(opJoin))
+
+for opSing, symbol in _operatorsSingle:
+    setattr(Scan, "__%s__" % opSing.__name__, scan_escaped(opSing))
 
 
 def to_dataframe(*args):

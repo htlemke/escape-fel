@@ -6,10 +6,24 @@ class EventHandler_SFEL:
     code into a standardized object with well-defined methods for
     initialisation and reading."""
 
-    def __init__(self,source_default_keys=dict(host="localhost", port=9999, config_port=None, conn_type='connect', mode=None, queue_size=100,
-                 copy=True, config_address=None, all_channels=False, receive_timeout=None,
-                 dispatcher_url='https://dispatcher-api.psi.ch/sf', dispatcher_verify_request=True,
-                 dispatcher_disble_compression=False)):
+    def __init__(
+        self,
+        source_default_keys=dict(
+            host="localhost",
+            port=9999,
+            config_port=None,
+            conn_type="connect",
+            mode=None,
+            queue_size=100,
+            copy=True,
+            config_address=None,
+            all_channels=False,
+            receive_timeout=None,
+            dispatcher_url="https://dispatcher-api.psi.ch/sf",
+            dispatcher_verify_request=True,
+            dispatcher_disble_compression=False,
+        ),
+    ):
         self.source_default_keys = source_default_keys
         self.source = None
         self.source_ids = []
@@ -21,29 +35,29 @@ class EventHandler_SFEL:
 
     def register_source(self, source_id):
         """method to register sources to be read in the loop iterator"""
-        
+
         if not (source_id in self.source_ids):
             self.source_ids.append(source_id)
 
         kwargs = self.source_default_keys.copy()
-        kwargs['channels'] = self.source_ids    
+        kwargs["channels"] = self.source_ids
 
         if self.source:
             self.source.disconnect()
-        
+
         self.source = Source(**kwargs)
 
     def remove_source(self, source_id):
         """method to remove sources from the loop iterator"""
-        
+
         self.source_ids.pop(self.source_ids.index(source_id))
 
         kwargs = self.source_default_keys.copy()
-        kwargs['channels'] = self.source_ids    
+        kwargs["channels"] = self.source_ids
 
         if self.source:
             self.source.disconnect()
-        
+
         self.source = Source(**kwargs)
 
     def create_event_generator(self):

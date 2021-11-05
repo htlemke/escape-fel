@@ -363,7 +363,7 @@ class ProcSource:
 
 
 class FileSource:
-    """ Place holder for a file source with an indexed file,
+    """Place holder for a file source with an indexed file,
     i.e. the functionality of ixppy"""
 
     pass

@@ -117,13 +117,13 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
                 chunk_shapes.append(chunk_shape)
 
             dstores[name] = {
-                "file_path": fina.resolve(),
+                "file_path": fina.resolve().as_posix(),
                 "data_dsp": ds_data.name,
                 "data_shape": ds_data.shape,
-                "data_dtype": dtype,
+                "data_dtype": dtype.str,
                 "data_chunks": {"slices": slices, "shapes": chunk_shapes},
                 "index_dsp": ds_index.name,
-                "index_dtype": ds_index.dtype,
+                "index_dtype": ds_index.dtype.str,
                 "index_shape": ds_index.shape,
             }
             # dstores[name]["stepLengths"] = []
@@ -143,13 +143,13 @@ def dstore_to_darray(dstore):
     index = dask.array.from_delayed(
         read_h5_chunk(fina, dstore["index_dsp"], [None]),
         dstore["index_shape"],
-        dtype=dstore["index_dtype"],
+        dtype=np.dtype(dstore["index_dtype"]),
     )
     arrays = [
         dask.array.from_delayed(
             read_h5_chunk(fina, dstore["data_dsp"], tslice),
             tshape,
-            dtype=dstore["data_dtype"],
+            dtype=np.dtype(dstore["data_dtype"]),
         )
         for tslice, tshape in zip(
             dstore["data_chunks"]["slices"], dstore["data_chunks"]["shapes"]
@@ -215,9 +215,11 @@ def parseScanEcoV01(
             tp = scan_info_filepath.parent.resolve()
             while tp.stem not in ["res", "raw", "work"]:
                 tp = tp.parent
+            tp = tp.parent
+
             parse_res_file = (
                 tp
-                / Path("scan_info")
+                / Path("work/scan_info")
                 / Path(scan_info_filepath.stem + "_parse_result.json")
             )
 
@@ -225,9 +227,16 @@ def parseScanEcoV01(
                 scan_info_filepath.stem + "_parse_result.json"
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
-    if checknstore_parsing_result:
+        else:
+            parse_res_file = (
+                Path(checknstore_parsing_result)
+                / Path(".escape_parse_result")
+                / Path(scan_info_filepath.stem + "_parse_result.json")
+            )
+            parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+    if checknstore_parsing_result and Path(parse_res_file).exists():
         with open(parse_res_file, "r") as fp:
-            chs = json.load(chs, fp)
+            chs = json.load(fp)
 
     dstores = []
     for files_step in s["scan_files"]:
@@ -253,7 +262,6 @@ def parseScanEcoV01(
         dstores.append(dstores_step)
     with ProgressBar():
         dstores = dask.compute(dstores, scheduler="processes")[0]
-
     # flatten files in step
     dstores_flat = []
     for dstore in dstores:
