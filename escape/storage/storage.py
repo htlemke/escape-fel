@@ -287,6 +287,11 @@ class Array:
             index_dim=self.index_dim,
         )
 
+    def get_random_events(self, n, seed=None):
+        np.random.seed(seed)
+        inds = np.random.randint(0, len(self), size=(n,))
+        return self[list(inds)]
+
     @property
     def shape(self, *args, **kwargs):
         self._touch()

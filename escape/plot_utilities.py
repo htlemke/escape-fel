@@ -18,6 +18,7 @@ class GinputNB:
         if plotspec:
             self.line = plt.plot(self.x, self.y, plotspec)[0]
         self.collecting = Npts
+        return self
 
     def onclick(self, event):
         if self.collecting == 0:

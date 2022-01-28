@@ -1,4 +1,4 @@
-from jungfrau_utils.corrections import apply_gain_pede_numba
+# from jungfrau_utils.corrections import apply_gain_pede_numba
 from jungfrau_utils.data_handler import JFDataHandler
 import h5py
 from ..storage.storage import ArraySelector
@@ -50,6 +50,7 @@ def jf_correct(
     dark_file=None,
     mask=None,
     module_map=None,
+    double_pixels="interp",
     **kwargs
 ):
     h = JFDataHandler(jf_id)
@@ -63,7 +64,14 @@ def jf_correct(
     def proc_and_mask(*args, **kwargs):
         o = h.process(*args, **kwargs)
         o[
-            np.broadcast_to(h.get_pixel_mask(cor_tile_gaps, cor_geometry), o.shape)
+            ~np.broadcast_to(
+                h.get_pixel_mask(
+                    gap_pixels=cor_tile_gaps,
+                    double_pixels=double_pixels,
+                    geometry=cor_geometry,
+                ),
+                o.shape,
+            )
         ] = np.nan
         return o
 
@@ -74,7 +82,9 @@ def jf_correct(
         geometry=cor_geometry,
         mask=cor_mask,
         parallel=comp_parallel,
-        new_element_size=h.get_shape_out(cor_tile_gaps, cor_geometry),
+        new_element_size=h.get_shape_out(
+            gap_pixels=cor_tile_gaps, geometry=cor_geometry
+        ),
         dtype=float,
         **kwargs
     )
