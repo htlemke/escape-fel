@@ -86,6 +86,11 @@ def edges_to_center(edges):
     centers = edges[:-1] + np.diff(edges)
     return centers
 
+def center_to_edges(centers):
+    centers = np.asarray(centers)
+    df = np.diff(centers)
+    edges = centers + np.hstack([centers[:1],np.diff(centers)])
+    return edges 
 
 def hist_scan(
     data,
