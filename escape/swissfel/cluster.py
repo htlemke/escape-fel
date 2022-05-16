@@ -24,7 +24,10 @@ with warnings.catch_warnings():
     from tqdm.autonotebook import tqdm
 from threading import Thread
 from time import sleep
-import bitshuffle.h5
+try:
+    import bitshuffle.h5
+except:
+    print('Could not import bitshuffle.h5!')
 from dask_jobqueue import SLURMCluster
 from distributed import Client
 import socket
@@ -86,49 +89,52 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
     # if (type(files) is str) or (not np.iterable(files)):
     #     files = [files]
     fina = Path(fina)
-    with h5py.File(fina.resolve(), mode="r") as fh:
-        datasets = utilities.findItemnamesGroups(fh, ["data", "pulse_id"])
-        logger.info("Successfully parsed file %s" % fina.resolve())
-        dstores = {}
-        for name, (ds_data, ds_index) in datasets.items():
+    try:
+        with h5py.File(fina.resolve(), mode="r") as fh:
+            datasets = utilities.findItemnamesGroups(fh, ["data", "pulse_id"])
+            logger.info("Successfully parsed file %s" % fina.resolve())
+            dstores = {}
+            for name, (ds_data, ds_index) in datasets.items():
 
-            if ds_data.size == 0:
-                logger.debug("Found empty dataset in {}".format(name))
-                continue
-            # data first
-            dtype = np.dtype(ds_data.dtype)
-            size_element = (
-                np.dtype(ds_data.dtype).itemsize
-                * np.prod(ds_data.shape[1:])
-                / 1024 ** 2
-            )
-            chunk_length = int(memlimit_MB // size_element)
-            dset_size = ds_data.shape
-            chunk_shapes = []
-            slices = []
-            for chunk_start in range(0, dset_size[0], chunk_length):
-                slice_0dim = [
-                    chunk_start,
-                    min(chunk_start + chunk_length, dset_size[0]),
-                ]
-                chunk_shape = list(dset_size)
-                chunk_shape[0] = slice_0dim[1] - slice_0dim[0]
-                slices.append(slice_0dim)
-                chunk_shapes.append(chunk_shape)
+                if ds_data.size == 0:
+                    logger.debug("Found empty dataset in {}".format(name))
+                    continue
+                # data first
+                dtype = np.dtype(ds_data.dtype)
+                size_element = (
+                    np.dtype(ds_data.dtype).itemsize
+                    * np.prod(ds_data.shape[1:])
+                    / 1024 ** 2
+                )
+                chunk_length = int(memlimit_MB // size_element)
+                dset_size = ds_data.shape
+                chunk_shapes = []
+                slices = []
+                for chunk_start in range(0, dset_size[0], chunk_length):
+                    slice_0dim = [
+                        chunk_start,
+                        min(chunk_start + chunk_length, dset_size[0]),
+                    ]
+                    chunk_shape = list(dset_size)
+                    chunk_shape[0] = slice_0dim[1] - slice_0dim[0]
+                    slices.append(slice_0dim)
+                    chunk_shapes.append(chunk_shape)
 
-            dstores[name] = {
-                "file_path": fina.resolve().as_posix(),
-                "data_dsp": ds_data.name,
-                "data_shape": ds_data.shape,
-                "data_dtype": dtype.str,
-                "data_chunks": {"slices": slices, "shapes": chunk_shapes},
-                "index_dsp": ds_index.name,
-                "index_dtype": ds_index.dtype.str,
-                "index_shape": ds_index.shape,
-            }
-            # dstores[name]["stepLengths"] = []
-            # dstores[name]["stepLengths"].append(len(datasets[name][0]))
-    return dstores
+                dstores[name] = {
+                    "file_path": fina.resolve().as_posix(),
+                    "data_dsp": ds_data.name,
+                    "data_shape": ds_data.shape,
+                    "data_dtype": dtype.str,
+                    "data_chunks": {"slices": slices, "shapes": chunk_shapes},
+                    "index_dsp": ds_index.name,
+                    "index_dtype": ds_index.dtype.str,
+                    "index_shape": ds_index.shape,
+                }
+                # dstores[name]["stepLengths"] = []
+                # dstores[name]["stepLengths"].append(len(datasets[name][0]))
+        return dstores
+    except:
+        return {}
 
 
 @delayed

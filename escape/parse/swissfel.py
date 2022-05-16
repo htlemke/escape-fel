@@ -17,7 +17,10 @@ with warnings.catch_warnings():
     from tqdm.autonotebook import tqdm
 from threading import Thread
 from time import sleep
-import bitshuffle.h5
+try:
+    import bitshuffle.h5
+except:
+    print('Could not import bitshuffle.h5!')
 
 logger = logging.getLogger(__name__)
 

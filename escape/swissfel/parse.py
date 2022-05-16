@@ -6,7 +6,10 @@ import pathlib
 import warnings
 import logging
 from copy import deepcopy as copy
-import bitshuffle.h5
+try:
+    import bitshuffle.h5
+except:
+    print('Could not import bitshuffle.h5!')
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -85,7 +88,7 @@ def load_dataset_from_scan(
             for ta in s["scan_parameters"]["namespace_aliases"]
             if ta["channeltype"] in ["BS", "BSCAM", "JF"]
         }
-        print(alias_mappings)
+        # print(alias_mappings)
 
     if not result_file:
         if result_type == "h5":
@@ -130,7 +133,7 @@ class DataSet:
 
         if alias_mappings:
             for idname in self.data_raw.keys():
-                print(idname)
+                # print(idname)
                 if idname in alias_mappings.keys():
                     self.append(self.data_raw[idname], name=alias_mappings[idname])
 
