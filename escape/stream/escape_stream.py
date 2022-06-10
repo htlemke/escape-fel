@@ -8,6 +8,7 @@ high level objects that can get updated from live data.
 """
 from threading import Thread
 import time
+from tkinter import W
 from .es_wrappers import EventHandler_SFEL
 import numpy as np
 from . import tools
@@ -35,7 +36,7 @@ class TestStream:
         self.test_stream_running.start()
 
 
-test_stream = TestStream()
+# test_stream = TestStream()
 
 
 def initEscDataInstances():
@@ -185,6 +186,7 @@ class EscData:
             do_accumulate = not self._is_accumulating()
 
         if do_accumulate:
+            self._source.eventWorker.registerSource(self._source.name)
             self._source.eventWorker.eventCallbacks.append(self._appendEventData)
         else:
             try:
@@ -192,6 +194,7 @@ class EscData:
                 self._source.eventWorker.eventCallbacks.pop(i)
             except:
                 pass
+            self._source.eventWorker.removeSource(self._source.name)
 
     def _is_accumulating(self):
         return self._appendEventData in self._source.eventWorker.eventCallbacks
@@ -375,15 +378,24 @@ class EventWorker:
         self.eventCallbacks = []
         self.sources = []
         self.event = None
-        self.initSourceFunc = eventHandler.registerSource
-        self.eventGenerator = eventHandler.eventGenerator
+        self.initSourceFunc = eventHandler.register_source
+        self.removeSourceFunc = eventHandler.remove_source
+        self.eventGenerator = eventHandler.create_event_generator
+        self.get_event_source = eventHandler.context_manager
         self._lastTime = time.time()
         self.runningFrequency = 0.0
 
     def registerSource(self, sourceID):
+        self.stopEventLoop()
         self.initSourceFunc(sourceID)
+        self.startEventLoop()
 
-    def eventLoop(self):
+    def removeSource(self, sourceID):
+        self.stopEventLoop()
+        self.removeSourceFunc(sourceID)
+        self.startEventLoop()
+
+    def eventLoop_old(self):
         for event in self.eventGenerator():
             self.event = event
             ttime = time.time()
@@ -396,6 +408,17 @@ class EventWorker:
             if not self.running:
                 break
 
+    def eventLoop(self):
+        with self.get_event_source() as s:
+            while self.running:
+                self.event = s.get_event()
+                ttime = time.time()
+                self.runningFrequency = 1 / (ttime - self._lastTime)
+                self._lastTime = ttime
+                for ecb in self.eventCallbacks:
+                    ecb()
+                time.sleep(0.001)
+
     def startEventLoop(self):
         self.loopThread = Thread(target=self.eventLoop)
         self.loopThread.setDaemon(True)
@@ -404,6 +427,9 @@ class EventWorker:
 
     def stopEventLoop(self):
         self.running = False
+        if hasattr(self, "loopThread"):
+            while self.loopThread.isAlive():
+                time.sleep(0.02)
 
 
 class ProcObj:

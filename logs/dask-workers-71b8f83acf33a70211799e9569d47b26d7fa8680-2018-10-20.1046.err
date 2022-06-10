@@ -1,0 +1,1438 @@
+distributed.nanny - INFO -         Start Nanny at: 'tcp://129.129.222.115:43957'
+WARNING:bokeh.server.util:Host wildcard '*' will allow connections originating from multiple (or possibly all) hostnames or IPs. Use non-wildcard values to restrict access explicitly
+distributed.worker - INFO -       Start worker at: tcp://129.129.222.115:42344
+distributed.worker - INFO -          Listening to: tcp://129.129.222.115:42344
+distributed.worker - INFO -              nanny at:      129.129.222.115:43957
+distributed.worker - INFO -               http at:      129.129.222.115:43236
+distributed.worker - INFO -              bokeh at:       129.129.222.115:8789
+distributed.worker - INFO - Waiting to connect to: tcp://sf-cn-1.psi.ch:34628
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO -               Threads:                          1
+distributed.worker - INFO -                Memory:                    4.50 GB
+distributed.worker - INFO -       Local Directory: /photonics/home/lemke_h/mypy/escape-fel/slurmified_files/worker-qunn08jr
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO -         Registered to: tcp://sf-cn-1.psi.ch:34628
+distributed.worker - INFO - -------------------------------------------------
+distributed.core - WARNING - Event loop was unresponsive for 1.20s.  This is often caused by long-running GIL-holding functions or moving large chunks of data. This can cause timeouts and instability.
+distributed.worker - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - INFO - Can't find dependencies for key ('sum-aggregate-20c4c8e4cfb5fb3347d14a9083c9434e', 1350)
+distributed.utils - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/utils.py", line 449, in log_errors
+    yield
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - INFO - Can't find dependencies for key ('sum-aggregate-20c4c8e4cfb5fb3347d14a9083c9434e', 1152)
+distributed.utils - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/utils.py", line 449, in log_errors
+    yield
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.utils - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/utils.py", line 449, in log_errors
+    yield
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - INFO - Can't find dependencies for key ('sum-aggregate-20c4c8e4cfb5fb3347d14a9083c9434e', 0)
+distributed.utils - ERROR - can't pickle h5py.h5d.DatasetID objects
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/utils.py", line 449, in log_errors
+    yield
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - INFO - Dependent not found: ('getJF-sum-sum-aggregate-20c4c8e4cfb5fb3347d14a9083c9434e', 1350) 0 .  Asking scheduler
+tornado.application - ERROR - Exception in callback functools.partial(<function wrap.<locals>.null_wrapper at 0x7fe17da252f0>, <tornado.concurrent.Future object at 0x7fe17da6eef0>)
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 605, in _run_callback
+    ret = callback()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/stack_context.py", line 277, in null_wrapper
+    return fn(*args, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 626, in _discard_future_result
+    future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - INFO - Dependent not found: ('getJF-sum-sum-aggregate-20c4c8e4cfb5fb3347d14a9083c9434e', 1152) 0 .  Asking scheduler
+tornado.application - ERROR - Exception in callback functools.partial(<function wrap.<locals>.null_wrapper at 0x7fe17da5c268>, <tornado.concurrent.Future object at 0x7fe17da57b70>)
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 605, in _run_callback
+    ret = callback()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/stack_context.py", line 277, in null_wrapper
+    return fn(*args, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 626, in _discard_future_result
+    future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+tornado.application - ERROR - Exception in callback functools.partial(<function wrap.<locals>.null_wrapper at 0x7fe17da2a1e0>, <tornado.concurrent.Future object at 0x7fe17da68128>)
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 605, in _run_callback
+    ret = callback()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/stack_context.py", line 277, in null_wrapper
+    return fn(*args, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 626, in _discard_future_result
+    future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.worker - INFO - Dependent not found: ('getJF-sum-sum-aggregate-20c4c8e4cfb5fb3347d14a9083c9434e', 0) 0 .  Asking scheduler
+tornado.application - ERROR - Exception in callback functools.partial(<function wrap.<locals>.null_wrapper at 0x7fe17da2f0d0>, <tornado.concurrent.Future object at 0x7fe17da06860>)
+Traceback (most recent call last):
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 605, in _run_callback
+    ret = callback()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/stack_context.py", line 277, in null_wrapper
+    return fn(*args, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/ioloop.py", line 626, in _discard_future_result
+    future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 1666, in gather_dep
+    who=self.address)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 506, in send_recv_from_rpc
+    result = yield send_recv(comm=comm, op=key, **kwargs)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1069, in run
+    yielded = self.gen.send(value)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 354, in send_recv
+    six.reraise(*clean_exception(**response))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/six.py", line 685, in reraise
+    raise value.with_traceback(tb)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/core.py", line 277, in handle_comm
+    result = yield result
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/worker.py", line 476, in get_data
+    compressed = yield comm.write(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1063, in run
+    yielded = self.gen.throw(*exc_info)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/tcp.py", line 201, in write
+    frames = yield to_frames(msg)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 1055, in run
+    value = future.result()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/concurrent.py", line 238, in result
+    raise_exc_info(self._exc_info)
+  File "<string>", line 4, in raise_exc_info
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/tornado/gen.py", line 307, in wrapper
+    yielded = next(result)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 47, in to_frames
+    res = _to_frames()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/comm/utils.py", line 38, in _to_frames
+    return list(protocol.dumps(msg))
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 44, in dumps
+    for key, value in data.items()
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/core.py", line 45, in <dictcomp>
+    if type(value) is Serialize}
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/serialize.py", line 138, in serialize
+    header, frames = {}, [pickle.dumps(x)]
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/distributed/protocol/pickle.py", line 51, in dumps
+    return cloudpickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 900, in dumps
+    cp.dump(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 234, in dump
+    return Pickler.dump(self, obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 409, in dump
+    self.save(obj)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 768, in save_reduce
+    save(args)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 751, in save_tuple
+    save(element)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 852, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 521, in save
+    self.save_reduce(obj=obj, *rv)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/site-packages/cloudpickle/cloudpickle.py", line 786, in save_reduce
+    save(state)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 476, in save
+    f(self, obj) # Call unbound method with explicit self
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 821, in save_dict
+    self._batch_setitems(obj.items())
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 847, in _batch_setitems
+    save(v)
+  File "/gfa/.mounts/sf_bernina/anaconda/ahl/lib/python3.6/pickle.py", line 496, in save
+    rv = reduce(self.proto)
+TypeError: can't pickle h5py.h5d.DatasetID objects
+distributed.core - WARNING - Event loop was unresponsive for 2.06s.  This is often caused by long-running GIL-holding functions or moving large chunks of data. This can cause timeouts and instability.
+distributed.nanny - WARNING - Worker process 33549 was killed by unknown signal
+distributed.nanny - WARNING - Restarting worker
+WARNING:bokeh.server.util:Host wildcard '*' will allow connections originating from multiple (or possibly all) hostnames or IPs. Use non-wildcard values to restrict access explicitly
+distributed.worker - INFO -       Start worker at: tcp://129.129.222.115:35233
+distributed.worker - INFO -          Listening to: tcp://129.129.222.115:35233
+distributed.worker - INFO -              nanny at:      129.129.222.115:43957
+distributed.worker - INFO -               http at:      129.129.222.115:38622
+distributed.worker - INFO -              bokeh at:       129.129.222.115:8789
+distributed.worker - INFO - Waiting to connect to: tcp://sf-cn-1.psi.ch:34628
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO -               Threads:                          1
+distributed.worker - INFO -                Memory:                    4.50 GB
+distributed.worker - INFO -       Local Directory: /photonics/home/lemke_h/mypy/escape-fel/slurmified_files/worker-4313y90u
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO -         Registered to: tcp://sf-cn-1.psi.ch:34628
+distributed.worker - INFO - -------------------------------------------------
+slurmstepd: error: *** JOB 1046 ON sf-cn-15 CANCELLED AT 2018-10-21T20:34:00 DUE TO TIME LIMIT ***
+slurmstepd: error: Exceeded step memory limit at some point.
+slurmstepd: error: Exceeded job memory limit at some point.

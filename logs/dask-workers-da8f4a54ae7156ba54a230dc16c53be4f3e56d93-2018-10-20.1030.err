@@ -1,0 +1,19 @@
+distributed.nanny - INFO -         Start Nanny at: 'tcp://129.129.222.109:33955'
+WARNING:bokeh.server.util:Host wildcard '*' will allow connections originating from multiple (or possibly all) hostnames or IPs. Use non-wildcard values to restrict access explicitly
+distributed.worker - INFO -       Start worker at: tcp://129.129.222.109:45389
+distributed.worker - INFO -          Listening to: tcp://129.129.222.109:45389
+distributed.worker - INFO -              nanny at:      129.129.222.109:33955
+distributed.worker - INFO -               http at:      129.129.222.109:34624
+distributed.worker - INFO -              bokeh at:       129.129.222.109:8789
+distributed.worker - INFO - Waiting to connect to: tcp://sf-cn-1.psi.ch:45509
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO -               Threads:                          1
+distributed.worker - INFO -                Memory:                    4.50 GB
+distributed.worker - INFO -       Local Directory: /photonics/home/lemke_h/mypy/escape-fel/slurmified_files/worker-5zudmf6m
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO -         Registered to: tcp://sf-cn-1.psi.ch:45509
+distributed.worker - INFO - -------------------------------------------------
+distributed.worker - INFO - Stopping worker at tcp://129.129.222.109:45389
+distributed.worker - INFO - Close compute stream
+distributed.nanny - INFO - Closing Nanny at 'tcp://129.129.222.109:33955'
+slurmstepd: error: *** JOB 1030 ON sf-cn-9 CANCELLED AT 2018-10-20T20:33:24 ***

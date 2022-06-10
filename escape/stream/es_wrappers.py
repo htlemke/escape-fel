@@ -9,7 +9,7 @@ class EventHandler_SFEL:
     def __init__(
         self,
         source_default_keys=dict(
-            host="localhost",
+            host=None,
             port=9999,
             config_port=None,
             conn_type="connect",
@@ -21,7 +21,7 @@ class EventHandler_SFEL:
             receive_timeout=None,
             dispatcher_url="https://dispatcher-api.psi.ch/sf",
             dispatcher_verify_request=True,
-            dispatcher_disble_compression=False,
+            dispatcher_disable_compression=False,
         ),
     ):
         self.source_default_keys = source_default_keys
@@ -30,7 +30,7 @@ class EventHandler_SFEL:
 
     def get_all_source_ids(self):
         """Dummy method which should interface to some interface providing
-        availabe data seources (Detectors)."""
+        availabe data sources (Detectors)."""
         return dispatcher.get_current_channels()
 
     def register_source(self, source_id):
@@ -39,30 +39,25 @@ class EventHandler_SFEL:
         if not (source_id in self.source_ids):
             self.source_ids.append(source_id)
 
-        kwargs = self.source_default_keys.copy()
-        kwargs["channels"] = self.source_ids
-
-        if self.source:
-            self.source.disconnect()
-
-        self.source = Source(**kwargs)
-
     def remove_source(self, source_id):
         """method to remove sources from the loop iterator"""
 
         self.source_ids.pop(self.source_ids.index(source_id))
 
+    def context_manager(self):
         kwargs = self.source_default_keys.copy()
         kwargs["channels"] = self.source_ids
 
-        if self.source:
-            self.source.disconnect()
+        if not (len(kwargs["channels"]) == 0):
+            self.source = Source(**kwargs)
+            # self.source.connect()
 
-        self.source = Source(**kwargs)
+        return EventSource(self)
 
     def create_event_generator(self):
-        self.stream = self.source.connect()
-        return iter(EventGenerator_SFEL(self.stream))
+        self.source.connect()
+        # return iter(EventGenerator_SFEL(self.stream))
+        return iter(EventGenerator_SFEL(self.source))
 
     # def readStream(self,Nevents):
     # data = []
@@ -75,12 +70,27 @@ class EventHandler_SFEL:
     # def
 
 
+class EventSource(object):
+    def __init__(self, eventhandler):
+        self.eventhandler = eventhandler
+
+    def __enter__(self):
+        self.eventhandler.source.connect()
+        return self
+
+    def get_event(self):
+        return Event_SFEL(self.eventhandler.source.receive())
+
+    def __exit__(self, type, value, traceback):
+        self.eventhandler.source.disconnect()
+
+
 class Event_SFEL:
     def __init__(self, message):
         self.message = message
 
     def getFromSource(self, source):
-        if source is "labTime":
+        if source == "labTime":
             return (
                 self.message.data.global_timestamp
                 + 1e-9 * self.message.data.global_timestamp_offset
@@ -93,11 +103,11 @@ class Event_SFEL:
 
 
 class EventGenerator_SFEL:
-    def __init__(self, stream):
-        self.stream = stream
+    def __init__(self, source):
+        self.source = source
 
     def __next__(self):
-        return Event_SFEL(self.stream.receive())
+        return Event_SFEL(self.source.receive())
 
     def __iter__(self):
         return self
