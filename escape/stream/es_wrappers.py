@@ -50,6 +50,8 @@ class EventHandler_SFEL:
 
         if not (len(kwargs["channels"]) == 0):
             self.source = Source(**kwargs)
+        else:
+            self.source = None
             # self.source.connect()
 
         return EventSource(self)

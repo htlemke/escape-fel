@@ -409,15 +409,18 @@ class EventWorker:
                 break
 
     def eventLoop(self):
-        with self.get_event_source() as s:
-            while self.running:
-                self.event = s.get_event()
-                ttime = time.time()
-                self.runningFrequency = 1 / (ttime - self._lastTime)
-                self._lastTime = ttime
-                for ecb in self.eventCallbacks:
-                    ecb()
-                time.sleep(0.001)
+        try:
+            with self.get_event_source() as s:
+                while self.running:
+                    self.event = s.get_event()
+                    ttime = time.time()
+                    self.runningFrequency = 1 / (ttime - self._lastTime)
+                    self._lastTime = ttime
+                    for ecb in self.eventCallbacks:
+                        ecb()
+                    time.sleep(0.001)
+        except:
+            print('eventloop closing')
 
     def startEventLoop(self):
         self.loopThread = Thread(target=self.eventLoop)
