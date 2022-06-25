@@ -190,6 +190,11 @@ class Array:
             np.percentile, None, self, self.is_dask_array(), *args, **kwargs
         )
 
+    def quantile(self, *args, **kwargs):
+        return _apply_method(
+            np.quantile, None, self, self.is_dask_array(), *args, **kwargs
+        )
+
     def filter(self, *args, **kwargs):
         return filter(self, *args, **kwargs)
 
@@ -915,13 +920,17 @@ _operatorsSingle = [
 
 for opJoin, symbol in _operatorsJoin:
     setattr(
-        Array, "__%s__" % opJoin.__name__, escaped(opJoin, convertOutput2EscData=[0])
+        Array,
+        "__%s__" % opJoin.__name__.strip("_"),
+        escaped(opJoin, convertOutput2EscData=[0]),
     )
 
 
 for opSing, symbol in _operatorsSingle:
     setattr(
-        Array, "__%s__" % opSing.__name__, escaped(opSing, convertOutput2EscData=[0])
+        Array,
+        "__%s__" % opSing.__name__.strip("_"),
+        escaped(opSing, convertOutput2EscData=[0]),
     )
 
 
@@ -1209,10 +1218,10 @@ _operatorsSingle = [
     (operator.pos, "pos"),
 ]
 for opJoin, symbol in _operatorsJoin:
-    setattr(Scan, "__%s__" % opJoin.__name__, scan_escaped(opJoin))
+    setattr(Scan, "__%s__" % opJoin.__name__.strip("_"), scan_escaped(opJoin))
 
 for opSing, symbol in _operatorsSingle:
-    setattr(Scan, "__%s__" % opSing.__name__, scan_escaped(opSing))
+    setattr(Scan, "__%s__" % opSing.__name__.strip("_"), scan_escaped(opSing))
 
 
 def to_dataframe(*args):
@@ -1552,7 +1561,7 @@ class ArrayH5Dataset:
                 chunk_size = list(ds.shape)
             if chunk_size[0] == 1:
                 size_element = (
-                    np.dtype(ds.dtype).itemsize * np.prod(ds.shape[1:]) / 1024 ** 2
+                    np.dtype(ds.dtype).itemsize * np.prod(ds.shape[1:]) / 1024**2
                 )
 
                 chunk_size[0] = int(memlimit_MB // size_element)
@@ -1693,7 +1702,7 @@ class ArrayH5File:
                 size_element = (
                     np.dtype(ds_data.dtype).itemsize
                     * np.prod(ds_data.shape[1:])
-                    / 1024 ** 2
+                    / 1024**2
                 )
                 chunk_length = int(memlimit_MB // size_element)
                 dset_size = ds_data.shape

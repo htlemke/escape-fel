@@ -5,11 +5,13 @@ import json
 import pathlib
 import warnings
 import logging
+import escape
 from copy import deepcopy as copy
+
 try:
     import bitshuffle.h5
 except:
-    print('Could not import bitshuffle.h5!')
+    print("Could not import bitshuffle.h5!")
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -45,15 +47,19 @@ def dict2structure(t, base=None):
         tbase = base
         for tp in p[:-1]:
             if tp in tbase.__dict__.keys():
-                if type(tbase.__dict__[tp]) is not StructureGroup:
+                if not isinstance(tbase.__dict__[tp], StructureGroup):
                     tbase.__dict__[tp] = StructureGroup()
             else:
                 tbase.__dict__[tp] = StructureGroup()
 
             tbase = tbase.__dict__[tp]
-        try:
+        # try:
+        if hasattr(tbase, p[-1]):
+            if not isinstance(tbase.__dict__[p[-1]], StructureGroup):
+                tbase.__dict__[p[-1]] = tv
+        else:
             tbase.__dict__[p[-1]] = tv
-        except:
+            # except:
             ...
     return base
 
@@ -111,7 +117,13 @@ def load_dataset_from_scan(
     #     namespace_status  = s['scan_parameters']['namespace_status']
 
     ds = DataSet(d, name=name, alias_mappings=alias_mappings, results_file=result_file)
-
+    try:
+        # for name, data in s["scan_parameters"]["namespace_status"]["settings"].items():
+        #     ds.append(data, name)
+        for name, data in s["scan_parameters"]["namespace_status"]["status"].items():
+            ds.append(data, name)
+    except:
+        print("Did not succeed to append any namespace status!")
     return ds
 
 
@@ -148,9 +160,11 @@ class DataSet:
         # self.data = load_runno(runno)
 
     def append(self, data, name=None):
-        data.name = name
         self.datasets[name] = data
-        self.datasets[name].set_h5_storage(self.results_file, name)
+        if isinstance(data, escape.Array):
+            data.name = name
+            self.datasets[name].set_h5_storage(self.results_file, name)
+
         dict2structure({name: data}, base=self)
 
         # try:
