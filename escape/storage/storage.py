@@ -215,6 +215,9 @@ class Array:
         self._touch()
         return len(self.index)
 
+    def categorize(self, other_array):
+        return match_arrays(self, other_array)[1]
+
     def __getitem__(self, *args, **kwargs):
 
         # this is multi dimensional itemgetting
@@ -610,7 +613,7 @@ class Array:
         if plot_results:
             if not plot_axis:
                 plot_axis = plt.gca()
-            plt.step(hbins[:-1], hdat)
+            plt.step(hbins[:-1], hdat, where="post")
             plt.xlabel(self.name)
         return hdat, hbins
 
