@@ -345,6 +345,10 @@ class EventSource:
     def __init__(self, sourceId, eventWorker, unit="a.u."):
         self.name = sourceId
         self.unit = unit
+        if eventWorker is None:
+            if 'eventworker' in globals().keys():
+                eventWorker = globals()['eventworker']
+
         self.eventWorker = eventWorker
 
     def getEventData(self):
@@ -373,7 +377,7 @@ class FileSource:
 
 
 class EventWorker:
-    def __init__(self, eventHandler=EventHandler_SFEL()):
+    def __init__(self, eventHandler=EventHandler_SFEL(), make_default=True):
         self._eventHandler = eventHandler
         self.eventCallbacks = []
         self.sources = []
@@ -384,6 +388,8 @@ class EventWorker:
         self.get_event_source = eventHandler.context_manager
         self._lastTime = time.time()
         self.runningFrequency = 0.0
+        if make_default:
+            globals()['eventworker'] = self
 
     def registerSource(self, sourceID):
         self.stopEventLoop()
