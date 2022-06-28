@@ -249,7 +249,7 @@ class EscData:
         pervals = [50 - perc / 2.0, 50 + perc / 2.0]
         return [np.percentile(td, pervals, axis=0) for td in self.data]
 
-    def plotHist(self, update=0.5, axes=None):
+    def plot_hist(self, update=0.5, axes=None):
         self.accumulate(1)
         if axes is None:
             fig = plt.figure("%s histogram" % self.name)
@@ -259,7 +259,7 @@ class EscData:
         if update:
             self._histPlot.updateContinuously(interval=update)
 
-    def plotMed(self, update=0.5, axes=None):
+    def plot_med(self, update=0.5, axes=None):
         self.accumulate(1)
         if axes is None:
             fig = plt.figure("%s median" % self.name)
@@ -269,7 +269,7 @@ class EscData:
         if update:
             self._medPlot.updateContinuously(interval=update)
 
-    def plotCorr(self, xVar, Npoints=300, update=0.5, axes=None):
+    def plot_corr(self, xVar, Npoints=300, update=0.5, axes=None):
         self.accumulate(1)
         xVar.accumulate(1)
         if axes is None:
@@ -420,7 +420,7 @@ class EventWorker:
                         ecb()
                     time.sleep(0.001)
         except:
-            print('eventloop closing')
+            print("eventloop closing")
 
     def startEventLoop(self):
         self.loopThread = Thread(target=self.eventLoop)
