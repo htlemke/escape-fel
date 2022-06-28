@@ -346,8 +346,8 @@ class EventSource:
         self.name = sourceId
         self.unit = unit
         if eventWorker is None:
-            if 'eventworker' in globals().keys():
-                eventWorker = globals()['eventworker']
+            if "eventworker" in globals().keys():
+                eventWorker = globals()["eventworker"]
 
         self.eventWorker = eventWorker
 
@@ -389,7 +389,8 @@ class EventWorker:
         self._lastTime = time.time()
         self.runningFrequency = 0.0
         if make_default:
-            globals()['eventworker'] = self
+            globals()["eventworker"] = self
+            print("added eventworker")
 
     def registerSource(self, sourceID):
         self.stopEventLoop()
