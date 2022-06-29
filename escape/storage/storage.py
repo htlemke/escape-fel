@@ -657,7 +657,10 @@ class Array:
                 + self.data._repr_html_()
             )
         else:
-            return self.get_hist_plot()
+            return (
+                html.escape(self.__repr__()).replace("\n", "<br />\n")
+                + self.get_hist_plot()
+            )
 
     #     s = "<%s.%s object at %s>" % (
     #         self.__class__.__module__,
