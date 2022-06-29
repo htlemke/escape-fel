@@ -627,7 +627,7 @@ class Array:
         )
         s += " {}; shape {}".format(self.name, self.shape)
         s += "\n"
-        if bare:
+        if not bare:
             if isinstance(self.data, np.ndarray):
                 s += self._get_ana_str()
         if self.scan:
