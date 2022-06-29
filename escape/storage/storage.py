@@ -15,6 +15,7 @@ import h5py
 from matplotlib import pyplot as plt
 import pandas as pd
 from pathlib import Path
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -651,7 +652,10 @@ class Array:
 
     def _repr_html_(self):
         if self.is_dask_array():
-            return self.data._repr_html_()
+            return (
+                html.escape(self.__repr__()).replace("\n", "<br />\n")
+                + self.data._repr_html_()
+            )
         else:
             return self.get_hist_plot()
 
