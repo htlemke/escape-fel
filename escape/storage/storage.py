@@ -651,7 +651,7 @@ class Array:
 
     def _repr_html_(self):
         if self.is_dask_array():
-            return self.data._repr_html()
+            return self.data._repr_html_()
         else:
             return self.get_hist_plot()
 
