@@ -650,7 +650,10 @@ class Array:
         return svg
 
     def _repr_html_(self):
-        return self.get_hist_plot()
+        if self.is_dask_array():
+            return self.data._repr_html()
+        else:
+            return self.get_hist_plot()
 
     #     s = "<%s.%s object at %s>" % (
     #         self.__class__.__module__,
