@@ -1,3 +1,4 @@
+import io
 import numpy as np
 import dask
 from dask import array as da
@@ -631,7 +632,26 @@ class Array:
             s += self.scan.__repr__()
         return s
 
-    # def _repr_html_(self):
+    def get_hist_plot(self):
+        plt.ioff()
+        f = plt.figure(figsize=[5, 3])
+        ax = f.add_subplot(111)
+        # ax_steps = ax.twiny()
+        self.filter(*self.percentile([5, 95])).scan.hist(plot_axis=ax, cmap=plt.cm.Reds)
+        self.scan.plot(axis=ax, fmt="k")
+        # ax_steps.set_xlim(0, len(self.scan) - 1)
+        # ax_steps.set_xlabel("Step number")
+        f.tight_layout()
+        s = io.StringIO()
+        f.savefig(s, format="svg", bbox_inches="tight")
+        svg = s.getvalue()
+
+        plt.ion()
+        return svg
+
+    def _repr_html_(self):
+        return self.get_hist_plot()
+
     #     s = "<%s.%s object at %s>" % (
     #         self.__class__.__module__,
     #         self.__class__.__name__,
@@ -1044,6 +1064,7 @@ class Scan:
         scanpar_name=None,
         plot_results=True,
         plot_axis=None,
+        **kwargs,
     ):
         if self._array.is_dask_array():
             raise Exception(
@@ -1070,7 +1091,7 @@ class Scan:
         if plot_results:
             if not plot_axis:
                 plot_axis = plt.gca()
-            utilities.plot2D(x_scan, utilities.edges_to_center(hbins), hdat.T)
+            utilities.plot2D(x_scan, utilities.edges_to_center(hbins), hdat.T, **kwargs)
             plt.xlabel(scanpar_name)
         return x_scan, hbins, hdat
 
