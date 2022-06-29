@@ -660,6 +660,7 @@ class Array:
         else:
             return (
                 html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
+                + "<br />\n"
                 + self.get_hist_plot()
             )
 
