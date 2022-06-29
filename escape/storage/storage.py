@@ -619,7 +619,7 @@ class Array:
             plt.xlabel(self.name)
         return hdat, hbins
 
-    def __repr__(self):
+    def __repr__(self, bare=False):
         s = "<%s.%s object at %s>" % (
             self.__class__.__module__,
             self.__class__.__name__,
@@ -627,8 +627,9 @@ class Array:
         )
         s += " {}; shape {}".format(self.name, self.shape)
         s += "\n"
-        if isinstance(self.data, np.ndarray):
-            s += self._get_ana_str()
+        if bare:
+            if isinstance(self.data, np.ndarray):
+                s += self._get_ana_str()
         if self.scan:
             s += self.scan.__repr__()
         return s
@@ -653,12 +654,12 @@ class Array:
     def _repr_html_(self):
         if self.is_dask_array():
             return (
-                html.escape(self.__repr__()).replace("\n", "<br />\n")
+                html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
                 + self.data._repr_html_()
             )
         else:
             return (
-                html.escape(self.__repr__()).replace("\n", "<br />\n")
+                html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
                 + self.get_hist_plot()
             )
 
