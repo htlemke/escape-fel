@@ -24,10 +24,11 @@ with warnings.catch_warnings():
     from tqdm.autonotebook import tqdm
 from threading import Thread
 from time import sleep
+
 try:
     import bitshuffle.h5
 except:
-    print('Could not import bitshuffle.h5!')
+    print("Could not import bitshuffle.h5!")
 from dask_jobqueue import SLURMCluster
 from distributed import Client
 import socket
@@ -104,7 +105,7 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
                 size_element = (
                     np.dtype(ds_data.dtype).itemsize
                     * np.prod(ds_data.shape[1:])
-                    / 1024 ** 2
+                    / 1024**2
                 )
                 chunk_length = int(memlimit_MB // size_element)
                 dset_size = ds_data.shape
@@ -210,6 +211,8 @@ def parseScanEcoV01(
         s, scan_info_filepath = readScanEcoJson_v01(
             file_name_json, exclude_from_files=exclude_from_files
         )
+        if Path(file_name_json).parent.stem == "aux":
+            run_root_directory = Path(file_name_json).parent.parent
     else:
         s = scan_info
     # breakpoint()
@@ -242,7 +245,7 @@ def parseScanEcoV01(
                 / Path(scan_info_filepath.stem + "_parse_result.json")
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     if checknstore_parsing_result and Path(parse_res_file).exists():
         with open(parse_res_file, "r") as fp:
             dstores_flat = json.load(fp)
@@ -254,10 +257,13 @@ def parseScanEcoV01(
             searchpaths = None
             for fina in files_step:
                 fp = pathlib.Path(fina)
+                if not fp.is_absolute():
+                    fp = run_root_directory / fp
                 fn = pathlib.Path(fp.name)
                 if not searchpaths:
                     searchpaths = [fp.parent] + [
-                        scan_info_filepath.parent / pathlib.Path(tp.format(fp.parent.name))
+                        scan_info_filepath.parent
+                        / pathlib.Path(tp.format(fp.parent.name))
                         for tp in search_paths
                     ]
                 for path in searchpaths:
@@ -336,12 +342,9 @@ def parseScanEcoV01(
                 parameter=tparameter,
             )
         except Exception as e:
-            print(f"Could not create escape.Array for {ch};\nError: {str(e)}")    
+            print(f"Could not create escape.Array for {ch};\nError: {str(e)}")
 
-        
-
-
-    if return_json_info: 
+    if return_json_info:
         return escArrays, s
     else:
         return escArrays

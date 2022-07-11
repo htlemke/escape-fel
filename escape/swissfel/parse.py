@@ -1,3 +1,6 @@
+from asyncio import run
+
+from escape.storage.storage import concatenate
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
 from .cluster import parseScanEcoV01
 from pathlib import Path
@@ -64,8 +67,36 @@ def dict2structure(t, base=None):
     return base
 
 
+def interpret_raw_data_definition(
+    metadata_file=None,
+    run_numbers=None,
+    pgroup=None,
+    instrument="bernina",
+    search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+):
+    if metadata_file:
+        return [metadata_file]
+    if run_numbers and pgroup and instrument:
+        metadata_files = []
+        for run_number in run_numbers:
+            tfiles = list(
+                Path("/sf").glob(
+                    search_path.format(
+                        instrument=instrument, pgroup=pgroup, run_number=run_number
+                    )
+                )
+            )
+            if len(tfiles) > 1:
+                print(
+                    "WARNING:found more than one file matching raw data definition! Taking fist one."
+                )
+            tfile = tfiles[0]
+            metadata_files.append(tfile.as_posix())
+        return metadata_files
+
+
 def load_dataset_from_scan(
-    scan_json_file,
+    raw_data_definition,
     result_type="zarr",
     result_file=None,
     results_directory="./",
@@ -78,34 +109,49 @@ def load_dataset_from_scan(
     analyze_namespace_info=False,
     name="delme",
 ):
-    d, s = parse_scan(
-        scan_json_file,
-        search_paths=search_paths,
-        memlimit_MB=memlimit_MB,
-        createEscArrays=createEscArrays,
-        exclude_from_files=exclude_from_files,
-        checknstore_parsing_result=checknstore_parsing_result,
-        clear_parsing_result=clear_parsing_result,
-        return_json_info=True,
-    )
-    if "namespace_aliases" in s["scan_parameters"].keys():
-        alias_mappings = {
-            ta["channel"]: ta["alias"]
-            for ta in s["scan_parameters"]["namespace_aliases"]
-            if ta["channeltype"] in ["BS", "BSCAM", "JF"]
-        }
+    metadata_files = interpret_raw_data_definition(**raw_data_definition)
+    alias_mappings = None
+
+    d = {}
+
+    for metadata_file in metadata_files:
+        td, s = parse_scan(
+            metadata_file,
+            search_paths=search_paths,
+            memlimit_MB=memlimit_MB,
+            createEscArrays=createEscArrays,
+            exclude_from_files=exclude_from_files,
+            checknstore_parsing_result=checknstore_parsing_result,
+            clear_parsing_result=clear_parsing_result,
+            return_json_info=True,
+        )
+        if (not alias_mappings) and (
+            "namespace_aliases" in s["scan_parameters"].keys()
+        ):
+            alias_mappings = {
+                ta["channel"]: ta["alias"]
+                for ta in s["scan_parameters"]["namespace_aliases"]
+                if ta["channeltype"] in ["BS", "BSCAM", "JF"]
+            }
+
+        for nm, ar in td.items():
+            if not (nm in d.keys()):
+                d[nm] = ar
+            else:
+                d[nm] = concatenate([d[nm], ar])
+
         # print(alias_mappings)
 
     if not result_file:
         if result_type == "h5":
             result_filepath = Path(results_directory) / Path(
-                Path(scan_json_file).stem + ".esc" + ".h5"
+                Path(metadata_files[0]).stem + ".esc" + ".h5"
             )
             result_file = h5py.File(result_filepath, "a")
         elif result_type == "zarr":
             print("taking zarr format")
             result_filepath = Path(results_directory) / Path(
-                Path(scan_json_file).stem + ".esc" + ".zarr"
+                Path(metadata_files[0]).stem + ".esc" + ".zarr"
             )
             result_file = zarr.open(result_filepath)
 

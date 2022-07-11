@@ -197,6 +197,16 @@ class Array:
             np.quantile, None, self, self.is_dask_array(), *args, **kwargs
         )
 
+    def nanpercentile(self, *args, **kwargs):
+        return _apply_method(
+            np.nanpercentile, None, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def nanquantile(self, *args, **kwargs):
+        return _apply_method(
+            np.nanquantile, None, self, self.is_dask_array(), *args, **kwargs
+        )
+
     def filter(self, *args, **kwargs):
         return filter(self, *args, **kwargs)
 
@@ -554,6 +564,23 @@ class Array:
             for tanr, tar in zip(indsrt * noref, (indxs * ref).scan.mean(axis=0))
         )
 
+    def plot(
+        self,
+        axis=None,
+        linespec=".",
+        *args,
+        **kwargs,
+    ):
+        y = self.data
+        x = self.index
+        if not axis:
+            axis = plt.gca()
+        axis.plot(x, y, linespec, *args, **kwargs)
+
+        if self.name:
+            axis.set_ylabel(arr.name)
+        axis.set_xlabel("index")
+
     def plot_corr(
         self,
         arr,
@@ -601,7 +628,7 @@ class Array:
             raise Exception(
                 "escape array needs to be numpy type for histogramming, compute first."
             )
-        [hmin, hmax] = np.percentile(
+        [hmin, hmax] = np.nanpercentile(
             self.data.ravel(), [cut_percentage, 100 - cut_percentage]
         )
         hbins = np.histogram_bin_edges(self.data.ravel(), bins, range=[hmin, hmax])
@@ -639,7 +666,9 @@ class Array:
         f = plt.figure(figsize=[5, 3])
         ax = f.add_subplot(111)
         # ax_steps = ax.twiny()
-        self.filter(*self.percentile([5, 95])).scan.hist(plot_axis=ax, cmap=plt.cm.Reds)
+        self.filter(*self.nanpercentile([5, 95])).scan.hist(
+            plot_axis=ax, cmap=plt.cm.Reds
+        )
         self.scan.plot(axis=ax, fmt="k")
         # ax_steps.set_xlim(0, len(self.scan) - 1)
         # ax_steps.set_xlabel("Step number")
@@ -1053,8 +1082,8 @@ class Scan:
             scanpar_name = names[0]
         x = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
         if not weights:
-            y = np.asarray(self.mean(axis=0)).ravel()
-            ystd = np.asarray(self.std(axis=0)).ravel()
+            y = np.asarray(self.nanmean(axis=0)).ravel()
+            ystd = np.asarray(self.nanstd(axis=0)).ravel()
         else:
             y, ystd = self.weighted_avg_and_std(weights)
         if norm_samples:
