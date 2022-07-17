@@ -745,7 +745,7 @@ def escaped(func, convertOutput2EscData="auto"):
         }
         allEscs = [a for n, a in argsIsEsc]
         allEscs.extend(kwargsIsEsc.values())
-        if escSorter is "first":
+        if escSorter == "first":
             if len(allEscs) > 0:
                 sorter = allEscs[0]
             else:

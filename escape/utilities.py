@@ -86,11 +86,13 @@ def edges_to_center(edges):
     centers = edges[:-1] + np.diff(edges)
     return centers
 
+
 def center_to_edges(centers):
     centers = np.asarray(centers)
     df = np.diff(centers)
-    edges = centers + np.hstack([centers[:1],np.diff(centers)])
-    return edges 
+    edges = centers + np.hstack([centers[:1], np.diff(centers)])
+    return edges
+
 
 def hist_scan(
     data,
@@ -108,9 +110,9 @@ def hist_scan(
     )
     hbins = np.linspace(hmin, hmax, N_intervals + 1)
     hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in data.scan]
-    if normalize_to is "max":
+    if normalize_to == "max":
         hdat = [td / td.max() for td in hdat]
-    elif normalize_to is "sum":
+    elif normalize_to == "sum":
         hdat = [td / td.sum() for td in hdat]
     hdat = np.asarray(hdat)
     if plot_results:
@@ -201,10 +203,10 @@ import numpy as np
 
 
 def hist_unicode(data, bins=10):
-    bars = u" ▁▂▃▄▅▆▇█"
+    bars = " ▁▂▃▄▅▆▇█"
     n, _ = np.histogram(data, bins=bins)
     n2 = np.round(n * (len(bars) - 1) / (max(n))).astype(int)
-    res = u" ".join([bars[i] for i in n2])
+    res = " ".join([bars[i] for i in n2])
     return res
 
 
