@@ -213,6 +213,8 @@ def parseScanEcoV01(
         )
         if Path(file_name_json).parent.stem == "aux":
             run_root_directory = Path(file_name_json).parent.parent
+        else:
+            run_root_directory = None
     else:
         s = scan_info
     # breakpoint()
@@ -257,7 +259,7 @@ def parseScanEcoV01(
             searchpaths = None
             for fina in files_step:
                 fp = pathlib.Path(fina)
-                if not fp.is_absolute():
+                if (not fp.is_absolute()) and run_root_directory:
                     fp = run_root_directory / fp
                 fn = pathlib.Path(fp.name)
                 if not searchpaths:
