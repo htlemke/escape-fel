@@ -988,6 +988,11 @@ for opJoin, symbol in _operatorsJoin:
         "__%s__" % opJoin.__name__.strip("_"),
         escaped(opJoin, convertOutput2EscData=[0]),
     )
+    setattr(
+        Array,
+        "__r%s__" % opJoin.__name__.strip("_"),
+        escaped(lambda a, b: opJoin(b, a), convertOutput2EscData=[0]),
+    )
 
 
 for opSing, symbol in _operatorsSingle:
