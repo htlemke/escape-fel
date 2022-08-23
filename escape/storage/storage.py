@@ -16,6 +16,8 @@ from matplotlib import pyplot as plt
 import pandas as pd
 from pathlib import Path
 import html
+import base64
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +35,25 @@ class ArraySelector:
             return self.arrayitem
 
 
-def _apply_method(foo_np, foo_da, data, is_dask_array, *args, **kwargs):
+def _apply_method(
+    foo_np, foo_da, data, is_dask_array, *args, convertOutput2EscData="auto", **kwargs
+):
     if is_dask_array:
         if not foo_da:
             raise NotImplementedError(
                 f"Function {foo_np.__name__} is not defined for dask based arrays!"
             )
-        return escaped(foo_da, convertOutput2EscData="auto")(data, *args, **kwargs)
+        return escaped(foo_da, convertOutput2EscData=convertOutput2EscData)(
+            data, *args, **kwargs
+        )
     else:
         if not foo_np:
             raise NotImplementedError(
                 f"Function {foo_da.__name__} is not defined for numpy based arrays!"
             )
-        return escaped(foo_np, convertOutput2EscData="auto")(data, *args, **kwargs)
+        return escaped(foo_np, convertOutput2EscData=convertOutput2EscData)(
+            data, *args, **kwargs
+        )
 
 
 class Array:
@@ -162,6 +170,17 @@ class Array:
             np.sum, da.sum, self, self.is_dask_array(), *args, **kwargs
         )
 
+    def isnan(self, *args, **kwargs):
+        return _apply_method(
+            np.isnan,
+            da.isnan,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertOutput2EscData=[0],
+            **kwargs,
+        )
+
     def mean(self, *args, **kwargs):
         return _apply_method(
             np.mean, da.mean, self, self.is_dask_array(), *args, **kwargs
@@ -199,7 +218,13 @@ class Array:
 
     def nanpercentile(self, *args, **kwargs):
         return _apply_method(
-            np.nanpercentile, None, self, self.is_dask_array(), *args, **kwargs
+            np.nanpercentile,
+            None,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertOutput2EscData=False,
+            **kwargs,
         )
 
     def nanquantile(self, *args, **kwargs):
@@ -526,7 +551,10 @@ class Array:
             return ""
         if d.ndim == 1:
             ostr = ""
-            hrange = np.percentile(d[~np.isnan(d)], perc_limits)
+            if d.dtype == bool:
+                hrange = [0, 1]
+            else:
+                hrange = np.percentile(d[~np.isnan(d)], perc_limits)
             formnum = lambda num: "{:<9}".format("%0.4g" % (num))
             for n, td in enumerate(self.scan):
                 ostr += (
@@ -661,24 +689,64 @@ class Array:
             s += self.scan.__repr__()
         return s
 
-    def get_hist_plot(self):
+    @property
+    def dtype(self):
+        return self.data.dtype
+
+    def astype(self, newtype):
+        return Array(
+            data=self.data.astype(newtype),
+            index=self.index,
+            step_lengths=self.scan.step_lengths,
+            parameter=self.scan.parameter,
+        )
+
+    def _get_repr_hist_plot(self, fmt="png", figsize=[5, 3]):
         plt.ioff()
-        f = plt.figure(figsize=[5, 3])
+        f = plt.figure(figsize=figsize)
         ax = f.add_subplot(111)
         # ax_steps = ax.twiny()
-        self.filter(*self.nanpercentile([5, 95])).scan.hist(
-            plot_axis=ax, cmap=plt.cm.Reds
-        )
-        self.scan.plot(axis=ax, fmt="k")
+
+        if self.dtype == bool:
+            flims = [0, 1]
+        else:
+            stepmns, stepmxs = zip(
+                *[
+                    [np.min(tmp), np.max(tmp)]
+                    for tmp in self.scan.nanpercentile([5, 95])
+                ]
+            )
+            flims = [min(stepmns), max(stepmxs)]
+
+        if len(self.scan) > 1:
+            self.filter(*flims).scan.hist(
+                plot_axis=ax,
+                cmap=plt.cm.Reds,
+                cut_percentage=0,
+            )
+            self.scan.plot(axis=ax, fmt="k")
+            plt.ylabel(self.name)
+        else:
+            to_hist = self.data
+            if self.dtype == bool:
+                to_hist = to_hist.astype(int)
+            plt.hist(to_hist, "auto")
+            plt.xlabel(self.name)
+
+        ax.grid("on")
         # ax_steps.set_xlim(0, len(self.scan) - 1)
         # ax_steps.set_xlabel("Step number")
         f.tight_layout()
-        s = io.StringIO()
-        f.savefig(s, format="svg", bbox_inches="tight")
-        svg = s.getvalue()
-
+        if fmt == "svg":
+            s = io.StringIO()
+            f.savefig(s, format="svg", bbox_inches="tight")
+            imgobj = s.getvalue()
+        elif fmt == "png":
+            tmpfile = BytesIO()
+            f.savefig(tmpfile, format="png", bbox_inches="tight")
+            imgobj = base64.b64encode(tmpfile.getvalue()).decode("utf-8")
         plt.ion()
-        return svg
+        return imgobj
 
     def _repr_html_(self):
         if self.is_dask_array():
@@ -690,7 +758,9 @@ class Array:
             return (
                 html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
                 + "<br />\n"
-                + self.get_hist_plot()
+                + "<img src='data:image/png;base64,{}'>".format(
+                    self._get_repr_hist_plot(fmt="png")
+                )
             )
 
     #     s = "<%s.%s object at %s>" % (
@@ -1037,6 +1107,9 @@ class Scan:
     def nanmedian(self, *args, **kwargs):
         return [step.nanmedian(*args, **kwargs) for step in self]
 
+    def nanpercentile(self, *args, **kwargs):
+        return [step.nanpercentile(*args, **kwargs) for step in self]
+
     def nanmin(self, *args, **kwargs):
         return [step.nanmin(*args, **kwargs) for step in self]
 
@@ -1122,7 +1195,8 @@ class Scan:
             scanpar_name = names[0]
         x_scan = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
         [hmin, hmax] = np.nanpercentile(
-            self._array.data.ravel(), [cut_percentage, 100 - cut_percentage]
+            self._array.data.ravel().astype(float),
+            [cut_percentage, 100 - cut_percentage],
         )
         # hbins = np.linspace(hmin, hmax, N_intervals + 1)
         hbins = np.histogram_bin_edges(
@@ -1492,7 +1566,7 @@ def digitize(
     )
 
 
-def filter(array, *args, foos_filtering=[operator.gt, operator.lt], **kwargs):
+def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):
     """general filter function for escape arrays. checking for 1D arrays, applies
     arbitrary number of
     filter functions that take one argument as input and"""
