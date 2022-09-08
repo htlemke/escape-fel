@@ -5,7 +5,7 @@ from dask import array as da
 from dask import dataframe as ddf
 from dask.diagnostics import ProgressBar
 import operator
-from ..utilities import hist_asciicontrast, Hist_ascii
+from ..utilities import get_corr, hist_asciicontrast, Hist_ascii
 import logging
 from itertools import chain
 from numbers import Number
@@ -247,6 +247,11 @@ class Array:
         """Update one escape array from another. Only array elements not
         existing  in the present array will be added to it."""
         pass
+
+    def correlation_analysis_to(self, ref, order=2):
+        td, tr = match_arrays(self, ref)
+        std_rel, std_fx_rel = get_corr(td.data, tr.data, order=order)
+        return std_rel, std_fx_rel
 
     def __len__(self):
         self._touch()
@@ -606,7 +611,7 @@ class Array:
         axis.plot(x, y, linespec, *args, **kwargs)
 
         if self.name:
-            axis.set_ylabel(arr.name)
+            axis.set_ylabel(self.name)
         axis.set_xlabel("index")
 
     def plot_corr(
@@ -1147,6 +1152,32 @@ class Scan:
             std.append(tstd)
         return np.asarray(avg), np.asarray(std)
 
+    def correlation_analysis_to(self, ref, *args, **kwargs):
+        (td, tr) = match_arrays(self._array, ref)
+        return [
+            step.correlation_analysis_to(tref, *args, **kwargs)
+            for step, tref in zip(td.scan, tr.scan)
+        ]
+
+    def corr_ana_plot(self, referece, scanpar_name=None, axis=None):
+        if not scanpar_name:
+            names = list(self.parameter.keys())
+            scanpar_name = names[0]
+        x = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
+        corres = self.correlation_analysis_to(referece)
+
+        if not axis:
+            axis = plt.gca()
+
+        std = [tc[0] for tc in corres]
+        std_fx = [tc[1] for tc in corres]
+
+        ordercolors = ["b", "r"]
+        for to, toc in zip([0, 1], ordercolors):
+            axis.plot(x, [tc[to] for tc in std], toc + "--" + ".")
+        for to, toc in zip([0, 1], ordercolors):
+            axis.plot(x, [tc[to] for tc in std_fx], toc + "-" + "o")
+
     def plot(
         self,
         weights=None,
@@ -1495,9 +1526,9 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
     stepLengths = np.bincount(
         np.digitize(ix, bins=np.cumsum(stepLengths)), minlength=len(stepLengths)
     )
-    stepLengths = stepLengths[~(stepLengths == 0)]
+    validsteps = ~(stepLengths == 0)
+    stepLengths = stepLengths[validsteps]
     if scan:
-        validsteps = ~(stepLengths == 0)
         scan = Scan(
             parameter=scan.get_parameter_selection(validsteps), step_lengths=stepLengths
         )

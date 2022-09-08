@@ -5,6 +5,7 @@ from ..storage.storage import ArraySelector
 from pathlib import Path
 import numpy as np
 import logging
+from dask import array as da
 
 
 def ispath(x):
@@ -25,7 +26,7 @@ def jf_correct_obj(
     dark_file=None,
     mask=None,
     module_map=None,
-    **kwargs
+    **kwargs,
 ):
     h = JFDataHandler(jf_id)
     h.gain_file = gain_file
@@ -51,43 +52,103 @@ def jf_correct(
     mask=None,
     module_map=None,
     double_pixels="interp",
-    **kwargs
+    use_numpy=True,
+    threshold=None,
+    **kwargs,
 ):
-    h = JFDataHandler(jf_id)
-    h.gain_file = gain_file
-    h.pedestal_file = dark_file
-    if mask:
-        h.pixel_mask = mask
-    if module_map:
-        h.module_map = module_map
+    if use_numpy:
 
-    def proc_and_mask(*args, **kwargs):
-        o = h.process(*args, **kwargs)
-        o[
-            ~np.broadcast_to(
-                h.get_pixel_mask(
-                    gap_pixels=cor_tile_gaps,
-                    double_pixels=double_pixels,
-                    geometry=cor_geometry,
-                ),
-                o.shape,
+        with h5py.File(gain_file, "r") as fh:
+            gain = fh["gains"][:]
+
+        with h5py.File(dark_file, "r") as fh:
+            pedestal = fh["gains"][:]
+
+        # figure()
+        data_corr = array.map_index_blocks(
+            apply_gain_pede_np, gain, pedestal, dtype=np.float64
+        )
+        if threshold:
+            return data_corr.map_index_blocks(
+                apply_threshold, threshold=threshold, dtype=np.float64
             )
-        ] = np.nan
-        return o
+        else:
+            return data_corr
+    else:
+        h = JFDataHandler(jf_id)
+        h.gain_file = gain_file
+        h.pedestal_file = dark_file
+        if mask:
+            h.pixel_mask = mask
+        if module_map:
+            h.module_map = module_map
 
-    return array.map_index_blocks(
-        proc_and_mask,
-        conversion=cor_gain_dark_mask,
-        gap_pixels=cor_tile_gaps,
-        geometry=cor_geometry,
-        mask=cor_mask,
-        parallel=comp_parallel,
-        new_element_size=h.get_shape_out(
-            gap_pixels=cor_tile_gaps, geometry=cor_geometry
-        ),
-        dtype=float,
-        **kwargs
-    )
+        def proc_and_mask(*args, **kwargs):
+            o = h.process(*args, **kwargs)
+            o[
+                ~np.broadcast_to(
+                    h.get_pixel_mask(
+                        gap_pixels=cor_tile_gaps,
+                        double_pixels=double_pixels,
+                        geometry=cor_geometry,
+                    ),
+                    o.shape,
+                )
+            ] = np.nan
+            return o
+
+        return array.map_index_blocks(
+            proc_and_mask,
+            conversion=cor_gain_dark_mask,
+            gap_pixels=cor_tile_gaps,
+            geometry=cor_geometry,
+            mask=cor_mask,
+            parallel=comp_parallel,
+            new_element_size=h.get_shape_out(
+                gap_pixels=cor_tile_gaps, geometry=cor_geometry
+            ),
+            dtype=float,
+            **kwargs,
+        )
+
+
+def apply_gain_pede_np(image, G, P, pixel_mask=None, mask_value=np.nan):
+    # gain and pedestal correction
+    mask = int("0b" + 14 * "1", 2)
+    mask2 = int("0b" + 2 * "1", 2)
+
+    gain_mask = np.bitwise_and(np.right_shift(image, 14), mask2)
+    data = np.bitwise_and(image, mask)
+
+    m1 = gain_mask == 0
+    m2 = gain_mask == 1
+    m3 = gain_mask >= 2
+    if G is not None:
+        g = m1 * G[0] + m2 * G[1] + m3 * G[2]
+    else:
+        g = np.ones(data.shape, dtype=np.float32)
+    if P is not None:
+        p = m1 * P[0] + m2 * P[1] + m3 * P[2]
+    else:
+        p = np.zeros(data.shape, dtype=np.float32)
+    res = np.divide(data - p, g)
+
+    if pixel_mask is not None:
+        # dv,mv = np.broadcast_arrays(res,pixel_mask) # seems not necessary
+        mv = pixel_mask
+        if isinstance(image, da.Array):
+            mv = da.from_array(mv, chunks=image.chunks[-2:])
+        #            if len(image.shape)==3:
+        #                res[mv!=0] = mask_value
+        #            else:
+        res[mv != 0] = mask_value
+        res = da.nan_to_num(res, 0)
+    return res
+
+
+def apply_threshold(data, threshold=0):
+    data[data < threshold] = 0
+    return data
 
 
 # class JfCorrector:

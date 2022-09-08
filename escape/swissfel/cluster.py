@@ -40,11 +40,11 @@ logger = logging.getLogger(__name__)
 
 
 class SwissFelCluster:
-    def __init__(self, local=True, cores=8, memory="24 GB", workers=5):
+    def __init__(self, local=True, cores=8, memory="24 GB", workers=5, **kwags_cluster):
         if local:
             self.client = distributed.Client()
         else:
-            self.cluster = SLURMCluster(cores=cores, memory=memory)
+            self.cluster = SLURMCluster(cores=cores, memory=memory, **kwags_cluster)
             self.client = Client(self.cluster)
         self.ip = socket.gethostbyname(socket.gethostname())
         self.dashboard_port_scheduler = self.client._scheduler_identity.get("services")[

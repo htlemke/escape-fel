@@ -312,3 +312,38 @@ class timeout:
 
     def __exit__(self, type, value, traceback):
         signal.alarm(0)
+
+
+def polyfit_with_fixed_points(x, y, n, xf, yf):
+    mat = np.empty((n + 1 + len(xf),) * 2)
+    vec = np.empty((n + 1 + len(xf),))
+    x_n = x ** np.arange(2 * n + 1)[:, None]
+    yx_n = np.sum(x_n[: n + 1] * y, axis=1)
+    x_n = np.sum(x_n, axis=1)
+    idx = np.arange(n + 1) + np.arange(n + 1)[:, None]
+    mat[: n + 1, : n + 1] = np.take(x_n, idx)
+    xf_n = xf ** np.arange(n + 1)[:, None]
+    mat[: n + 1, n + 1 :] = xf_n / 2
+    mat[n + 1 :, : n + 1] = xf_n.T
+    mat[n + 1 :, n + 1 :] = 0
+    vec[: n + 1] = yx_n
+    vec[n + 1 :] = yf
+    params = np.linalg.solve(mat, vec)
+    return params[: n + 1][::-1]
+
+
+def get_corr(data, ref, order=2):
+    p = []
+    p_fx = []
+    std = []
+    std_fx = []
+    for i in range(1, order + 1):
+        if len(data) > 1:
+            p.append(np.polyfit(ref, data, i))
+            p_fx.append(polyfit_with_fixed_points(ref, data, i, [0], [0]))
+            std.append(np.std(data / np.polyval(p[-1], ref)))
+            std_fx.append(np.std(data / np.polyval(p_fx[-1], ref)))
+        else:
+            std.append(np.nan)
+            std_fx.append(np.nan)
+    return np.asarray(std), np.asarray(std_fx)
