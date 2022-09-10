@@ -133,6 +133,16 @@ def load_dataset_from_scan(
                 for ta in s["scan_parameters"]["namespace_aliases"]
                 if ta["channeltype"] in ["BS", "BSCAM", "JF"]
             }
+        if (not alias_mappings) and (
+            "aliases" in s["scan_parameters"].keys()
+        ):
+            with open( Path(metadata_file).parent / Path('../'+s["scan_parameters"]['aliases']),'r') as fh:
+                aliases_all = json.load(fh)
+            alias_mappings = {
+                ta["channel"]: ta["alias"]
+                for ta in aliases_all
+                if ta["channeltype"] in ["BS", "BSCAM", "JF"]
+            }
 
         for nm, ar in td.items():
             if not (nm in d.keys()):
@@ -163,13 +173,22 @@ def load_dataset_from_scan(
     #     namespace_status  = s['scan_parameters']['namespace_status']
 
     ds = DataSet(d, name=name, alias_mappings=alias_mappings, results_file=result_file)
-    try:
+    # try:
         # for name, data in s["scan_parameters"]["namespace_status"]["settings"].items():
         #     ds.append(data, name)
-        for name, data in s["scan_parameters"]["namespace_status"]["status"].items():
-            ds.append(data, name)
-    except:
-        print("Did not succeed to append any namespace status!")
+        
+    if type(s["scan_parameters"]["status"]) is str:
+        with open( Path(metadata_file).parent / Path('../'+s["scan_parameters"]['status']),'r') as fh:
+            ds.status = json.load(fh)
+            print('done')
+
+    else:
+
+        pass
+    
+
+    # except:
+    #     print("Did not succeed to append namespace status!")
     return ds
 
 
