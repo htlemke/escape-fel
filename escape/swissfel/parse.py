@@ -1,4 +1,5 @@
 from asyncio import run
+from unicodedata import name
 
 from escape.storage.storage import concatenate
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
@@ -11,6 +12,10 @@ import logging
 import escape
 from copy import deepcopy as copy
 
+# from ipytree import Node
+
+# from ipytree import Tree as Treejs
+
 try:
     import bitshuffle.h5
 except:
@@ -21,6 +26,7 @@ with warnings.catch_warnings():
     from tqdm.autonotebook import tqdm
 import h5py
 import zarr
+from rich.tree import Tree
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +45,33 @@ def parse_run(
 
 
 class StructureGroup:
-    pass
+    def __repr__(self):
+        s = object.__repr__(self)
+        s += "\n"
+        s += "items\n"
+        for k in self.__dict__.keys():
+            s += "    " + k + "\n"
+        return s
+
+    def get_structure_tree(self, base=None):
+        if not base:
+            base = Tree("")
+        for key, item in self.__dict__.items():
+            if hasattr(item, "get_structure_tree"):
+                item.get_structure_tree(base=base.add(key))
+            else:
+                base.add(key).add(str(item))
+        return base
+
+    # def get_structure_tree_js(self, base=None):
+    #     if not base:
+    #         base = Treejs("")
+    #     for key, item in self.__dict__.items():
+    #         if hasattr(item, "get_structure_tree"):
+    #             item.get_structure_tree(base=base.add_node(Node(key)))
+    #         else:
+    #             base.add_node(Node(key)).add_node(str(item))
+    #     return base
 
 
 def dict2structure(t, base=None):
@@ -54,16 +86,12 @@ def dict2structure(t, base=None):
                     tbase.__dict__[tp] = StructureGroup()
             else:
                 tbase.__dict__[tp] = StructureGroup()
-
             tbase = tbase.__dict__[tp]
-        # try:
         if hasattr(tbase, p[-1]):
             if not isinstance(tbase.__dict__[p[-1]], StructureGroup):
                 tbase.__dict__[p[-1]] = tv
         else:
             tbase.__dict__[p[-1]] = tv
-            # except:
-            ...
     return base
 
 
@@ -96,7 +124,11 @@ def interpret_raw_data_definition(
 
 
 def load_dataset_from_scan(
-    raw_data_definition,
+    metadata_file=None,
+    run_numbers=None,
+    pgroup=None,
+    instrument="bernina",
+    search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
     result_type="zarr",
     result_file=None,
     results_directory="./",
@@ -108,9 +140,15 @@ def load_dataset_from_scan(
     clear_parsing_result=False,
     analyze_namespace_info=False,
     name="delme",
+    alias_mappings=None,
 ):
-    metadata_files = interpret_raw_data_definition(**raw_data_definition)
-    alias_mappings = None
+    metadata_files = interpret_raw_data_definition(
+        metadata_file=metadata_file,
+        run_numbers=run_numbers,
+        pgroup=pgroup,
+        instrument=instrument,
+        search_path=search_path,
+    )
 
     d = {}
 
@@ -133,10 +171,12 @@ def load_dataset_from_scan(
                 for ta in s["scan_parameters"]["namespace_aliases"]
                 if ta["channeltype"] in ["BS", "BSCAM", "JF"]
             }
-        if (not alias_mappings) and (
-            "aliases" in s["scan_parameters"].keys()
-        ):
-            with open( Path(metadata_file).parent / Path('../'+s["scan_parameters"]['aliases']),'r') as fh:
+        if (not alias_mappings) and ("aliases" in s["scan_parameters"].keys()):
+            with open(
+                Path(metadata_file).parent
+                / Path("../" + s["scan_parameters"]["aliases"]),
+                "r",
+            ) as fh:
                 aliases_all = json.load(fh)
             alias_mappings = {
                 ta["channel"]: ta["alias"]
@@ -174,18 +214,28 @@ def load_dataset_from_scan(
 
     ds = DataSet(d, name=name, alias_mappings=alias_mappings, results_file=result_file)
     # try:
-        # for name, data in s["scan_parameters"]["namespace_status"]["settings"].items():
-        #     ds.append(data, name)
-        
-    if type(s["scan_parameters"]["status"]) is str:
-        with open( Path(metadata_file).parent / Path('../'+s["scan_parameters"]['status']),'r') as fh:
-            ds.status = json.load(fh)
-            print('done')
+    # for name, data in s["scan_parameters"]["namespace_status"]["settings"].items():
+    #     ds.append(data, name)
 
-    else:
+    try:
+        if type(s["scan_parameters"]["status"]) is str:
+            with open(
+                Path(metadata_file).parent
+                / Path("../" + s["scan_parameters"]["status"]),
+                "r",
+            ) as fh:
+                r = json.load(fh)
+                for k in r.keys():
+                    ds.__dict__[k] = StructureGroup()
+                    dict2structure(r[k]["status"], base=ds.__dict__[k])
+                print("done")
 
+        else:
+
+            pass
+    except:
+        print("No status in dataset found.")
         pass
-    
 
     # except:
     #     print("Did not succeed to append namespace status!")
@@ -231,6 +281,25 @@ class DataSet:
             self.datasets[name].set_h5_storage(self.results_file, name)
 
         dict2structure({name: data}, base=self)
+
+    def __repr__(self):
+        s = object.__repr__(self)
+        s += "\n"
+        s += "items\n"
+        for k in self.__dict__.keys():
+            if not k[0] == "_":
+                s += "    " + k + "\n"
+        return s
+
+    def get_structure_tree(self, base=None):
+        if not base:
+            base = Tree("")
+        for key, item in self.__dict__.items():
+            if hasattr(item, "get_structure_tree"):
+                item.get_structure_tree(base=base.add(key))
+            else:
+                base.add(key).add(str(item))
+        return base
 
         # try:
         #     if type(channel) is str:

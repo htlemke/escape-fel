@@ -221,74 +221,89 @@ def parseScanEcoV01(
 
     if checknstore_parsing_result:
         if checknstore_parsing_result == "same_directory":
-            parse_res_file = scan_info_filepath.parent.resolve() / Path(
-                scan_info_filepath.stem + "_parse_result.json"
+            parse_res_file = (
+                scan_info_filepath.parent.resolve()
+                / scan_info_filepath.with_suffix(".parse_result.json")
             )
+
         elif checknstore_parsing_result == "work_directory":
+
             tp = scan_info_filepath.parent.resolve()
-            while tp.stem not in ["res", "raw", "work"]:
-                tp = tp.parent
-            tp = tp.parent
+            for p in tp.resolve().parents:
+                if len(p.name) == 6 and p.name[0] == "p" and p.name[1:].isnumeric():
+                    pgroup = p.name
+                    tp = Path(f"/das/work/{pgroup[:3]}/{pgroup}")
+                    break
 
             parse_res_file = (
                 tp
-                / Path("work/scan_info")
-                / Path(scan_info_filepath.stem + "_parse_result.json")
+                / Path(".escape_parse_result")
+                / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
 
-            parse_res_file = scan_info_filepath.parent.resolve() / Path(
-                scan_info_filepath.stem + "_parse_result.json"
-            )
+            # parse_res_file = scan_info_filepath.parent.resolve() / Path(
+            #     *scan_info_filepath.with_suffix(".parse_result.json").parts[1:]
+            # )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
         else:
             parse_res_file = (
                 Path(checknstore_parsing_result)
                 / Path(".escape_parse_result")
-                / Path(scan_info_filepath.stem + "_parse_result.json")
+                / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
 
+    files_parsed = set()
     if checknstore_parsing_result and Path(parse_res_file).exists():
         with open(parse_res_file, "r") as fp:
             dstores_flat = json.load(fp)
+        for step in dstores_flat:
+            for dsn, dss in step.items():
+                files_parsed.add(Path(dss["file_path"]))
     else:
-        dstores = []
-        for files_step in s["scan_files"]:
-            dstores_step = []
-            lastpath = None
-            searchpaths = None
-            for fina in files_step:
-                fp = pathlib.Path(fina)
-                if (not fp.is_absolute()) and run_root_directory:
-                    fp = run_root_directory / fp
-                fn = pathlib.Path(fp.name)
-                if not searchpaths:
-                    searchpaths = [fp.parent] + [
-                        scan_info_filepath.parent
-                        / pathlib.Path(tp.format(fp.parent.name))
-                        for tp in search_paths
-                    ]
-                for path in searchpaths:
-                    file_path = path / fn
-                    if file_path.is_file():
-                        if not lastpath:
-                            lastpath = path
-                            searchpaths.insert(0, path)
-                        break
-                dstores_step.append(parse_bs_h5_file(file_path))
-            dstores.append(dstores_step)
-        with ProgressBar():
-            dstores = dask.compute(dstores, scheduler="processes")[0]
-        # flatten files in step
         dstores_flat = []
+
+    dstores = []
+    for files_step in s["scan_files"]:
+        dstores_step = []
+        lastpath = None
+        searchpaths = None
+        for fina in files_step:
+            fp = pathlib.Path(fina)
+            if (not fp.is_absolute()) and run_root_directory:
+                fp = run_root_directory / fp
+            fn = pathlib.Path(fp.name)
+            if not searchpaths:
+                searchpaths = [fp.parent] + [
+                    scan_info_filepath.parent / pathlib.Path(tp.format(fp.parent.name))
+                    for tp in search_paths
+                ]
+            for path in searchpaths:
+                file_path = path / fn
+                if file_path.is_file():
+                    if not lastpath:
+                        lastpath = path
+                        searchpaths.insert(0, path)
+                    break
+            if file_path.resolve() in files_parsed:
+                continue
+            dstores_step.append(parse_bs_h5_file(file_path))
+        dstores.append(dstores_step)
+    with ProgressBar():
+        dstores = dask.compute(dstores, scheduler="processes")[0]
+    # flatten files in step
+    if any(dstores):
         for dstore in dstores:
             tmp = {}
             for i in dstore:
                 tmp.update(i)
             dstores_flat.append(tmp)
+
         if checknstore_parsing_result and dstores_flat:
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
+    else:
+        print("notsaveing")
 
     chs = set()
     for dstore in dstores_flat:

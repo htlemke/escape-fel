@@ -265,7 +265,7 @@ class Array:
         # this is multi dimensional itemgetting
         if type(args[0]) is tuple:
             # expanding ellipses --> TODO: multiple ellipses possible?
-            if Ellipsis in args[0]:
+            if Ellipsis in [type(ta) for ta in args[0]]:
                 rargs = list(args[0])
                 elind = rargs.index(Ellipsis)
                 rargs.pop(elind)
@@ -415,6 +415,8 @@ class Array:
         for dim, dimchunks in enumerate(self.data.chunks):
             if dim == self.index_dim:
                 newchunks.append(dimchunks)
+            elif drop_axis and dim in drop_axis:
+                continue
             else:
                 rechunk = len(dimchunks) > 1 or rechunk
                 if new_element_size:
@@ -760,13 +762,16 @@ class Array:
                 + self.data._repr_html_()
             )
         else:
-            return (
-                html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
-                + "<br />\n"
-                + "<img src='data:image/png;base64,{}'>".format(
-                    self._get_repr_hist_plot(fmt="png")
+            if self.ndim == 1:
+                return (
+                    html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
+                    + "<br />\n"
+                    + "<img src='data:image/png;base64,{}'>".format(
+                        self._get_repr_hist_plot(fmt="png")
+                    )
                 )
-            )
+            else:
+                return self.__repr__()
 
     #     s = "<%s.%s object at %s>" % (
     #         self.__class__.__module__,
@@ -1174,9 +1179,19 @@ class Scan:
 
         ordercolors = ["b", "r"]
         for to, toc in zip([0, 1], ordercolors):
-            axis.plot(x, [tc[to] for tc in std], toc + "--" + ".")
+            axis.plot(
+                x,
+                [tc[to] for tc in std],
+                toc + "--" + ".",
+                label=f"poly. order:{to+1}; zero free",
+            )
         for to, toc in zip([0, 1], ordercolors):
-            axis.plot(x, [tc[to] for tc in std_fx], toc + "-" + "o")
+            axis.plot(
+                x,
+                [tc[to] for tc in std_fx],
+                toc + "-" + "o",
+                label=f"poly. order:{to+1}; zero fixed",
+            )
 
     def plot(
         self,

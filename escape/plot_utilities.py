@@ -238,11 +238,13 @@ class MultipleRoiSelector(widgets.HBox):
             print(*args, **kwargs)
         i = self.ax_data.get_images()[0]
         i.set_clim(*args, **kwargs)
+        plt.draw()
         for n, ax in enumerate(self.axs_rois):
             print(n)
             if ax.get_images():
                 i = ax.get_images()[0]
                 i.set_clim(*args, **kwargs)
+        plt.draw()
 
     def add_roi_plot(self):
         ti = len(self.roi_selectors)
@@ -305,8 +307,8 @@ class MultipleRoiSelector(widgets.HBox):
         self._select_buttons[-1].on_click(lambda dum: self.set_roi_selection_active(ti))
 
 
-def nfigure(name="no name"):
+def nfigure(name="no name", *args, **kwargs):
     if name in plt.get_figlabels():
         Warning('Figure of name "{name}" exists and is closed.')
     plt.close(name)
-    return plt.figure(name)
+    return plt.figure(name, *args, **kwargs)
