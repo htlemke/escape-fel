@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _lock = None
 
+
 class ArraySelector:
     def __init__(self, arrayitem, dims=None):
         """Container object for selecting array subsets in functions mapped on escape Arrays."""
@@ -1242,8 +1243,13 @@ class Scan:
             )
         if not scanpar_name:
             names = list(self.parameter.keys())
-            scanpar_name = names[0]
+            for scanpar_name in names:
+                if not np.isnan(
+                    np.asarray(self.parameter[scanpar_name]["values"]).ravel()
+                ).all():
+                    break
         x_scan = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
+
         [hmin, hmax] = np.nanpercentile(
             self._array.data.ravel().astype(float),
             [cut_percentage, 100 - cut_percentage],
@@ -1336,7 +1342,7 @@ class Scan:
         self._check_consistency()
         if "scan" in group.keys():
             del group["scan"]
-        scan_group = group.require_group("scan")
+        scan_group = group.require_group("scan", track_order=True)
         scan_group["step_lengths"] = self.step_lengths
         par_group = scan_group.require_group("parameter")
         for parname, pardict in self.parameter.items():
@@ -1469,12 +1475,16 @@ def store(arrays, lock="auto", **kwargs):
         array.h5.append(array.data, array.index, prep_run="store_numpy")
         for array in arrays
     ]
-    ndatas, dsets, n_news = zip(*[tprep for tprep in prep if tprep])
-    with ProgressBar():
-        da.store(ndatas, dsets, lock=lock, **kwargs)
-    for array, n_new in zip(arrays, n_news):
-        array.h5._n_i.append(n_new)
-        array.h5._n_d.append(n_new)
+    if not any(prep):
+        print("Nothing to append")
+    else:
+        ndatas, dsets, n_news = zip(*[tprep for tprep in prep if tprep])
+        with ProgressBar():
+            da.store(ndatas, dsets, lock=lock, **kwargs)
+        for array, n_new in zip(arrays, n_news):
+            array.h5._n_i.append(n_new)
+            array.h5._n_d.append(n_new)
+    for array in arrays:
         array._data = array.h5.get_data_da()
         array._index = array.h5.index
         array.scan._save_to_h5(array.h5.grp)

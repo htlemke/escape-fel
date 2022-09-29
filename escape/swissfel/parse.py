@@ -1,7 +1,7 @@
 from asyncio import run
 import shutil
 from unicodedata import name
-from escape.storage.storage import concatenate
+from escape.storage.storage import concatenate, Array
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
 from .cluster import parseScanEcoV01
 from pathlib import Path
@@ -226,7 +226,7 @@ def load_dataset_from_scan(
 class DataSet:
     def __init__(
         self,
-        raw_datasets: dict,
+        raw_datasets: dict = None,
         alias_mappings: dict = None,
         results_file=None,
         name=None,
@@ -273,6 +273,26 @@ class DataSet:
             else:
                 base.add(key).add(str(item))
         return base
+
+    @classmethod
+    def load_from_result_file(cls, results_filepath, mode="r", name=name):
+        results_filepath = Path(results_filepath)
+        if not ".esc" in results_filepath.suffixes:
+            raise Exception("Expecting esc suffix in filename")
+        if ".h5" in results_filepath.suffixes:
+            result_file = h5py.File(results_filepath, mode)
+        elif ".zarr" in results_filepath.suffixes:
+            result_file = zarr.open(results_filepath, mode=mode)
+
+        ds = cls(results_file=result_file, name=name)
+
+        for tname in result_file.keys():
+            try:
+                ds.append(Array.load_from_h5(result_file, tname), name=tname)
+            except:
+                pass
+
+        return ds
 
         # try:
         #     if type(channel) is str:
