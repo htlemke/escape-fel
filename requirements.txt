@@ -1,0 +1,6 @@
+  numpy
+  h5py
+  dask
+  matplotlib
+  pandas
+  zarr
