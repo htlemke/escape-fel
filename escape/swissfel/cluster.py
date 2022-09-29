@@ -1,3 +1,4 @@
+from glob import escape
 import json
 import pathlib
 from pathlib import Path
@@ -31,8 +32,10 @@ except:
     print("Could not import bitshuffle.h5!")
 from dask_jobqueue import SLURMCluster
 from distributed import Client
+from dask.utils import SerializableLock
 import socket
 import getpass
+import escape.storage
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,8 @@ class SwissFelCluster:
             "dashboard"
         ]
         self.username = getpass.getuser()
+        self.lock = SerializableLock()
+        escape.storage._lock = self.lock
 
     def _repr_html_(self):
         return self.client._repr_html_()

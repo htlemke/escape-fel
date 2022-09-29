@@ -1,6 +1,6 @@
 from asyncio import run
+import shutil
 from unicodedata import name
-
 from escape.storage.storage import concatenate
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
 from .cluster import parseScanEcoV01
@@ -63,16 +63,6 @@ class StructureGroup:
                 base.add(key).add(str(item))
         return base
 
-    # def get_structure_tree_js(self, base=None):
-    #     if not base:
-    #         base = Treejs("")
-    #     for key, item in self.__dict__.items():
-    #         if hasattr(item, "get_structure_tree"):
-    #             item.get_structure_tree(base=base.add_node(Node(key)))
-    #         else:
-    #             base.add_node(Node(key)).add_node(str(item))
-    #     return base
-
 
 def dict2structure(t, base=None):
     if not base:
@@ -131,6 +121,7 @@ def load_dataset_from_scan(
     search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
     result_type="zarr",
     result_file=None,
+    clear_result_file=False,
     results_directory="./",
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_MB=100,
@@ -190,32 +181,24 @@ def load_dataset_from_scan(
             else:
                 d[nm] = concatenate([d[nm], ar])
 
-        # print(alias_mappings)
-
     if not result_file:
         if result_type == "h5":
             result_filepath = Path(results_directory) / Path(
                 Path(metadata_files[0]).stem + ".esc" + ".h5"
             )
+            if clear_result_file and result_filepath.exists():
+                result_filepath.unlink()
             result_file = h5py.File(result_filepath, "a")
         elif result_type == "zarr":
             print("taking zarr format")
             result_filepath = Path(results_directory) / Path(
                 Path(metadata_files[0]).stem + ".esc" + ".zarr"
             )
+            if clear_result_file and result_filepath.exists():
+                shutil.rmtree(result_filepath)
             result_file = zarr.open(result_filepath)
 
-    #     namespaceobjects = {}
-    #     for ch,ea in escArrays.items():
-    #         if ch in channel_dict.keys():
-    #             namespaceobjects[channel_dict[ch]] = ea
-    # if 'namespace_status' in s['scan_parameters'].keys():
-    #     namespace_status  = s['scan_parameters']['namespace_status']
-
     ds = DataSet(d, name=name, alias_mappings=alias_mappings, results_file=result_file)
-    # try:
-    # for name, data in s["scan_parameters"]["namespace_status"]["settings"].items():
-    #     ds.append(data, name)
 
     try:
         if type(s["scan_parameters"]["status"]) is str:
@@ -237,8 +220,6 @@ def load_dataset_from_scan(
         print("No status in dataset found.")
         pass
 
-    # except:
-    #     print("Did not succeed to append namespace status!")
     return ds
 
 
@@ -265,14 +246,6 @@ class DataSet:
                     self.append(self.data_raw[idname], name=alias_mappings[idname])
 
         self.name = name
-
-        # self.file_output = zarr.open(
-        #     (self.dir_output / Path(f"run{runno:04d}.zarr")).as_posix(), "a"
-        # )
-        # if clear_output:
-        #     self.file_output.clear()
-        # self.runno = runno
-        # self.data = load_runno(runno)
 
     def append(self, data, name=None):
         self.datasets[name] = data

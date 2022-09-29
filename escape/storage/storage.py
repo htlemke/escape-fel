@@ -19,8 +19,10 @@ import html
 import base64
 from io import BytesIO
 
+
 logger = logging.getLogger(__name__)
 
+_lock = None
 
 class ArraySelector:
     def __init__(self, arrayitem, dims=None):
@@ -483,8 +485,10 @@ class Array:
                 index_dim=event_dim,
             )
 
-    def store(self, parent_h5py=None, name=None, unit=None, lock=True, **kwargs):
+    def store(self, parent_h5py=None, name=None, unit=None, lock="auto", **kwargs):
         """a way to store data, especially expensively computed data, into a new file."""
+        if lock == "auto":
+            lock = get_lock()
         if not hasattr(self, "h5"):
             self.h5 = ArrayH5Dataset(parent_h5py, name)
 
@@ -1456,9 +1460,11 @@ def compute(*args):
     return tuple(out)
 
 
-def store(arrays, lock=True, **kwargs):
-    """NOT TESTED!
-    Storing of multiple escape arrays, efficient when they originate from the same ancestor"""
+def store(arrays, lock="auto", **kwargs):
+    """
+    Storing of multiple escape arrays (as iterable, list or similar), efficient when they originate from the same ancestor"""
+    if lock == "auto":
+        lock = get_lock()
     prep = [
         array.h5.append(array.data, array.index, prep_run="store_numpy")
         for array in arrays
@@ -1472,6 +1478,13 @@ def store(arrays, lock=True, **kwargs):
         array._data = array.h5.get_data_da()
         array._index = array.h5.index
         array.scan._save_to_h5(array.h5.grp)
+
+
+def get_lock():
+    if _lock:
+        return _lock
+    else:
+        return True
 
 
 def concatenate(arraylist):
@@ -1689,10 +1702,12 @@ class ArrayH5Dataset:
         else:
             return np.asarray([], dtype=int)
 
-    def append(self, data, event_ids, scan=None, prep_run=False, lock=True, **kwargs):
+    def append(self, data, event_ids, scan=None, prep_run=False, lock="auto", **kwargs):
         """
         expects to extend a former dataset, i.e. data includes data already existing,
         this will likely change in future to also allow real appending of entirely new data."""
+        if lock == "auto":
+            lock = get_lock()
         n_new = len(self._n_i)
         ids_stored = self.index
         in_previous_indexes = np.in1d(event_ids, ids_stored)
