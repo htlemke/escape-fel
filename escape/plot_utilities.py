@@ -307,8 +307,15 @@ class MultipleRoiSelector(widgets.HBox):
         self._select_buttons[-1].on_click(lambda dum: self.set_roi_selection_active(ti))
 
 
-def nfigure(name="no name", *args, **kwargs):
-    if name in plt.get_figlabels():
-        Warning('Figure of name "{name}" exists and is closed.')
-    plt.close(name)
-    return plt.figure(name, *args, **kwargs)
+def nfigure(*args, num="no name", **kwargs):
+    if num in plt.get_figlabels():
+        Warning('Figure of name "{num}" exists and is closed.')
+    plt.close(num)
+    return plt.figure(*args, num=num, **kwargs)
+
+
+def nsubplots(*args, num="no name", **kwargs):
+    if num in plt.get_figlabels():
+        Warning('Figure of name "{num}" exists and is closed.')
+    plt.close(num)
+    return plt.subplots(*args, num=num, **kwargs)

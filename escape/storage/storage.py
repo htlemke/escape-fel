@@ -1342,7 +1342,10 @@ class Scan:
         self._check_consistency()
         if "scan" in group.keys():
             del group["scan"]
-        scan_group = group.require_group("scan", track_order=True)
+        try:
+            scan_group = group.require_group("scan", track_order=True)
+        except:
+            scan_group = group.require_group("scan")
         scan_group["step_lengths"] = self.step_lengths
         par_group = scan_group.require_group("parameter")
         for parname, pardict in self.parameter.items():

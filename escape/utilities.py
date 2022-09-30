@@ -6,6 +6,7 @@ from pathlib import Path
 from .plot_utilities import *
 import pickle
 import signal
+import escape.cell2function as cell2function
 
 
 def weighted_avg_and_std(values, weights):
@@ -123,13 +124,14 @@ def hist_scan(
     return x_scan, hbins, hdat
 
 
-def plot2D(x, y, C, *args, **kwargs):
+def plot2D(x, y, C, *args, ax=None, **kwargs):
     def bin_array(arr):
         arr = np.asarray(arr)
         return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
 
     Xp, Yp = np.meshgrid(bin_array(x), bin_array(y))
-
+    if ax:
+        plt.sca(ax)
     out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
     try:
         plt.xlabel(x.name)

@@ -2,7 +2,7 @@ import h5py
 from pathlib import Path
 
 
-def findItemnamesGroups(toplevel, item_names=[]):
+def findItemnamesGroups(toplevel, item_names=[], get_full_name=False):
     itemGroups = {}
 
     def find_datasets(item, item_h):
@@ -10,7 +10,10 @@ def findItemnamesGroups(toplevel, item_names=[]):
             return
         else:
             if set(item_names).issubset(item_h.keys()):
-                itemGroups[Path(item).name] = [item_h[name] for name in item_names]
+                if get_full_name:
+                    itemGroups[item_h.name] = [item_h[name] for name in item_names]
+                else:
+                    itemGroups[Path(item).name] = [item_h[name] for name in item_names]
 
     toplevel.visititems(find_datasets)
     return itemGroups

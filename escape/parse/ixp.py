@@ -2,6 +2,16 @@ import h5py
 import numpy as np
 import dask.array as da
 from escape import Array
+from escape.parse.utilities import findItemnamesGroups
+
+
+def parse_ixp_file(filename):
+    fh = h5py.File(filename, "r")
+    grps = findItemnamesGroups(fh, ["data", "time"], get_full_name=True)
+    out = {}
+    for name, dsets in grps.items():
+        out[name] = parse_ixp_group(dsets[0].parent)
+    return out
 
 
 def parse_ixp_group(h5py_group):
