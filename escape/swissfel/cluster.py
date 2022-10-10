@@ -1,5 +1,6 @@
 from glob import escape
 import json
+from os import stat
 import pathlib
 from pathlib import Path
 
@@ -145,6 +146,8 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
 
 @delayed
 def read_h5_chunk(fina, ds_path, slice_args):
+    import bitshuffle.h5
+
     with h5py.File(fina, "r") as fh:
         dat = fh[ds_path][slice(*slice_args)]
     return dat
@@ -209,6 +212,8 @@ def parseScanEcoV01(
     checknstore_parsing_result=False,
     clear_parsing_result=False,
     return_json_info=False,
+    step_selection=slice(None),
+    verbose=0,
 ):
 
     if file_name_json:
@@ -222,7 +227,6 @@ def parseScanEcoV01(
             run_root_directory = None
     else:
         s = scan_info
-    # breakpoint()
 
     if checknstore_parsing_result:
         if checknstore_parsing_result == "same_directory":
@@ -246,9 +250,6 @@ def parseScanEcoV01(
                 / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
 
-            # parse_res_file = scan_info_filepath.parent.resolve() / Path(
-            #     *scan_info_filepath.with_suffix(".parse_result.json").parts[1:]
-            # )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
         else:
             parse_res_file = (
@@ -269,7 +270,8 @@ def parseScanEcoV01(
         dstores_flat = []
 
     dstores = []
-    for files_step in s["scan_files"]:
+    fls = dict(known=[], toparse=[])
+    for files_step in s["scan_files"][step_selection]:
         dstores_step = []
         lastpath = None
         searchpaths = None
@@ -291,9 +293,21 @@ def parseScanEcoV01(
                         searchpaths.insert(0, path)
                     break
             if file_path.resolve() in files_parsed:
+                fls["known"].append(file_path)
                 continue
+            else:
+                fls["toparse"].append(file_path)
             dstores_step.append(parse_bs_h5_file(file_path))
         dstores.append(dstores_step)
+    if verbose:
+        statstr = "Data files analyzed: "
+        statstr += "{} to parse of {}".format(
+            len(fls["toparse"]), len(fls["toparse"]) + len(fls["known"])
+        )
+        if verbose > 1:
+            for fl in fls["toparse"]:
+                statstr += "   " + fl.as_posix() + "\n"
+        print(statstr)
     with ProgressBar():
         dstores = dask.compute(dstores, scheduler="processes")[0]
     # flatten files in step
@@ -308,7 +322,8 @@ def parseScanEcoV01(
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
     else:
-        print("notsaveing")
+        if verbose:
+            print("not saving new parsing sesults")
 
     chs = set()
     for dstore in dstores_flat:
@@ -337,9 +352,17 @@ def parseScanEcoV01(
         s_sl = []
         scan = []
         tparameter = copy(parameter)
-        for stepNo, (scan_values, scan_readbacks, scan_step_info, dstore) in enumerate(
+        for iteratornumber, (
+            scan_values,
+            scan_readbacks,
+            scan_step_info,
+            dstore,
+        ) in enumerate(
             zip(
-                s["scan_values"], s["scan_readbacks"], s["scan_step_info"], dstores_flat
+                s["scan_values"][step_selection],
+                s["scan_readbacks"][step_selection],
+                s["scan_step_info"][step_selection],
+                dstores_flat,
             )
         ):
             if ch not in dstore.keys():
@@ -370,159 +393,6 @@ def parseScanEcoV01(
         return escArrays, s
     else:
         return escArrays
-
-    # datasets_scan = []
-
-    # def get_datasets_from_files(n):
-    #     lastpath = None
-    #     searchpaths = None
-    #     files = s["scan_files"][n]
-    #     datasets = {}
-    #     for n_file, f in enumerate(files):
-    #         fp = pathlib.Path(f)
-    #         fn = pathlib.Path(fp.name)
-    #         if not searchpaths:
-    #             searchpaths = [fp.parent] + [
-    #                 scan_info_filepath.parent / pathlib.Path(tp.format(fp.parent.name))
-    #                 for tp in search_paths
-    #             ]
-    #         for path in searchpaths:
-    #             file_path = path / fn
-    #             if file_path.is_file():
-    #                 if not lastpath:
-    #                     lastpath = path
-    #                     searchpaths.insert(0, path)
-    #                 break
-    #         # assert file_path.is_file(), 'Could not find file {} '.format(fn)
-    #         try:
-    #             fh = h5py.File(file_path.resolve(), mode="r")
-    #             datasets.update(utilities.findItemnamesGroups(fh, ["data", "pulse_id"]))
-    #             logger.info("Successfully parsed file %s" % file_path.resolve())
-    #         except:
-    #             logger.warning(f"could not read {file_path.absolute().as_posix()}.")
-    #     all_parses[n] = datasets
-
-    # ts = []
-    # for n in range(len(s["scan_files"])):
-    #     ts.append(Thread(target=get_datasets_from_files, args=[n]))
-    # for t in ts:
-    #     t.start()
-    # while len(all_parses) < len(s["scan_files"]):
-    #     m = len(s["scan_files"])
-    #     n = len(all_parses)
-    #     files_bar.update(n - files_bar.n)
-    #     # files_bar.update(n)
-    #     sleep(0.01)
-    # for t in ts:
-    #     t.join()
-    # # while not files_bar.n==files_bar.total:
-    # # sleep(.01)
-    # files_bar.update(files_bar.total - files_bar.n)
-
-    # # datasets_scan.append(datasets)
-
-    # names = set()
-    # dstores = {}
-
-    # # general scan info
-    # parameter = {
-    #     parname: {"values": [], "attributes": {"Id": id_name}}
-    #     for parname, id_name in zip(
-    #         s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
-    #     )
-    # }
-    # parameter.update(
-    #     {
-    #         f"{parname}_readback": {"values": [], "attributes": {"Id": id_name}}
-    #         for parname, id_name in zip(
-    #             s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
-    #         )
-    #     }
-    # )
-    # parameter.update({"scan_step_info": {"values": []}})
-
-    # for stepNo, (scan_values, scan_readbacks, scan_step_info) in enumerate(
-    #     zip(s["scan_values"], s["scan_readbacks"], s["scan_step_info"])
-    # ):
-    #     datasets = all_parses[stepNo]
-    #     tnames = set(datasets.keys())
-    #     newnames = tnames.difference(names)
-    #     oldnames = names.intersection(tnames)
-    #     for name in newnames:
-    #         if datasets[name][0].size == 0:
-    #             logger.debug(
-    #                 "Found empty dataset in {} in cycle {}".format(name, stepNo)
-    #             )
-    #         else:
-    #             size_data = (
-    #                 np.dtype(datasets[name][0].dtype).itemsize
-    #                 * datasets[name][0].size
-    #                 / 1024 ** 2
-    #             )
-    #             size_element = (
-    #                 np.dtype(datasets[name][0].dtype).itemsize
-    #                 * np.prod(datasets[name][0].shape[1:])
-    #                 / 1024 ** 2
-    #             )
-    #             if datasets[name][0].chunks:
-    #                 chunk_size = list(datasets[name][0].chunks)
-    #             else:
-    #                 chunk_size = list(datasets[name][0].shape)
-    #             if chunk_size[0] == 1:
-    #                 chunk_size[0] = int(memlimit_mD_MB // size_element)
-    #             dstores[name] = {}
-
-    #             # ToDo: get rid of bad definition in eco scan! (readbacks are just added as values but not as names).
-
-    #             dstores[name]["parameter"] = copy(parameter)
-    #             for par_name, value in zip(
-    #                 parameter.keys(),
-    #                 copy(scan_values) + copy(scan_readbacks) + [copy(scan_step_info)],
-    #             ):
-    #                 dstores[name]["parameter"][par_name]["values"].append(value)
-
-    #             dstores[name]["data"] = []
-    #             dstores[name]["data"].append(datasets[name][0])
-    #             dstores[name]["data_chunks"] = chunk_size
-    #             dstores[name]["eventIds"] = []
-    #             dstores[name]["eventIds"].append(datasets[name][1])
-    #             dstores[name]["stepLengths"] = []
-    #             dstores[name]["stepLengths"].append(len(datasets[name][0]))
-    #             names.add(name)
-    #     for name in oldnames:
-    #         if datasets[name][0].size == 0:
-    #             logger.debug(
-    #                 "Found empty dataset in {} in cycle {}".format(name, stepNo)
-    #             )
-    #         elif not len(datasets[name][0].shape) == len(
-    #             dstores[name]["data"][0].shape
-    #         ):
-    #             logger.debug("Found inconsistent dataset in {}".format(name))
-    #         elif not datasets[name][0].shape[0] == datasets[name][1].shape[0]:
-    #             logger.debug("Found inconsistent dataset in {}".format(name))
-    #         else:
-    #             for par_name, value in zip(
-    #                 parameter.keys(),
-    #                 copy(scan_values) + copy(scan_readbacks) + [copy(scan_step_info)],
-    #             ):
-    #                 dstores[name]["parameter"][par_name]["values"].append(value)
-    #             dstores[name]["data"].append(datasets[name][0])
-    #             dstores[name]["eventIds"].append(datasets[name][1])
-    #             dstores[name]["stepLengths"].append(len(datasets[name][0]))
-    # if createEscArrays:
-    #     escArrays = {}
-    #     containers = {}
-    #     for name, dat in dstores.items():
-    #         containers[name] = LazyContainer(dat)
-    #         escArrays[name] = Array(
-    #             containers[name].get_data,
-    #             index=containers[name].get_eventIds,
-    #             step_lengths=dat["stepLengths"],
-    #             parameter=dat["parameter"],
-    #         )
-    #     return escArrays
-    # else:
-    #     return dstores
 
 
 class LazyContainer:

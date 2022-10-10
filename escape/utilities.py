@@ -7,6 +7,48 @@ from .plot_utilities import *
 import pickle
 import signal
 import escape.cell2function as cell2function
+from rich.tree import Tree
+
+
+class StructureGroup:
+    def __repr__(self):
+        s = object.__repr__(self)
+        s += "\n"
+        s += "items\n"
+        for k in self.__dict__.keys():
+            s += "    " + k + "\n"
+        return s
+
+    def get_structure_tree(self, base=None):
+        if not base:
+            base = Tree("")
+        for key, item in self.__dict__.items():
+            if hasattr(item, "get_structure_tree"):
+                item.get_structure_tree(base=base.add(key))
+            else:
+                base.add(key).add(str(item))
+        return base
+
+
+def dict2structure(t, base=None):
+    if not base:
+        base = StructureGroup()
+    for tt, tv in t.items():
+        p = tt.split(".")
+        tbase = base
+        for tp in p[:-1]:
+            if tp in tbase.__dict__.keys():
+                if not isinstance(tbase.__dict__[tp], StructureGroup):
+                    tbase.__dict__[tp] = StructureGroup()
+            else:
+                tbase.__dict__[tp] = StructureGroup()
+            tbase = tbase.__dict__[tp]
+        if hasattr(tbase, p[-1]):
+            if not isinstance(tbase.__dict__[p[-1]], StructureGroup):
+                tbase.__dict__[p[-1]] = tv
+        else:
+            tbase.__dict__[p[-1]] = tv
+    return base
 
 
 def weighted_avg_and_std(values, weights):

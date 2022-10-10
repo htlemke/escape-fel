@@ -6,4 +6,8 @@ a high level, object oriented framework which abstracs event processing to high 
 
 """
 
-from .storage import *
+import escape.storage as storage
+
+from escape.storage import Array, Scan, concatenate, store, compute
+
+from . import utilities

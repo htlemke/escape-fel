@@ -18,6 +18,7 @@ from pathlib import Path
 import html
 import base64
 from io import BytesIO
+from .storage_tools import ArrayTools, ScanTools
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class Array:
         parameter=None,
         index_dim=None,
         name=None,
+        source=None,
     ):
         if index_dim is None:
             logger.debug(
@@ -99,7 +101,9 @@ class Array:
 
         self.scan = Scan(parameter, step_lengths, self)
         self.name = name
+        self.source = source
         self._touched = False
+        self.tools = ArrayTools(self)
 
     def _touch(self):
         if not self._touched:
@@ -127,7 +131,7 @@ class Array:
         if callable(self._data):
             # TODO: cludgy solution need fix at some point.
             op = self._data(data_selector=self._data_selector)
-            if len(op) == 2 and op[1] == "nopersist":
+            if len(op) == 2 and (type(op[1]) is str) and op[1] == "nopersist":
                 return op[0]
             else:
                 self._data = op
@@ -1103,6 +1107,7 @@ class Scan:
         self.parameter = parameter
         self._array = array
         # self._add_methods()
+        self.tools = ScanTools(self)
 
     @property
     def par_steps(self):

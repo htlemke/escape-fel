@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from time import sleep
 import ipywidgets as widgets
 import numpy as np
+from threading import Thread
 
 
 class GinputNB:
@@ -66,7 +67,7 @@ def make_box_layout():
 
 
 class RectangleSelectNB:
-    def __init__(self, fig=None, ax=None, ax_roi=None):
+    def __init__(self, fig=None, ax=None, ax_roi=None, callbacks_changeroi=[]):
         if not fig:
             fig = plt.gcf()
         self.fig = fig
@@ -90,6 +91,7 @@ class RectangleSelectNB:
         )
         fig.canvas.mpl_connect("key_press_event", self.toggle_selector)
         self.selector.set_active(False)
+        self.callbacks_changeroi = callbacks_changeroi
 
     def toggle_selector(self, event):
         if event.key == "t":
@@ -116,8 +118,13 @@ class RectangleSelectNB:
             if self.ax_roi.get_images():
                 i = self.ax_roi.get_images()[0]
                 i.set_data(self.get_image_roi_data())
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
+                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
             else:
                 self.ax_roi.imshow(self.get_image_roi_data())
+        for callback in self.callbacks_changeroi:
+            callback()
 
     def get_image_roi_data(self):
         i = self.ax.get_images()[0]
@@ -146,7 +153,7 @@ class RectangleSelectNB:
 
 
 class MultipleRoiSelector(widgets.HBox):
-    def __init__(self, data, name=""):
+    def __init__(self, data, rois={}, callbacks_changeanyroi=[], name="RoiSelector"):
         # super().__init__(layout=widgets.Layout(width='90%'))
         super().__init__()
         self.data = data
@@ -155,9 +162,14 @@ class MultipleRoiSelector(widgets.HBox):
         self._tabs_rois = widgets.Tab()
 
         def f(x):
-            self.set_roi_selection_active(self, i=None)
+            self.visi_ind = x["new"]
+            self.set_roi_selection_active(i=self.visi_ind)
+            self.set_roi_selection_visible(i=self.visi_ind)
 
-        self._tabs_rois.observe(f, names="selected_index")
+        self._tabs_rois.observe(
+            f,
+            names="selected_index",
+        )
 
         self._select_buttons = []
         self.debug = widgets.Output()
@@ -165,7 +177,7 @@ class MultipleRoiSelector(widgets.HBox):
         self._add_roi_button = widgets.Button(
             description="Add roi",
             disabled=False,
-            button_style="",  # 'success', 'info', 'warning', 'danger' or ''
+            button_style="primary",  # 'success', 'info', 'warning', 'danger' or ''
             tooltip="Click me",
             # icon='check' # (FontAwesome names without the `fa-` prefix)
         )
@@ -197,6 +209,23 @@ class MultipleRoiSelector(widgets.HBox):
             self._tabs_rois,
         ]
         self.layout = make_box_layout()
+        self.callbacks_changeanyroi = [
+            (lambda: tc(self)) for tc in callbacks_changeanyroi
+        ]
+        self.result = None  # dummy variable where callbacks can write their results to.
+        for roititle, roiextents in rois.items():
+            self.add_roi()
+            # self.set_roi_selection_active(len(self.roi_selectors) - 1)
+            self._roi_titles[-1].value = roititle
+            self.roi_selectors[-1].selector.extents = tuple(roiextents)
+            # self.roi_selectors[-1].line_select_callback()
+
+    @property
+    def rois(self):
+        o = {}
+        for tn, ts in zip(self._roi_titles, self.roi_selectors):
+            o[tn.value] = (ts.xmin, ts.xmax, ts.ymin, ts.ymax)
+        return o
 
     def create_data_plot(self):
         self._output_data = widgets.Output()
@@ -254,15 +283,15 @@ class MultipleRoiSelector(widgets.HBox):
             self.axs_rois.append(tfig.add_subplot())
             plt.show(tfig)
 
-        self._select_buttons.append(
-            widgets.Button(
-                description="Select",
-                disabled=False,
-                button_style="",  # 'success', 'info', 'warning', 'danger' or ''
-                tooltip="Click me",
-                # icon='check' # (FontAwesome names without the `fa-` prefix)
-            )
-        )
+        # self._select_buttons.append(
+        #     widgets.Button(
+        #         description="Select",
+        #         disabled=False,
+        #         button_style="primary",  # 'success', 'info', 'warning', 'danger' or ''
+        #         tooltip="Click me",
+        #         # icon='check' # (FontAwesome names without the `fa-` prefix)
+        #     )
+        # )
         self._roi_titles.append(
             widgets.Text(
                 value=f"roi{ti}",
@@ -273,12 +302,22 @@ class MultipleRoiSelector(widgets.HBox):
         )
         self._tabs_rois.children += (
             widgets.VBox(
-                [widgets.HBox([self._select_buttons[-1], self._roi_titles[-1]]), op]
+                [
+                    widgets.HBox(
+                        [
+                            # self._select_buttons[-1],
+                            self._roi_titles[-1]
+                        ]
+                    ),
+                    op,
+                ]
             ),
         )
         # self._tabs_rois.set_title(len(self._tabs_rois.children)-1,self._roi_title_input.value)
         def update_tab_title(x):
             self._tabs_rois.set_title(ti, x["new"])
+            for callback in self.callbacks_changeanyroi:
+                callback()
 
         self._tabs_rois.set_title(ti, self._roi_titles[ti].value)
         self._roi_titles[ti].observe(update_tab_title, names="value")
@@ -288,6 +327,15 @@ class MultipleRoiSelector(widgets.HBox):
             rs.selector.set_active(False)
         if not i == None:
             self.roi_selectors[i].selector.set_active(True)
+        # self.set_roi_selection_visible(i)
+        # self.fig_data.canvas.draw()
+
+    def set_roi_selection_visible(self, i=None):
+        for rs in self.roi_selectors:
+            rs.selector.set_visible(False)
+        if not i == None:
+            self.roi_selectors[i].selector.set_visible(True)
+        # self.fig_data.canvas.draw()
 
     def get_roi_selection_active(self):
         o = []
@@ -295,16 +343,134 @@ class MultipleRoiSelector(widgets.HBox):
             o.append(rs.selector.active)
         return o
 
-    def add_roi(self, dum):
+    def add_roi(self, *args):
         # self.roi_selectors.append('test')
         ti = len(self.roi_selectors)
         self.add_roi_plot()
         self.roi_selectors.append(
             RectangleSelectNB(
-                fig=self.fig_data, ax=self.ax_data, ax_roi=self.axs_rois[-1]
+                fig=self.fig_data,
+                ax=self.ax_data,
+                ax_roi=self.axs_rois[-1],
+                callbacks_changeroi=self.callbacks_changeanyroi,
             )
         )
-        self._select_buttons[-1].on_click(lambda dum: self.set_roi_selection_active(ti))
+        # self._select_buttons[-1].on_click(lambda dum: self.set_roi_selection_active(ti))
+        self._tabs_rois.set_trait("selected_index", len(self.roi_selectors) - 1)
+
+    def update_data(self, data):
+        self.data = data
+        cmin = self._clim_slider.min
+        cmax = self._clim_slider.max
+        cval = self._clim_slider.value
+        self.ax_data.get_images()[0].set_array(data)
+        for ax in self.axs_rois:
+            ax.get_images()[0].set_array(data)
+
+        self._clim_slider.set_trait("min", min(self.data.min(), cmin))
+        self._clim_slider.set_trait("max", max(self.data.max(), cmax))
+        self._clim_slider.set_trait("value", cval)
+
+
+import ipywidgets as widgets
+from time import sleep
+from threading import Thread
+
+
+class StepViewer(widgets.VBox):
+    def __init__(
+        self,
+        array,
+        data_selection=slice(None, 100),
+        update_rate=1,
+        figname="StepViewer",
+    ):
+        super().__init__()
+        self.array = array
+        self.data_plot = len(self.array.scan) * [np.nan * np.ones(array.shape[1:])]
+        self.attr_data_plot = len(self.array.scan) * [None]
+
+        self.output = widgets.Output()
+        with self.output:
+            plt.close(figname)
+            tfig = plt.figure(figname, constrained_layout=True)
+            self.ax = tfig.add_subplot()
+            plt.show(tfig)
+
+        self.step_order = list(range(len(self.array.scan)))
+        np.random.RandomState(0).shuffle(self.step_order)
+        self.data_queue = [
+            self.array.scan[i][data_selection].nanmean(axis=0).persist()
+            for i in self.step_order
+        ]
+        self.data_plot_done = set()
+        steps_done = sorted(list(self.data_plot_done))
+        if not steps_done:
+            steps_done = [self.step_order[0]]
+        self.selector = widgets.SelectionSlider(
+            options=steps_done,
+            value=self.step_order[0],
+            description="Step number",
+            disabled=False,
+            continuous_update=True,
+            orientation="horizontal",
+            readout=True,
+        )
+
+        self.step_text = widgets.Output()
+
+        self.update(self.step_order[0])
+
+        self.children = [
+            self.output,
+            widgets.HBox([self.selector, self.step_text]),
+        ]
+
+        self.selector.observe(lambda d: self.update(d["new"]), names="value")
+
+        # @debug.capture(clear_output=False)
+        self.uded = 0
+
+        def update_threadfunc():
+            while len(self.queue_done()) < len(self.array.scan):
+                self.update_data()
+                self.update_selector()
+                self.uded += 1
+                sleep(update_rate)
+            self.update_data()
+            self.update_selector()
+            self.uded += 1
+
+        self.update_thread = Thread(target=update_threadfunc)
+        self.update_thread.start()
+
+    def update(self, ix):
+        self.ax.cla()
+        self.ax.imshow(self.data_plot[ix])
+        with self.step_text:
+            self.step_text.clear_output()
+            print(str(self.array.scan.par_steps.T[ix]))
+
+    def update_data(self):
+        for n in self.queue_done():
+            if n in self.data_plot_done:
+                continue
+            else:
+                self.data_plot[self.step_order[n]] = self.data_queue[n].compute()
+                self.data_plot_done.add(n)
+
+    def update_selector(self):
+        value = self.selector.value
+        steps_done = sorted(list(self.data_plot_done))
+        if not steps_done:
+            steps_done = [self.step_order[0]]
+        self.selector.set_trait("options", tuple(steps_done))
+        self.selector.set_trait("value", value)
+
+    def queue_done(self):
+        return np.asarray(
+            [list(tmp.dask.values())[0].done() for tmp in self.data_queue]
+        ).nonzero()[0]
 
 
 def nfigure(*args, num="no name", **kwargs):
