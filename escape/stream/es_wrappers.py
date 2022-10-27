@@ -35,13 +35,15 @@ class EventHandler_SFEL:
 
     def register_source(self, source_id):
         """method to register sources to be read in the loop iterator"""
-
+        if source_id == "lab_time" or source_id == "pulse_id":
+            source_id = "SIN-CVME-TIFGUN-EVR0:BUNCH-1-OK"
         if not (source_id in self.source_ids):
             self.source_ids.append(source_id)
 
     def remove_source(self, source_id):
         """method to remove sources from the loop iterator"""
-
+        if source_id == "lab_time" or source_id == "pulse_id":
+            return
         self.source_ids.pop(self.source_ids.index(source_id))
 
     def context_manager(self):
@@ -92,11 +94,14 @@ class Event_SFEL:
         self.message = message
 
     def getFromSource(self, source):
-        if source == "labTime":
+        if source == "lab_time":
             return (
                 self.message.data.global_timestamp
                 + 1e-9 * self.message.data.global_timestamp_offset
             )
+        elif source == "pulse_id":
+            return self.message.data.pulse_id
+
         else:
             return self.message.data.data[source].value
 
