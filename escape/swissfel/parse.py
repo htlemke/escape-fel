@@ -44,7 +44,7 @@ def parse_run(
     return parse_scan(next(files))
 
 
-from escape.utilities import dict2structure
+from escape.utilities import dict2structure, name2pgroups
 
 # class StructureGroup:
 #     def __repr__(self):
@@ -91,11 +91,18 @@ def interpret_raw_data_definition(
     metadata_file=None,
     run_numbers=None,
     pgroup=None,
+    exp_name=None,
     instrument="bernina",
     search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
 ):
     if metadata_file:
         return [metadata_file]
+    if run_numbers and exp_name and instrument:
+        rpgs = name2pgroups(exp_name, beamline=instrument)
+        pgroup = rpgs[0][1]
+        if len(rpgs) > 1:
+            print(f"Found multiple pgroups, {rpgs}, choosing {pgroup}")
+
     if run_numbers and pgroup and instrument:
         metadata_files = []
         for run_number in run_numbers:
@@ -119,6 +126,7 @@ def load_dataset_from_scan(
     metadata_file=None,
     run_numbers=None,
     pgroup=None,
+    exp_name=None,
     instrument="bernina",
     search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
     result_type="zarr",
@@ -140,6 +148,7 @@ def load_dataset_from_scan(
         metadata_file=metadata_file,
         run_numbers=run_numbers,
         pgroup=pgroup,
+        exp_name=exp_name,
         instrument=instrument,
         search_path=search_path,
     )

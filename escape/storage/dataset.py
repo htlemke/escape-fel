@@ -26,9 +26,11 @@ class DataSet:
             self.results_file = None
 
         if alias_mappings:
+            print(alias_mappings)
             for idname in self.data_raw.keys():
                 # print(idname)
                 if idname in alias_mappings.keys():
+                    print(idname)
                     self.append(self.data_raw[idname], name=alias_mappings[idname])
 
         self.name = name

@@ -1711,6 +1711,13 @@ class ArrayH5Dataset:
                 "Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!"
             )
 
+    def clear_stored_data(self):
+        for key in self.grp.keys():
+            try:
+                del self.grp[key]
+            except:
+                print(f"Did not succeed to delete key {key}!")
+
     @property
     def index(self):
         if self._n_i:

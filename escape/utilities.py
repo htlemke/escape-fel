@@ -391,3 +391,21 @@ def get_corr(data, ref, order=2):
             std.append(np.nan)
             std_fx.append(np.nan)
     return np.asarray(std), np.asarray(std_fx)
+
+
+def pgroup2name(pgroup, beamline="bernina"):
+    tp = f"/sf/{beamline}/exp/"
+    d = Path(tp)
+    dirs = [i for i in d.glob("*") if i.is_symlink()]
+    names = [i.name for i in dirs]
+    targets = [i.resolve().name for i in dirs]
+    return names[targets.index(pgroup)]
+
+
+def name2pgroups(name, beamline="bernina"):
+    tp = f"/sf/{beamline}/exp/"
+    d = Path(tp)
+    dirs = [i for i in d.glob("*") if i.is_symlink()]
+    names = [i.name for i in dirs]
+    targets = [i.resolve().name for i in dirs]
+    return [[i_n, i_p] for i_n, i_p in zip(names, targets) if name in i_n]

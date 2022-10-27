@@ -218,6 +218,10 @@ class MultipleRoiSelector(widgets.HBox):
             # self.set_roi_selection_active(len(self.roi_selectors) - 1)
             self._roi_titles[-1].value = roititle
             self.roi_selectors[-1].selector.extents = tuple(roiextents)
+            self.roi_selectors[-1].callbacks_changeroi = [
+                (lambda: tc(self)) for tc in callbacks_changeanyroi
+            ]
+
             # self.roi_selectors[-1].line_select_callback()
 
     @property
@@ -242,8 +246,8 @@ class MultipleRoiSelector(widgets.HBox):
             plt.tight_layout()
             plt.show(self.fig_data)
 
-        mn = self.data.min()
-        mx = self.data.max()
+        mn = np.nanmin(self.data)
+        mx = np.nanmax(self.data)
         ptp = mx - mn
 
         self._clim_slider = widgets.FloatRangeSlider(
@@ -357,6 +361,8 @@ class MultipleRoiSelector(widgets.HBox):
         )
         # self._select_buttons[-1].on_click(lambda dum: self.set_roi_selection_active(ti))
         self._tabs_rois.set_trait("selected_index", len(self.roi_selectors) - 1)
+        self.set_roi_selection_active(i=ti)
+        self.set_roi_selection_visible(i=ti)
 
     def update_data(self, data):
         self.data = data
@@ -367,8 +373,11 @@ class MultipleRoiSelector(widgets.HBox):
         for ax in self.axs_rois:
             ax.get_images()[0].set_array(data)
 
-        self._clim_slider.set_trait("min", min(self.data.min(), cmin))
-        self._clim_slider.set_trait("max", max(self.data.max(), cmax))
+        for sel in self.roi_selectors:
+            sel.line_select_callback(1, 2)
+
+        self._clim_slider.set_trait("min", min(np.nanmin(self.data), cmin))
+        self._clim_slider.set_trait("max", max(np.nanmax(self.data), cmax))
         self._clim_slider.set_trait("value", cval)
 
 
@@ -473,15 +482,128 @@ class StepViewer(widgets.VBox):
         ).nonzero()[0]
 
 
-def nfigure(*args, num="no name", **kwargs):
+def nfigure(num="no name", **kwargs):
     if num in plt.get_figlabels():
         Warning('Figure of name "{num}" exists and is closed.')
     plt.close(num)
-    return plt.figure(*args, num=num, **kwargs)
+    return plt.figure(num=num, **kwargs)
 
 
-def nsubplots(*args, num="no name", **kwargs):
+def nsubplots(nrows=1, ncols=1, *, num="no name", **kwargs):
     if num in plt.get_figlabels():
         Warning('Figure of name "{num}" exists and is closed.')
     plt.close(num)
-    return plt.subplots(*args, num=num, **kwargs)
+    return plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+
+
+class StepViewerP(widgets.VBox):
+    def __init__(
+        self,
+        array,
+        wid,
+        data_selection=slice(None, 100),
+        update_rate=1,
+    ):
+        super().__init__()
+        self.array = array
+        self.data_plot = len(self.array.scan) * [np.nan * np.ones(array.shape[1:])]
+        self.attr_data_plot = len(self.array.scan) * [None]
+
+        self.output = wid
+
+        # self.output = widgets.Output()
+        # with self.output:
+        #     plt.close(figname)
+        #     tfig = plt.figure(figname, constrained_layout=True)
+        #     self.ax = tfig.add_subplot()
+        #     plt.show(tfig)
+        # Creating a random step order, this is about to become subject to user input preference on computation.
+        self.step_order = list(range(len(self.array.scan)))
+        np.random.RandomState(0).shuffle(self.step_order)
+
+        # !starting calculation of average DATA in custom order!
+        self.data_queue = [
+            self.array.scan[i][data_selection].nanmean(axis=0).persist()
+            for i in self.step_order
+        ]
+
+        self.data_plot_done = set()
+        steps_done = sorted(list(self.data_plot_done))
+        if not steps_done:
+            steps_done = [self.step_order[0]]
+        self.selector = widgets.SelectionSlider(
+            options=steps_done,
+            value=self.step_order[0],
+            description="Step number",
+            disabled=False,
+            continuous_update=True,
+            orientation="horizontal",
+            readout=True,
+        )
+
+        self.step_text = widgets.Output()
+
+        # self.update(self.step_order[0])
+
+        self.children = [
+            self.output,
+            widgets.HBox([self.selector, self.step_text]),
+        ]
+
+        self.selector.observe(lambda d: self.update(d["new"]), names="value")
+
+        # @debug.capture(clear_output=False)
+        self.uded = 0
+        self.result = None
+
+        def update_threadfunc():
+            while len(self.queue_done()) < len(self.array.scan):
+                self.update_data()
+                self.update_selector()
+                self.uded += 1
+                sleep(update_rate)
+            self.update_data()
+            self.update_selector()
+            self.uded += 1
+            self.tito = [len(self.queue_done()), len(self.array.scan)]
+
+        self.update_thread = Thread(target=update_threadfunc)
+        self.update_thread.start()
+
+    def update(self, ix):
+        self.output.update_data(self.data_plot[ix])
+        with self.step_text:
+            self.step_text.clear_output()
+            print(str(self.array.scan.par_steps.T[ix]))
+
+    def update_data(self):
+        for n in self.queue_done():
+            if n in self.data_plot_done:
+                continue
+            else:
+                self.data_plot[self.step_order[n]] = self.data_queue[n].compute()
+                self.data_plot_done.add(n)
+
+    def update_selector(self):
+        value = self.selector.value
+        steps_done = sorted([self.step_order[n] for n in list(self.data_plot_done)])
+        if not steps_done:
+            steps_done = [self.step_order[0]]
+        self.selector.set_trait("options", tuple(steps_done))
+        if value in steps_done:
+            self.selector.set_trait("value", value)
+        else:
+            self.selector.set_trait("value", steps_done[0])
+
+    def queue_done(self):
+        dn = []
+        for tmp in self.data_queue:
+            element = list(tmp.dask.values())[0]
+            if hasattr(
+                element, "done"
+            ):  # in this case the persist above is in background, i.e. the scheduler is distributed.
+                dn.append(element.done())
+            else:
+                dn.append(True)  # assuming computation has happened!
+
+        return np.asarray(dn).nonzero()[0]

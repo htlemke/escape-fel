@@ -80,7 +80,7 @@ def jf_correct(
         h.pedestal_file = dark_file
         if mask:
             h.pixel_mask = mask
-        if module_map:
+        if not module_map is None:
             h.module_map = module_map
 
         def proc_and_mask(*args, **kwargs):
@@ -97,12 +97,13 @@ def jf_correct(
             ] = np.nan
             return o
 
-        return array.map_index_blocks(
+        data_corr = array.map_index_blocks(
             proc_and_mask,
             conversion=cor_gain_dark_mask,
             gap_pixels=cor_tile_gaps,
             geometry=cor_geometry,
             mask=cor_mask,
+            double_pixels=double_pixels,
             parallel=comp_parallel,
             new_element_size=h.get_shape_out(
                 gap_pixels=cor_tile_gaps, geometry=cor_geometry
@@ -110,6 +111,12 @@ def jf_correct(
             dtype=float,
             **kwargs,
         )
+        if threshold:
+            return data_corr.map_index_blocks(
+                apply_threshold, threshold=threshold, dtype=np.float64
+            )
+        else:
+            return data_corr
 
 
 def apply_gain_pede_np(image, G, P, pixel_mask=None, mask_value=np.nan):

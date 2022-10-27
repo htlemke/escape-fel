@@ -143,6 +143,10 @@ class EscData:
         self._isesc = True
         self._lastEventId = None
 
+    def __getitem__(self):
+        """TODO"""
+        pass
+
     def shape(self):
         return self._dataManager._get_shape()
 
