@@ -279,7 +279,8 @@ class EscData:
         if axes is None:
             fig = plt.figure("%s %s Correlation" % (self.name, xVar.name))
             axes = fig.gca()
-        while waitfordata := True:
+        waitfordata = True
+        while waitfordata:
             waitfordata = (not len(self) > 1) and (not len(xVar) > 1)
             time.sleep(0.05)
 
