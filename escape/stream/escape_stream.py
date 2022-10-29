@@ -273,16 +273,19 @@ class EscData:
         if update:
             self._medPlot.updateContinuously(interval=update)
 
-    def plot_corr(self, xVar, Npoints=300, update=0.5, axes=None):
+    def plot_corr(self, xVar, Npoints=300, update=0.5, axes=None, timeout=5):
         self.accumulate(1)
         xVar.accumulate(1)
         if axes is None:
             fig = plt.figure("%s %s Correlation" % (self.name, xVar.name))
             axes = fig.gca()
         waitfordata = True
+        startwaiting = time.time
         while waitfordata:
             waitfordata = (not len(self) > 1) and (not len(xVar) > 1)
             time.sleep(0.05)
+            if time.time - startwaiting > timeout:
+                raise (Exception("Timed out waiting for stream data."))
 
         self._corrPlot = plots.PlotCorrelation(xVar, self, Nlast=Npoints)
         self._corrPlot.plot()
