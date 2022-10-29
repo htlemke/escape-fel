@@ -253,21 +253,36 @@ class EscData:
         pervals = [50 - perc / 2.0, 50 + perc / 2.0]
         return [np.percentile(td, pervals, axis=0) for td in self.data]
 
-    def plot_hist(self, update=0.5, axes=None):
+    def plot_hist(self, update=0.5, axes=None, timeout=5):
         self.accumulate(1)
         if axes is None:
             fig = plt.figure("%s histogram" % self.name)
             axes = fig.gca()
+        waitfordata = True
+        startwaiting = time.time()
+        while waitfordata:
+            waitfordata = not len(self) > 1
+            time.sleep(0.05)
+            if time.time() - startwaiting > timeout:
+                raise (Exception("Timed out waiting for stream data."))
         self._histPlot = plots.HistPlot(self)
         self._histPlot.plot()
         if update:
             self._histPlot.updateContinuously(interval=update)
 
-    def plot_med(self, update=0.5, axes=None):
+    def plot_med(self, update=0.5, axes=None, timeout=5):
         self.accumulate(1)
         if axes is None:
             fig = plt.figure("%s median" % self.name)
             axes = fig.gca()
+        waitfordata = True
+        startwaiting = time.time()
+        while waitfordata:
+            waitfordata = not len(self) > 1
+            time.sleep(0.05)
+            if time.time() - startwaiting > timeout:
+                raise (Exception("Timed out waiting for stream data."))
+
         self._medPlot = plots.Plot(self)
         self._medPlot.plot()
         if update:
