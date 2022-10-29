@@ -280,11 +280,11 @@ class EscData:
             fig = plt.figure("%s %s Correlation" % (self.name, xVar.name))
             axes = fig.gca()
         waitfordata = True
-        startwaiting = time.time
+        startwaiting = time.time()
         while waitfordata:
             waitfordata = (not len(self) > 1) and (not len(xVar) > 1)
             time.sleep(0.05)
-            if time.time - startwaiting > timeout:
+            if time.time() - startwaiting > timeout:
                 raise (Exception("Timed out waiting for stream data."))
 
         self._corrPlot = plots.PlotCorrelation(xVar, self, Nlast=Npoints)
