@@ -408,4 +408,10 @@ def name2pgroups(name, beamline="bernina"):
     dirs = [i for i in d.glob("*") if i.is_symlink()]
     names = [i.name for i in dirs]
     targets = [i.resolve().name for i in dirs]
-    return [[i_n, i_p] for i_n, i_p in zip(names, targets) if name in i_n]
+    eq = [[i_n, i_p] for i_n, i_p in zip(names, targets) if name == i_n]
+    ni = [
+        [i_n, i_p]
+        for i_n, i_p in zip(names, targets)
+        if (not name == i_n) and (name in i_n)
+    ]
+    return eq + ni

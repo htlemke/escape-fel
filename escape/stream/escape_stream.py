@@ -279,6 +279,10 @@ class EscData:
         if axes is None:
             fig = plt.figure("%s %s Correlation" % (self.name, xVar.name))
             axes = fig.gca()
+        while waitfordata := True:
+            waitfordata = (not len(self) > 1) and (not len(xVar) > 1)
+            time.sleep(0.05)
+
         self._corrPlot = plots.PlotCorrelation(xVar, self, Nlast=Npoints)
         self._corrPlot.plot()
         if update:
@@ -326,7 +330,8 @@ class DataManager:
             return None
 
     def __len__(self):
-        return len(self.data)
+        # return len(self.data)
+        return sum(self.lens())
 
     def lens(self):
         le = [

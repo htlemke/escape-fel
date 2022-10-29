@@ -8,6 +8,14 @@ a high level, object oriented framework which abstracs event processing to high 
 
 import escape.storage as storage
 
-from escape.storage import Array, Scan, concatenate, store, compute
+from escape.storage import (
+    Array,
+    Scan,
+    concatenate,
+    store,
+    compute,
+    match_arrays,
+    escaped,
+)
 
 from . import utilities
