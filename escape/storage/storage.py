@@ -1077,11 +1077,13 @@ for opJoin, symbol in _operatorsJoin:
         "__%s__" % opJoin.__name__.strip("_"),
         escaped(opJoin, convertOutput2EscData=[0]),
     )
-    if "add" in opJoin.__name__:
+    if (
+        True
+    ):  # any(top in opJoin.__name__ for top in ["add", "sub", "mul", "div", "mod"]):
         setattr(
             Array,
             "__r%s__" % opJoin.__name__.strip("_"),
-            escaped(lambda a, b: opJoin(b, a), convertOutput2EscData=[0]),
+            escaped(opJoin, convertOutput2EscData=[0]),
         )
 
 
