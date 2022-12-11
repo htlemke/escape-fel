@@ -771,7 +771,7 @@ class Array:
                 + self.data._repr_html_()
             )
         else:
-            if self.ndim == 1:
+            if (self.ndim == 1) or all([ts <= 1 for ts in self.shape[1:]]):
                 return (
                     html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
                     + "<br />\n"
@@ -780,7 +780,7 @@ class Array:
                     )
                 )
             else:
-                return self.__repr__()
+                return None
 
     #     s = "<%s.%s object at %s>" % (
     #         self.__class__.__module__,

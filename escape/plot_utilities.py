@@ -222,7 +222,7 @@ class MultipleRoiSelector(widgets.HBox):
                 (lambda: tc(self)) for tc in callbacks_changeanyroi
             ]
 
-            # self.roi_selectors[-1].line_select_callback()
+            self.roi_selectors[-1].line_select_callback()
 
     @property
     def rois(self):
@@ -494,6 +494,13 @@ def nsubplots(nrows=1, ncols=1, *, num="no name", **kwargs):
         Warning('Figure of name "{num}" exists and is closed.')
     plt.close(num)
     return plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+
+
+def nsubplot_mosaic(*args, num="no name", **kwargs):
+    if num in plt.get_figlabels():
+        Warning('Figure of name "{num}" exists and is closed.')
+    plt.close(num)
+    return plt.subplot_mosaic(*args, num=num, **kwargs)
 
 
 class StepViewerP(widgets.VBox):

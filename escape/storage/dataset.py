@@ -42,6 +42,7 @@ class DataSet:
             self.datasets[name].set_h5_storage(self.results_file, name)
 
         dict2structure({name: data}, base=self)
+        return data
 
     def __repr__(self):
         s = object.__repr__(self)

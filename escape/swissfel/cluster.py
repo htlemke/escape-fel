@@ -37,6 +37,7 @@ from dask.utils import SerializableLock
 import socket
 import getpass
 import escape.storage
+from rich.progress import track
 
 logger = logging.getLogger(__name__)
 
@@ -308,8 +309,12 @@ def parseScanEcoV01(
             for fl in fls["toparse"]:
                 statstr += "   " + fl.as_posix() + "\n"
         print(statstr)
+    if verbose:
+        print("Starting to parse data files ...")
     with ProgressBar():
         dstores = dask.compute(dstores, scheduler="processes")[0]
+    if verbose:
+        print("... done parsing data files.")
     # flatten files in step
     if any(dstores):
         for dstore in dstores:
@@ -323,7 +328,7 @@ def parseScanEcoV01(
                 json.dump(dstores_flat, fp)
     else:
         if verbose:
-            print("not saving new parsing sesults")
+            print("No new parsing results")
 
     chs = set()
     for dstore in dstores_flat:
@@ -346,53 +351,75 @@ def parseScanEcoV01(
     )
     parameter.update({"scan_step_info": {"values": []}})
 
+    if verbose:
+        print("Starting to create escape arrays ...")
+
     escArrays = {}
-    for ch in chs:
-        arrays = []
-        s_sl = []
-        scan = []
-        tparameter = copy(parameter)
-        for iteratornumber, (
-            scan_values,
-            scan_readbacks,
-            scan_step_info,
-            dstore,
-        ) in enumerate(
-            zip(
-                s["scan_values"][step_selection],
-                s["scan_readbacks"][step_selection],
-                s["scan_step_info"][step_selection],
-                dstores_flat,
-            )
-        ):
-            if ch not in dstore.keys():
-                continue
-            arrays.append(dstore_to_darray(dstore[ch]))
-            s_sl.append(len(arrays[-1][0]))
+    # escArrays = []
+    for ch in track(chs, description="Creating arrays ..."):
+        # print(f"starting to create for {ch}")
+        escArrays[ch] = create_arrays_from_dstores(
+            ch, s, dstores_flat, parameter, step_selection
+        )
+    if verbose:
+        print("really Starting to create escape arrays ...")
 
-            for par_name, value in zip(
-                parameter.keys(),
-                copy(scan_values) + copy(scan_readbacks) + [copy(scan_step_info)],
-            ):
-                tparameter[par_name]["values"].append(value)
+    with ProgressBar():
+        dstores = dask.compute(escArrays, scheduler="threads")[0]
 
-        index_array = dask.array.concatenate([tr[0] for tr in arrays], axis=0).ravel()
-        data_array = dask.array.concatenate([tr[1] for tr in arrays], axis=0)
-
-        try:
-            escArrays[ch] = Array(
-                data=data_array,
-                index=index_array,
-                step_lengths=s_sl,
-                parameter=tparameter,
-            )
-        except Exception as e:
-            print(f"Could not create escape.Array for {ch};\nError: {str(e)}")
+    if verbose:
+        print("... done creating escape arrays.")
 
     if return_json_info:
         return escArrays, s
     else:
         return escArrays
+
+
+def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection):
+    arrays = []
+    s_sl = []
+    scan = []
+    tparameter = copy(parameter)
+    for iteratornumber, (
+        scan_values,
+        scan_readbacks,
+        scan_step_info,
+        dstore,
+    ) in enumerate(
+        zip(
+            s["scan_values"][step_selection],
+            s["scan_readbacks"][step_selection],
+            s["scan_step_info"][step_selection],
+            dstores_flat,
+        )
+    ):
+        if ch not in dstore.keys():
+            continue
+        arrays.append(dstore_to_darray(dstore[ch]))
+        s_sl.append(len(arrays[-1][0]))
+
+        for par_name, value in zip(
+            tparameter.keys(),
+            copy(scan_values) + copy(scan_readbacks) + [copy(scan_step_info)],
+        ):
+            tparameter[par_name]["values"].append(value)
+
+    index_array = dask.array.concatenate([tr[0] for tr in arrays], axis=0).ravel()
+    data_array = dask.array.concatenate([tr[1] for tr in arrays], axis=0)
+
+    try:
+        tarr = Array(
+            data=data_array,
+            index=index_array,
+            step_lengths=s_sl,
+            parameter=tparameter,
+        )
+
+    except Exception as e:
+        print(f"Could not create escape.Array for {ch};\nError: {str(e)}")
+
+    return tarr
 
 
 class LazyContainer:

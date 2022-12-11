@@ -18,4 +18,6 @@ from escape.storage import (
     escaped,
 )
 
+from escape.storage.dataset import DataSet
+
 from . import utilities

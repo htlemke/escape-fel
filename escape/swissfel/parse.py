@@ -93,8 +93,16 @@ def interpret_raw_data_definition(
     pgroup=None,
     exp_name=None,
     instrument="bernina",
-    search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+    search_path=[
+        "{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+        "{instrument:s}/data/{pgroup:s}/res/scan_info/run{run_number:04d}*.json",
+    ],
+    verbose=True,
 ):
+    # format search paths
+    if isinstance(search_path, str):
+        search_path = [search_path]
+
     if metadata_file:
         return [metadata_file]
     if run_numbers and exp_name and instrument:
@@ -106,18 +114,28 @@ def interpret_raw_data_definition(
     if run_numbers and pgroup and instrument:
         metadata_files = []
         for run_number in run_numbers:
-            tfiles = list(
-                Path("/sf").glob(
-                    search_path.format(
-                        instrument=instrument, pgroup=pgroup, run_number=run_number
+            for tsp in search_path:
+                tfiles = list(
+                    Path("/sf").glob(
+                        tsp.format(
+                            instrument=instrument, pgroup=pgroup, run_number=run_number
+                        )
                     )
                 )
-            )
-            if len(tfiles) > 1:
-                print(
-                    "WARNING:found more than one file matching raw data definition! Taking fist one."
-                )
-            tfile = tfiles[0]
+                if len(tfiles) < 1:
+                    if verbose:
+                        print(
+                            f"No files found using {('/sf/' + tsp.format(instrument=instrument, pgroup=pgroup, run_number=run_number)):s}"
+                        )
+                    continue
+                if 1 < len(tfiles):
+                    print(
+                        "WARNING:found more than one file matching raw data definition! Taking fist one."
+                    )
+                tfile = tfiles[0]
+                break
+            if verbose:
+                print(f"Found metadatafile {tfile.as_posix()}")
             metadata_files.append(tfile.as_posix())
         return metadata_files
 
@@ -128,11 +146,15 @@ def load_dataset_from_scan(
     pgroup=None,
     exp_name=None,
     instrument="bernina",
-    search_path="{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+    results_directory="./",
+    result_filename=None,
     result_type="zarr",
     result_file=None,
     clear_result_file=False,
-    results_directory="./",
+    search_path=[
+        "{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+        "{instrument:s}/data/{pgroup:s}/res/scan_info/run{run_number:04d}*.json",
+    ],
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_MB=100,
     createEscArrays=True,
@@ -143,6 +165,7 @@ def load_dataset_from_scan(
     name="delme",
     alias_mappings=None,
     step_selection=slice(None),
+    verbose=1,
 ):
     metadata_files = interpret_raw_data_definition(
         metadata_file=metadata_file,
@@ -166,6 +189,7 @@ def load_dataset_from_scan(
             clear_parsing_result=clear_parsing_result,
             return_json_info=True,
             step_selection=step_selection,
+            verbose=verbose,
         )
         if (not alias_mappings) and (
             "namespace_aliases" in s["scan_parameters"].keys()
@@ -194,10 +218,15 @@ def load_dataset_from_scan(
             else:
                 d[nm] = concatenate([d[nm], ar])
 
+    if not result_filename:
+        result_filename = Path(metadata_files[0]).stem
+    else:
+        result_filename = Path(result_filename).stem
+
     if not result_file:
         if result_type == "h5":
             result_filepath = Path(results_directory) / Path(
-                Path(metadata_files[0]).stem + ".esc" + ".h5"
+                result_filename + ".esc" + ".h5"
             )
             if clear_result_file and result_filepath.exists():
                 result_filepath.unlink()
@@ -205,11 +234,12 @@ def load_dataset_from_scan(
         elif result_type == "zarr":
             print("taking zarr format")
             result_filepath = Path(results_directory) / Path(
-                Path(metadata_files[0]).stem + ".esc" + ".zarr"
+                result_filename + ".esc" + ".zarr"
             )
             if clear_result_file and result_filepath.exists():
                 shutil.rmtree(result_filepath)
             result_file = zarr.open(result_filepath)
+        print(f"Automatic creation of result file: {result_filepath.as_posix()} .")
 
     ds = DataSet(d, name=name, alias_mappings=alias_mappings, results_file=result_file)
 

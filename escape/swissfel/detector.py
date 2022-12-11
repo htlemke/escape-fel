@@ -56,6 +56,7 @@ def jf_correct(
     threshold=None,
     **kwargs,
 ):
+    """module_map needs to be list of length of tiles, -1 if tile is deselected, 0 is selected."""
     if use_numpy:
 
         with h5py.File(gain_file, "r") as fh:
