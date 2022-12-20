@@ -76,6 +76,7 @@ class ScanTools:
         self,
         data_selection=slice(None, 100),
         rois={},
+        show=True,
     ):
         def append_rois(s):
             s.result = {}
@@ -103,8 +104,8 @@ class ScanTools:
         for rs in sm.roi_selectors:
             rs.callbacks_changeroi = [append_rois]
         append_rois()
-
-        display(s)
+        if show:
+            display(s)
         return s
 
     # def get_rectangular_roi(self,roidef={'test':(0,1,0,1)}):

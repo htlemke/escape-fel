@@ -45,6 +45,7 @@ def parse_run(
 
 
 from escape.utilities import dict2structure, name2pgroups
+from escape.storage import DataSet
 
 # class StructureGroup:
 #     def __repr__(self):
@@ -150,6 +151,7 @@ def load_dataset_from_scan(
     result_filename=None,
     result_type="zarr",
     result_file=None,
+    load_result_only=False,
     clear_result_file=False,
     search_path=[
         "{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
@@ -176,53 +178,10 @@ def load_dataset_from_scan(
         search_path=search_path,
     )
 
-    d = {}
-
-    for metadata_file in metadata_files:
-        td, s = parse_scan(
-            metadata_file,
-            search_paths=search_paths,
-            memlimit_MB=memlimit_MB,
-            createEscArrays=createEscArrays,
-            exclude_from_files=exclude_from_files,
-            checknstore_parsing_result=checknstore_parsing_result,
-            clear_parsing_result=clear_parsing_result,
-            return_json_info=True,
-            step_selection=step_selection,
-            verbose=verbose,
-        )
-        if (not alias_mappings) and (
-            "namespace_aliases" in s["scan_parameters"].keys()
-        ):
-            alias_mappings = {
-                ta["channel"]: ta["alias"]
-                for ta in s["scan_parameters"]["namespace_aliases"]
-                if ta["channeltype"] in ["BS", "BSCAM", "JF"]
-            }
-        if (not alias_mappings) and ("aliases" in s["scan_parameters"].keys()):
-            with open(
-                Path(metadata_file).parent
-                / Path("../" + s["scan_parameters"]["aliases"]),
-                "r",
-            ) as fh:
-                aliases_all = json.load(fh)
-            alias_mappings = {
-                ta["channel"]: ta["alias"]
-                for ta in aliases_all
-                if ta["channeltype"] in ["BS", "BSCAM", "JF"]
-            }
-
-        for nm, ar in td.items():
-            if not (nm in d.keys()):
-                d[nm] = ar
-            else:
-                d[nm] = concatenate([d[nm], ar])
-
     if not result_filename:
         result_filename = Path(metadata_files[0]).stem
     else:
         result_filename = Path(result_filename).stem
-
     if not result_file:
         if result_type == "h5":
             result_filepath = Path(results_directory) / Path(
@@ -241,32 +200,77 @@ def load_dataset_from_scan(
             result_file = zarr.open(result_filepath)
         print(f"Automatic creation of result file: {result_filepath.as_posix()} .")
 
-    ds = DataSet(d, name=name, alias_mappings=alias_mappings, results_file=result_file)
+    if load_result_only:
+        ds = DataSet.load_from_result_file(result_filepath)
+    else:
+        d = {}
 
-    try:
-        if type(s["scan_parameters"]["status"]) is str:
-            with open(
-                Path(metadata_file).parent
-                / Path("../" + s["scan_parameters"]["status"]),
-                "r",
-            ) as fh:
-                r = json.load(fh)
-                for k in r.keys():
-                    ds.__dict__[k] = StructureGroup()
-                    dict2structure(r[k]["status"], base=ds.__dict__[k])
-                print("done")
+        for metadata_file in metadata_files:
+            td, s = parse_scan(
+                metadata_file,
+                search_paths=search_paths,
+                memlimit_MB=memlimit_MB,
+                createEscArrays=createEscArrays,
+                exclude_from_files=exclude_from_files,
+                checknstore_parsing_result=checknstore_parsing_result,
+                clear_parsing_result=clear_parsing_result,
+                return_json_info=True,
+                step_selection=step_selection,
+                verbose=verbose,
+            )
+            if (not alias_mappings) and (
+                "namespace_aliases" in s["scan_parameters"].keys()
+            ):
+                alias_mappings = {
+                    ta["channel"]: ta["alias"]
+                    for ta in s["scan_parameters"]["namespace_aliases"]
+                    if ta["channeltype"] in ["BS", "BSCAM", "JF"]
+                }
+            if (not alias_mappings) and ("aliases" in s["scan_parameters"].keys()):
+                with open(
+                    Path(metadata_file).parent
+                    / Path("../" + s["scan_parameters"]["aliases"]),
+                    "r",
+                ) as fh:
+                    aliases_all = json.load(fh)
+                alias_mappings = {
+                    ta["channel"]: ta["alias"]
+                    for ta in aliases_all
+                    if ta["channeltype"] in ["BS", "BSCAM", "JF"]
+                }
 
-        else:
+            for nm, ar in td.items():
+                if not (nm in d.keys()):
+                    d[nm] = ar
+                else:
+                    d[nm] = concatenate([d[nm], ar])
 
+        ds = DataSet(
+            d, name=name, alias_mappings=alias_mappings, results_file=result_file
+        )
+
+        try:
+            if type(s["scan_parameters"]["status"]) is str:
+                with open(
+                    Path(metadata_file).parent
+                    / Path("../" + s["scan_parameters"]["status"]),
+                    "r",
+                ) as fh:
+                    r = json.load(fh)
+                    for k in r.keys():
+                        ds.__dict__[k] = StructureGroup()
+                        dict2structure(r[k]["status"], base=ds.__dict__[k])
+                    print("done")
+
+            else:
+
+                pass
+        except:
+            print("No status in dataset found.")
             pass
-    except:
-        print("No status in dataset found.")
-        pass
 
     return ds
 
-
-from escape.storage import DataSet
 
 # class DataSet:
 #     def __init__(

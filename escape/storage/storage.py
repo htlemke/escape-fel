@@ -374,6 +374,22 @@ class Array:
             index_dim=new_index_dim,
         )
 
+    def ravel_event_data(self, *args):
+        if not args:
+            axes = tuple(range(self.ndim - 1, -1, -1))
+        elif len(args) == 1:
+            axes = args[0]
+        else:
+            axes = args
+        new_index_dim = axes.index(self.index_dim)
+        return Array(
+            data=self.data.transpose(*args),
+            index=self.index,
+            step_lengths=self.scan.step_lengths,
+            parameter=self.scan.parameter,
+            index_dim=new_index_dim,
+        )
+
     @property
     def T(self):
         return self.transpose()
@@ -1095,6 +1111,30 @@ for opSing, symbol in _operatorsSingle:
     )
 
 
+def match_scans(a0, a1, parameters=[]):
+    """Match scans of two escape arrays."""
+    s0 = a0.scan
+    s1 = a1.scan
+    s0arr = np.asarray(
+        [
+            value["values"]
+            for name, value in s0.parameter.items()
+            if ((not parameters) or (name in parameters))
+        ]
+    ).T
+    s1arr = np.asarray(
+        [
+            value["values"]
+            for name, value in s1.parameter.items()
+            if ((not parameters) or (name in parameters))
+        ]
+    ).T
+
+    s0_sel = ((np.isin(s0arr, s1arr).all(axis=1))).nonzero()[0]
+    s1_sel = ((np.isin(s1arr, s0arr).all(axis=1))).nonzero()[0]
+    return get_step_indexes(s0, s0_sel), get_step_indexes(s1, s1_sel)
+
+
 class Scan:
     def __init__(self, parameter={}, step_lengths=None, array=None):
         self.step_lengths = step_lengths
@@ -1132,6 +1172,9 @@ class Scan:
     def nanpercentile(self, *args, **kwargs):
         return [step.nanpercentile(*args, **kwargs) for step in self]
 
+    def nanquantile(self, *args, **kwargs):
+        return [step.nanquantile(*args, **kwargs) for step in self]
+
     def nanmin(self, *args, **kwargs):
         return [step.nanmin(*args, **kwargs) for step in self]
 
@@ -1158,6 +1201,11 @@ class Scan:
 
     def count(self):
         return [len(step) for step in self]
+
+    def nancount(self):
+        ...
+
+    # TODO
 
     def weighted_avg_and_std(self, weights):
         avg = []
@@ -1211,6 +1259,7 @@ class Scan:
         scanpar_name=None,
         norm_samples=True,
         axis=None,
+        use_quantiles=True,
         *args,
         **kwargs,
     ):
@@ -1219,8 +1268,18 @@ class Scan:
             scanpar_name = names[0]
         x = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
         if not weights:
-            y = np.asarray(self.nanmean(axis=0)).ravel()
-            ystd = np.asarray(self.nanstd(axis=0)).ravel()
+            if use_quantiles:
+                tmp = np.asarray(
+                    self.nanquantile(
+                        [0.5, 0.5 - 0.682689492137 / 2, 0.5 + 0.682689492137 / 2],
+                        axis=0,
+                    )
+                )
+                y = tmp[:, 0]
+                ystd = np.diff(tmp[:, 1:], axis=1)[:, 0] / 2
+            else:
+                y = np.asarray(self.nanmean(axis=0)).ravel()
+                ystd = np.asarray(self.nanstd(axis=0)).ravel()
         else:
             y, ystd = self.weighted_avg_and_std(weights)
         if norm_samples:
@@ -1327,6 +1386,19 @@ class Scan:
         return Array(
             data=data, index=index, parameter=parameter, step_lengths=step_lengths
         )
+
+    def get_step_indexes(self, ix_step):
+        """ "array getter for multiple steps, more efficient than get_step_array"""
+        ix_to = np.cumsum(self.step_lengths)
+        ix_from = np.hstack([np.asarray([0]), ix_to[:-1]])
+        index_sel = np.concatenate(
+            [
+                self._array.index[fr:to]
+                for fr, to in zip(ix_from[ix_step], ix_to[ix_step])
+            ],
+            axis=0,
+        )
+        return self._array[np.in1d(self._array.index, index_sel).nonzero()[0]]
 
     def _check_consistency(self):
         for par, pardict in self.parameter.items():
@@ -1699,6 +1771,9 @@ class ArrayH5Dataset:
             self.grp = parent.require_group(name)
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._index_finder = re.compile("^index_[0-9]{4}$")
+        self._check_stored_data()
+
+    def _check_stored_data(self):
         self._n_d = []
         self._n_i = []
         for key in self.grp.keys():

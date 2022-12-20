@@ -152,10 +152,10 @@ class RectangleSelectNB:
         return self.selector.extents[3]
 
 
-class MultipleRoiSelector(widgets.HBox):
+class MultipleRoiSelector(widgets.VBox):
     def __init__(self, data, rois={}, callbacks_changeanyroi=[], name="RoiSelector"):
-        # super().__init__(layout=widgets.Layout(width='90%'))
-        super().__init__()
+        super().__init__(layout=widgets.Layout(flex_flow="row wrap"))
+        # super().__init__()
         self.data = data
         self.name = name
         self.roi_selectors = []
@@ -222,7 +222,7 @@ class MultipleRoiSelector(widgets.HBox):
                 (lambda: tc(self)) for tc in callbacks_changeanyroi
             ]
 
-            self.roi_selectors[-1].line_select_callback()
+            self.roi_selectors[-1].line_select_callback(999, 999)
 
     @property
     def rois(self):
