@@ -1,4 +1,5 @@
 from asyncio import run
+import pickle
 import shutil
 from unicodedata import name
 from escape.storage.storage import concatenate, Array
@@ -11,6 +12,8 @@ import warnings
 import logging
 import escape
 from copy import deepcopy as copy
+
+import traceback
 
 # from ipytree import Node
 
@@ -44,7 +47,7 @@ def parse_run(
     return parse_scan(next(files))
 
 
-from escape.utilities import dict2structure, name2pgroups
+from escape.utilities import StructureGroup, dict2structure, name2pgroups
 from escape.storage import DataSet
 
 # class StructureGroup:
@@ -260,16 +263,58 @@ def load_dataset_from_scan(
                     for k in r.keys():
                         ds.__dict__[k] = StructureGroup()
                         dict2structure(r[k]["status"], base=ds.__dict__[k])
-                    print("done")
+                    print("found and loaded status")
 
             else:
 
                 pass
         except:
+            traceback.print_exc()
             print("No status in dataset found.")
             pass
 
+        # monitor data hack
+        try:
+            with open(
+                Path(metadata_file).parent / Path("../aux/scan_monitor.pkl"),
+                "rb",
+            ) as fh:
+                monitored_data = pickle.load(fh)
+            # ds.mon_dat = monitored_data
+
+            ds.monitored_data = StructureGroup()
+            dict2structure(
+                {
+                    name: MonitorData(datadict, name=name)
+                    for name, datadict in monitored_data.items()
+                },
+                base=ds.monitored_data,
+            )
+            # ds.monitored_data = {
+            #     name: MonitorData(datadict, name=name)
+            #     for name, datadict in monitored_data.items()
+            # }
+
+        except:
+            traceback.print_exc()
+            print("No monitor data  in dataset found.")
+            pass
+
     return ds
+
+
+class MonitorData:
+    def __init__(self, datadict, name=None):
+        self.name = name
+        for tn, td in datadict.items():
+            if hasattr(self, "channel"):
+                raise Exception("Only one name value pair allowed in dictionary!")
+            self.channel = tn
+            for tli in td:
+                for tdn, tdv in tli.items():
+                    if not hasattr(self, tdn):
+                        self.__dict__[tdn] = []
+                    self.__dict__[tdn].append(tdv)
 
 
 # class DataSet:
