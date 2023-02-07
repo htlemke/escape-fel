@@ -529,6 +529,7 @@ class StepViewerP(widgets.VBox):
         np.random.RandomState(0).shuffle(self.step_order)
 
         # !starting calculation of average DATA in custom order!
+        
         self.data_queue = [
             self.array.scan[i][data_selection].nanmean(axis=0).persist()
             for i in self.step_order

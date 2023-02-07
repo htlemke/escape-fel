@@ -84,28 +84,41 @@ class ScanTools:
                 roi = [int(np.round(tr)) for tr in roi]
                 s.result[nam] = self._array[:, slice(*roi[2:]), slice(*roi[:2])]
 
-        data = self._scan._array
-        sm = MultipleRoiSelector(
-            data[data_selection].mean(axis=0).compute(),
-            rois=rois,
-            # callbacks_changeanyroi=[append_rois],
-        )
-        s = StepViewerP(data, sm, data_selection=data_selection)
-        StepViewerP.rois = property(lambda self: self.output.rois)
-
-        def append_rois():
-            s.result = {}
-            for nam, roi in sm.rois.items():
-                rroi = [int(np.round(tr)) for tr in roi]
-                s.result[nam] = self._scan._array[:, slice(*rroi[2:]), slice(*rroi[:2])]
-                s.result[nam].name = nam
-
-        sm.callbacks_changeanyroi = [append_rois]
-        for rs in sm.roi_selectors:
-            rs.callbacks_changeroi = [append_rois]
-        append_rois()
         if show:
+            data = self._scan._array
+            sm = MultipleRoiSelector(
+                data[data_selection].mean(axis=0).compute(),
+                rois=rois,
+                # callbacks_changeanyroi=[append_rois],
+            )
+            s = StepViewerP(data, sm, data_selection=data_selection)
+            StepViewerP.rois = property(lambda self: self.output.rois)
+        
+
+
+            def append_rois():
+                s.result = {}
+                for nam, roi in sm.rois.items():
+                    rroi = [int(np.round(tr)) for tr in roi]
+                    s.result[nam] = self._scan._array[:, slice(*rroi[2:]), slice(*rroi[:2])]
+                    s.result[nam].name = nam
+
+            sm.callbacks_changeanyroi = [append_rois]
+            for rs in sm.roi_selectors:
+                rs.callbacks_changeroi = [append_rois]
+            append_rois()
             display(s)
+        else:
+            class Dummy:
+                pass
+            s = Dummy()
+            s.rois = {}
+            s.result = {}
+            for nam, troi in rois.items():
+                roi = [int(np.round(tr)) for tr in troi]
+                s.rois[nam] = roi
+                s.result[nam] = self._scan._array[:, slice(*roi[2:]), slice(*roi[:2])]
+
         return s
 
     # def get_rectangular_roi(self,roidef={'test':(0,1,0,1)}):
