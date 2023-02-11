@@ -1597,7 +1597,7 @@ def concatenate(arraylist):
                     "Scans can not be concatenated due to mismatch in parameters!"
                 )
             for par_name, par_dict in array.scan.parameter.items():
-                parameter[par_name]["values"].extend(list(par_dict["values"]))
+                list(parameter[par_name]["values"]).extend(list(par_dict["values"]))
                 if hasattr(par_dict, "attributes") and (
                     not parameter[par_name]["attributes"] == par_dict["attributes"]
                 ):
