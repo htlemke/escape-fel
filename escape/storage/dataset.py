@@ -5,6 +5,7 @@ from rich.tree import Tree
 import logging
 import h5py
 import zarr
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,30 @@ class DataSet:
 
         dict2structure({name: data}, base=self)
         return data
+
+    def store_datasets_max_element_size(self, max_element_size=5000):
+        ks = []
+        for k, v in self.datasets.items():
+            try:
+                if np.prod(v.shape[1:]) < max_element_size:
+                    print(k)
+                    ks.append(k)
+            except:
+                pass
+        escape.store([self.datasets[k] for k in ks])
+
+    def compute_datasets_max_element_size(self, max_element_size=5000):
+        ds = {}
+        for k, v in self.datasets.items():
+            try:
+                if np.prod(v.shape[1:]) < max_element_size:
+                    print(k)
+                    ds[k] = v
+            except:
+                pass
+        lo = escape.compute(*[v for k, v in ds.items()])
+        for n, (k, v) in enumerate(ds.items()):
+            self.append(lo[n], name=k)
 
     def __repr__(self):
         s = object.__repr__(self)

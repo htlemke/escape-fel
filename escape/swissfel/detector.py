@@ -64,6 +64,9 @@ def jf_correct(
 
         with h5py.File(dark_file, "r") as fh:
             pedestal = fh["gains"][:]
+            if not mask:
+                mask = fh['pixel_mask'][:]
+                print('did set a mask!')
 
         # figure()
         data_corr = array.map_index_blocks(

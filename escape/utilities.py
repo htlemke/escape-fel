@@ -8,6 +8,9 @@ import pickle
 import signal
 import escape.cell2function as cell2function
 from rich.tree import Tree
+import os
+import sys
+import inspect
 
 
 class StructureGroup:
@@ -28,6 +31,20 @@ class StructureGroup:
             else:
                 base.add(key).add(str(item))
         return base
+
+    def append_members_to_namepace(self, namespace=None):
+
+        if namespace is None:
+            frame = inspect.currentframe().f_back
+            namespace = frame.f_locals
+
+        print(list(namespace.keys()))
+        for k, v in self.__dict__.items():
+            if k in namespace.keys():
+                print(
+                    f"Warning: variable {k} is already in namespace and is now overwritten!"
+                )
+            namespace[k] = v
 
 
 def dict2structure(t, base=None):
