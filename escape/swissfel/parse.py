@@ -207,6 +207,7 @@ def load_dataset_from_scan(
         ds = DataSet.load_from_result_file(result_filepath)
     else:
         d = {}
+        s_collection = []
 
         for metadata_file in metadata_files:
             td, s = parse_scan(
@@ -221,6 +222,7 @@ def load_dataset_from_scan(
                 step_selection=step_selection,
                 verbose=verbose,
             )
+            s_collection.append(s)
             if (not alias_mappings) and (
                 "namespace_aliases" in s["scan_parameters"].keys()
             ):
@@ -251,6 +253,8 @@ def load_dataset_from_scan(
         ds = DataSet(
             d, name=name, alias_mappings=alias_mappings, results_file=result_file
         )
+
+        ds._metafile_parse_results = s_collection
 
         try:
             if type(s["scan_parameters"]["status"]) is str:
