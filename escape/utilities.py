@@ -147,13 +147,27 @@ def edges_to_center(edges):
     centers = edges[:-1] + np.diff(edges)
     return centers
 
-
 def center_to_edges(centers):
+    """Create an edges array for digitizing / binning from  a given monotonic array.
+    Edges are based on the half difference between neighboring values. 
+
+    Args:
+        centers (list/array): centers aroung which edges are to be created.
+
+    Raises:
+        Exception: is centers are non-monotonic
+
+    Returns:
+        array : edges
+    """
     centers = np.asarray(centers)
     df = np.diff(centers)
-    edges = centers + np.hstack([centers[:1], np.diff(centers)])
+    dfs = np.sign(df)
+    if not np.all(dfs==dfs[0]):
+        raise Exception('Centers need to be monotonic! ')
+    
+    edges = np.hstack([centers[:1], centers]) + np.hstack([-df[:1]/2, df/2,df[-1:]/2])
     return edges
-
 
 def hist_scan(
     data,

@@ -37,6 +37,7 @@ class HistPlot:
         y = np.asarray(self.data.lens())
         yerr = np.sqrt(y)
         sorter = x.argsort()
+        # TODO: maybe histogram 0 bin issue
         return x[sorter], y[sorter], yerr[sorter]
 
     def plot(self):

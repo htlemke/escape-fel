@@ -193,6 +193,11 @@ class Array:
             np.mean, da.mean, self, self.is_dask_array(), *args, **kwargs
         )
 
+    def average(self, *args, **kwargs):
+        return _apply_method(
+            np.average, da.average, self, self.is_dask_array(), *args, **kwargs
+        )
+
     def std(self, *args, **kwargs):
         return _apply_method(
             np.std, da.std, self, self.is_dask_array(), *args, **kwargs
@@ -211,6 +216,11 @@ class Array:
     def max(self, *args, **kwargs):
         return _apply_method(
             np.max, da.max, self, self.is_dask_array(), *args, **kwargs
+        )
+
+    def abs(self, *args, **kwargs):
+        return _apply_method(
+            np.abs, da.abs, self, self.is_dask_array(), *args, **kwargs
         )
 
     def percentile(self, *args, **kwargs):
@@ -526,7 +536,7 @@ class Array:
             self.h5 = ArrayH5Dataset(parent_h5py, name)
         else:
             logger.info(
-                f"h5 storage already set at {self.h5.name} in {self.h5.file.filename}"
+                f"h5 storage already set at {name} in {self.h5.file.filename}"
             )
 
     def store_file(self, parent_h5py=None, name=None, unit=None, **kwargs):
@@ -545,9 +555,7 @@ class Array:
                 name = self.name
             self.h5 = ArrayH5File(file_name, parent_group_name, name)
         else:
-            logger.info(
-                f"h5 storage already set at {self.h5.name} in {self.h5.file_name}"
-            )
+            logger.info(f"h5 storage already set at {name} in {self.h5.file_name}")
 
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
@@ -1187,6 +1195,9 @@ class Scan:
     def mean(self, *args, **kwargs):
         return [step.mean(*args, **kwargs) for step in self]
 
+    def average(self, *args, **kwargs):
+        return [step.average(*args, **kwargs) for step in self]
+
     def std(self, *args, **kwargs):
         return [step.std(*args, **kwargs) for step in self]
 
@@ -1207,14 +1218,42 @@ class Scan:
 
     # TODO
 
-    def weighted_avg_and_std(self, weights):
+    def median_and_mad(self, axis=None, k_dist=1.4826, norm_samples=False):
+        """Calculate median and median absolute deviation for steps of a scan.
+
+        Args:
+            axis (int, sequence of int, None, optional): axis argument for median calls.
+            k_dist (float, optional): distribution scale factor, should be
+                1 for real MAD.
+                Defaults to 1.4826 for gaussian distribution.
+        """
+        # if self._array.is_dask_array():
+        #     absfoo = da.abs
+        # else:
+        #     absfoo = np.abs
+
+        med = [step.median(axis=axis) for step in self]
+        mad = [
+            (((step - tmed).abs()) * k_dist).median(axis=axis)
+            for step, tmed in zip(self, med)
+        ]
+        if norm_samples:
+            mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
+        return med, mad
+
+    def weighted_avg_and_std(self, weights=None, norm_samples=False):
         avg = []
         std = []
         for step in self:
-            (ta, tw) = match_arrays(step, weights)
-            (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data)
+            if weights:
+                (ta, tw) = match_arrays(step, weights)
+                (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data)
+            else:
+                (tavg, tstd) = utilities.weighted_avg_and_std(step.data, weights)
             avg.append(tavg)
             std.append(tstd)
+        if norm_samples:
+            std = [tstd / da.sqrt(ct) for tstd, ct in zip(std, self.count())]
         return np.asarray(avg), np.asarray(std)
 
     def correlation_analysis_to(self, ref, *args, **kwargs):
@@ -1281,6 +1320,10 @@ class Scan:
                 y = np.asarray(self.nanmean(axis=0)).ravel()
                 ystd = np.asarray(self.nanstd(axis=0)).ravel()
         else:
+            if use_quantiles:
+                print(
+                    "Cannot use quantile derivation with weights, using average/std instead!"
+                )
             y, ystd = self.weighted_avg_and_std(weights)
         if norm_samples:
             yerr = ystd / np.sqrt(np.asarray(self.count()))
@@ -1665,12 +1708,42 @@ def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
 def digitize(
     array,
     bins,
-    foo=np.digitize,
     include_outlier_bins=False,
     sort_groups_by_index=True,
+    right=False,
+    foo=np.digitize,
     **kwargs,
 ):
-    """digitization function for escape arrays. checking for 1D arrays"""
+    """Digitization function for escape arrays according to numpy.digitize.
+    Works for 1D arrays only.
+
+    Args:
+        array (escape.Array): the escape array holding data that are supposed
+            to be sorted/digitized.
+        bins (array_kile): array of bins, has to be 1-dimensional and monotonic.
+        include_outlier_bins (bool/'right'/'left' optional): option to include
+            outliers of described bin edges on either or both siges of the bins
+            array. Defaults to False.
+        sort_groups_by_index (bool, optional): sorting escape.Array data within
+            bins according to their index value. Defaults to True.
+        right (bool, optional): Indicating whether the intervals include the
+            right or the left bin edge. Default behavior is (right==False)
+            indicating that the interval does not include the right edge. The
+            left bin end is open in this case, i.e., bins[i-1] <= x < bins[i]
+            is the default behavior for monotonically increasing bins.
+            Defaults to False.
+        foo (function, optional): option to modify the digitisation function,
+            needs still to behave closely to np digitize. Defaults to
+            np.digitize.
+
+    Raises:
+        NotImplementedError: error if no 1d escape.Array is provided as array
+            argument.
+
+    Returns:
+        escape.Array: Digitized/ resorted escape.Array
+    """
+
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be digitized in a sensible way."
@@ -1678,13 +1751,30 @@ def digitize(
     darray = array.data.ravel()
     if include_outlier_bins:
         direction = np.sign(bins[-1] - bins[0])
-        bins = np.concatenate(
-            [
-                np.atleast_1d(direction * np.inf),
-                bins,
-                np.atleast_1d(direction * -np.inf),
-            ]
-        )
+        if include_outlier_bins == "right":
+            bins = np.concatenate(
+                [
+                    bins,
+                    np.atleast_1d(direction * -np.inf),
+                ]
+            )
+        elif include_outlier_bins == "left":
+            bins = np.concatenate(
+                [
+                    np.atleast_1d(direction * np.inf),
+                    bins,
+                ]
+            )
+        else:
+            bins = np.concatenate(
+                [
+                    np.atleast_1d(direction * np.inf),
+                    bins,
+                    np.atleast_1d(direction * -np.inf),
+                ]
+            )
+    if foo is np.digitize:
+        kwargs["right"] = right
     inds = foo(darray, bins, **kwargs)
     ix = inds.argsort()[(0 < inds) & (inds < len(bins))]
     bin_nos, counts = np.unique(
