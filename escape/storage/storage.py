@@ -40,8 +40,22 @@ class ArraySelector:
 
 
 def _apply_method(
-    foo_np, foo_da, data, is_dask_array, *args, convertOutput2EscData="auto", **kwargs
+    foo_np,
+    foo_da,
+    data,
+    is_dask_array,
+    *args,
+    convertesc_axis_kw=False,
+    convertOutput2EscData="auto",
+    **kwargs,
 ):
+    if convertesc_axis_kw:
+        axis = kwargs.get("axis", "noaxis")
+        if isinstance(axis, Number):
+            axis = [axis]
+        if (axis == "noaxis") or (0 in axis):
+            convertOutput2EscData = []
+
     if is_dask_array:
         if not foo_da:
             raise NotImplementedError(
@@ -144,37 +158,79 @@ class Array:
 
     def nansum(self, *args, **kwargs):
         return _apply_method(
-            np.nansum, da.nansum, self, self.is_dask_array(), *args, **kwargs
+            np.nansum,
+            da.nansum,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def nanmean(self, *args, **kwargs):
         return _apply_method(
-            np.nanmean, da.nanmean, self, self.is_dask_array(), *args, **kwargs
+            np.nanmean,
+            da.nanmean,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def nanstd(self, *args, **kwargs):
         return _apply_method(
-            np.nanstd, da.nanstd, self, self.is_dask_array(), *args, **kwargs
+            np.nanstd,
+            da.nanstd,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def nanmedian(self, *args, **kwargs):
         return _apply_method(
-            np.nanmedian, None, self, self.is_dask_array(), *args, **kwargs
+            np.nanmedian,
+            None,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def nanmin(self, *args, **kwargs):
         return _apply_method(
-            np.nanmin, da.nanmin, self, self.is_dask_array(), *args, **kwargs
+            np.nanmin,
+            da.nanmin,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def nanmax(self, *args, **kwargs):
         return _apply_method(
-            np.nanmax, da.nanmax, self, self.is_dask_array(), *args, **kwargs
+            np.nanmax,
+            da.nanmax,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def sum(self, *args, **kwargs):
         return _apply_method(
-            np.sum, da.sum, self, self.is_dask_array(), *args, **kwargs
+            np.sum,
+            da.sum,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def isnan(self, *args, **kwargs):
@@ -190,47 +246,101 @@ class Array:
 
     def mean(self, *args, **kwargs):
         return _apply_method(
-            np.mean, da.mean, self, self.is_dask_array(), *args, **kwargs
+            np.mean,
+            da.mean,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def average(self, *args, **kwargs):
         return _apply_method(
-            np.average, da.average, self, self.is_dask_array(), *args, **kwargs
+            np.average,
+            da.average,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def std(self, *args, **kwargs):
         return _apply_method(
-            np.std, da.std, self, self.is_dask_array(), *args, **kwargs
+            np.std,
+            da.std,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def median(self, *args, **kwargs):
         return _apply_method(
-            np.median, None, self, self.is_dask_array(), *args, **kwargs
+            np.median,
+            None,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def min(self, *args, **kwargs):
         return _apply_method(
-            np.min, da.min, self, self.is_dask_array(), *args, **kwargs
+            np.min,
+            da.min,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def max(self, *args, **kwargs):
         return _apply_method(
-            np.max, da.max, self, self.is_dask_array(), *args, **kwargs
+            np.max,
+            da.max,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def abs(self, *args, **kwargs):
         return _apply_method(
-            np.abs, da.abs, self, self.is_dask_array(), *args, **kwargs
+            np.abs,
+            da.abs,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def percentile(self, *args, **kwargs):
         return _apply_method(
-            np.percentile, None, self, self.is_dask_array(), *args, **kwargs
+            np.percentile,
+            None,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def quantile(self, *args, **kwargs):
         return _apply_method(
-            np.quantile, None, self, self.is_dask_array(), *args, **kwargs
+            np.quantile,
+            None,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
         )
 
     def nanpercentile(self, *args, **kwargs):
@@ -240,13 +350,19 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertOutput2EscData=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
     def nanquantile(self, *args, **kwargs):
         return _apply_method(
-            np.nanquantile, None, self, self.is_dask_array(), *args, **kwargs
+            np.nanquantile,
+            None,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=True,
+            **kwargs,
         )
 
     def filter(self, *args, **kwargs):
@@ -535,9 +651,7 @@ class Array:
                 name = self.name
             self.h5 = ArrayH5Dataset(parent_h5py, name)
         else:
-            logger.info(
-                f"h5 storage already set at {name} in {self.h5.file.filename}"
-            )
+            logger.info(f"h5 storage already set at {name} in {self.h5.file.filename}")
 
     def store_file(self, parent_h5py=None, name=None, unit=None, **kwargs):
         """a way to store data, especially expensively computed data, into a new file."""
@@ -885,7 +999,10 @@ def escaped(func, convertOutput2EscData="auto"):
                 kwargs[key] = kwarg.data[ixslaves.pop(0)]
         output = func(*args, **kwargs)
         if not type(output) is tuple:
+            single_output = True
             output = (output,)
+        else:
+            single_output = False
         output = list(output)
         if convertOutput2EscData:
             stepLengths, scan = get_scan_step_selections(
@@ -914,10 +1031,11 @@ def escaped(func, convertOutput2EscData="auto"):
                     ),
                 )
 
-            if len(output) == 1:
-                output = output[0]
-            elif len(output) == 0:
-                output = None
+        if len(output) == 1:
+            output = output[0]
+        elif len(output) == 0:
+            output = None
+
         return output
 
     return wrapped
@@ -1311,7 +1429,7 @@ class Scan:
                 tmp = np.asarray(
                     self.nanquantile(
                         [0.5, 0.5 - 0.682689492137 / 2, 0.5 + 0.682689492137 / 2],
-                        axis=0,
+                        # axis=0,
                     )
                 )
                 y = tmp[:, 0]
@@ -1377,7 +1495,8 @@ class Scan:
         if plot_results:
             if not plot_axis:
                 plot_axis = plt.gca()
-            utilities.plot2D(x_scan, utilities.edges_to_center(hbins), hdat.T, **kwargs)
+            # utilities.plot2D(x_scan, utilities.edges_to_center(hbins), hdat.T, **kwargs)
+            plt.pcolormesh(x_scan, utilities.edges_to_center(hbins), hdat.T, **kwargs)
             plt.xlabel(scanpar_name)
         return x_scan, hbins, hdat
 
