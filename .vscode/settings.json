@@ -1,7 +1,10 @@
 {
     "python.pythonPath": "/sf/bernina/anaconda/bernina_envs/default/bin/python",
-    "python.formatting.provider": "black",
+    "python.formatting.provider": "none",
     "python.linting.pylintEnabled": false,
     "python.linting.flake8Enabled": true,
-    "python.linting.enabled": false
+    "python.linting.enabled": false,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    }
 }

@@ -40,7 +40,8 @@ class DataSet:
         self.datasets[name] = data
         if isinstance(data, escape.Array):
             data.name = name
-            self.datasets[name].set_h5_storage(self.results_file, name)
+            if self.results_file is not None:
+                self.datasets[name].set_h5_storage(self.results_file, name)
 
         dict2structure({name: data}, base=self)
         return data
