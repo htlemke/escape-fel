@@ -180,12 +180,16 @@ def load_dataset_from_scan(
         instrument=instrument,
         search_path=search_path,
     )
+    
 
-    if not result_filename:
+    if result_filename is None:
+        pass
+    elif result_filename=='auto':
         result_filename = Path(metadata_files[0]).stem
     else:
         result_filename = Path(result_filename).stem
-    if not result_file:
+
+    if result_filename and (not result_file):
         if result_type == "h5":
             result_filepath = Path(results_directory) / Path(
                 result_filename + ".esc" + ".h5"
