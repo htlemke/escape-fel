@@ -45,7 +45,7 @@ class DataSet:
         dict2structure({name: data}, base=self)
         return data
 
-    def store_datasets_max_element_size(self, max_element_size=5000):
+    def store_datasets_max_element_size(self, max_element_size=5000, lock='auto'):
         ks = []
         for k, v in self.datasets.items():
             try:
@@ -54,7 +54,7 @@ class DataSet:
                     ks.append(k)
             except:
                 pass
-        escape.store([self.datasets[k] for k in ks])
+        escape.store([self.datasets[k] for k in ks],lock=lock)
 
     def compute_datasets_max_element_size(self, max_element_size=5000):
         ds = {}

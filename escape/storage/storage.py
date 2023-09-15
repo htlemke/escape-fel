@@ -23,7 +23,7 @@ from .storage_tools import ArrayTools, ScanTools
 
 logger = logging.getLogger(__name__)
 
-_lock = None
+import escape
 
 
 class ArraySelector:
@@ -1735,8 +1735,8 @@ def store(arrays, lock="auto", **kwargs):
 
 
 def get_lock():
-    if _lock:
-        return _lock
+    if escape.STORAGE_LOCK:
+        return escape.STORAGE_LOCK
     else:
         return True
 

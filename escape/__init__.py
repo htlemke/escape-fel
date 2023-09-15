@@ -21,3 +21,6 @@ from escape.storage import (
 from escape.storage.dataset import DataSet
 
 from . import utilities
+
+
+STORAGE_LOCK = None
