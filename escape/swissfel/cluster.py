@@ -1,3 +1,4 @@
+from functools import partial
 from glob import escape
 import json
 from os import stat
@@ -20,6 +21,7 @@ import numpy as np
 from copy import deepcopy as copy
 import logging
 import warnings
+from lazy_object_proxy import Proxy
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -103,7 +105,6 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
             logger.info("Successfully parsed file %s" % fina.resolve())
             dstores = {}
             for name, (ds_data, ds_index) in datasets.items():
-
                 if ds_data.size == 0:
                     logger.debug("Found empty dataset in {}".format(name))
                     continue
@@ -207,6 +208,7 @@ def parseScanEcoV01(
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_MB=100,
     createEscArrays=True,
+    lazyEscArrays=False,
     scan_info=None,
     scan_info_filepath=None,
     exclude_from_files=[],
@@ -216,7 +218,6 @@ def parseScanEcoV01(
     step_selection=slice(None),
     verbose=0,
 ):
-
     if file_name_json:
         """Data parser assuming eco-written files from pilot phase 1"""
         s, scan_info_filepath = readScanEcoJson_v01(
@@ -237,7 +238,6 @@ def parseScanEcoV01(
             )
 
         elif checknstore_parsing_result == "work_directory":
-
             tp = scan_info_filepath.parent.resolve()
             for p in tp.resolve().parents:
                 if len(p.name) == 6 and p.name[0] == "p" and p.name[1:].isnumeric():
@@ -355,20 +355,35 @@ def parseScanEcoV01(
         print("Starting to create escape arrays ...")
 
     escArrays = {}
-    # escArrays = []
-    for ch in track(chs, description="Creating arrays ..."):
-        # print(f"starting to create for {ch}")
-        escArrays[ch] = create_arrays_from_dstores(
-            ch, s, dstores_flat, parameter, step_selection
-        )
-    if verbose:
-        print("really Starting to create escape arrays ...")
 
-    with ProgressBar():
-        dstores = dask.compute(escArrays, scheduler="threads")[0]
+    if lazyEscArrays:
+        for ch in chs:
+            escArrays[ch] = Proxy(
+                partial(
+                    create_arrays_from_dstores,
+                    ch,
+                    s,
+                    dstores_flat,
+                    parameter,
+                    step_selection,
+                )
+            )
 
-    if verbose:
-        print("... done creating escape arrays.")
+    else:
+        # escArrays = []
+        for ch in track(chs, description="Creating arrays ..."):
+            # print(f"starting to create for {ch}")
+            escArrays[ch] = create_arrays_from_dstores(
+                ch, s, dstores_flat, parameter, step_selection
+            )
+        if verbose:
+            print("really Starting to create escape arrays ...")
+
+        with ProgressBar():
+            dstores = dask.compute(escArrays, scheduler="threads")[0]
+
+        if verbose:
+            print("... done creating escape arrays.")
 
     if return_json_info:
         return escArrays, s

@@ -163,6 +163,7 @@ def load_dataset_from_scan(
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_MB=100,
     createEscArrays=True,
+    lazyEscArrays=False,
     exclude_from_files=[],
     checknstore_parsing_result=False,
     clear_parsing_result=False,
@@ -180,11 +181,10 @@ def load_dataset_from_scan(
         instrument=instrument,
         search_path=search_path,
     )
-    
 
     if result_filename is None:
         pass
-    elif result_filename=='auto':
+    elif result_filename == "auto":
         result_filename = Path(metadata_files[0]).stem
     else:
         result_filename = Path(result_filename).stem
@@ -219,6 +219,7 @@ def load_dataset_from_scan(
                 search_paths=search_paths,
                 memlimit_MB=memlimit_MB,
                 createEscArrays=createEscArrays,
+                lazyEscArrays=lazyEscArrays,
                 exclude_from_files=exclude_from_files,
                 checknstore_parsing_result=checknstore_parsing_result,
                 clear_parsing_result=clear_parsing_result,
@@ -280,7 +281,6 @@ def load_dataset_from_scan(
                     print("found and loaded status")
 
             else:
-
                 pass
         except:
             traceback.print_exc()
