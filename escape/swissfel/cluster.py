@@ -296,8 +296,10 @@ def parseScanEcoV01(
             if file_path.resolve() in files_parsed:
                 fls["known"].append(file_path)
                 continue
-            else:
+            elif file_path.resolve().exists():
                 fls["toparse"].append(file_path)
+            else:
+                continue
             dstores_step.append(parse_bs_h5_file(file_path))
         dstores.append(dstores_step)
     if verbose:

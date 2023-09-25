@@ -1,5 +1,6 @@
 import pickle
 from distributed.protocol import serialize, deserialize
+from datastorage.datastorage import dictToH5, dictToH5Group
 
 
 SOURCETYPES = ["factory", "dataset", "status"]
@@ -19,6 +20,22 @@ class Source:
             self.iargout = iargout
         if type == "dataset":
             self.name_dataset = name_dataset
+
+    @classmethod
+    def from_group(cls, group):
+        pass
+
+    def as_dict(self):
+        d = {"type": self.type}
+        if d["type"] == "factory":
+            d["factory"] = self.factory
+            d["args"] = self.args
+            d["kwargs"] = self.kwargs
+            d["iargaut"] = self.iargout
+        if d["type"] == "dataset":
+            d["name_dataset"] = self.name_dataset
+
+        return d
 
     def get_factory_cfg(self):
         cfg = {}
@@ -42,5 +59,10 @@ class Source:
     def read_from_h5py_group(self):
         ...
 
-    def write_to_h5py_group(self):
-        ...
+    def write_to_h5py_group(self, group):
+        """
+
+        Args:
+            group (h5py or zarr group): h5py __parent__ group object into which the source group will be written.
+        """
+        dictToH5Group(self.as_dict(), group=group)

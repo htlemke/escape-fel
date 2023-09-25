@@ -169,7 +169,7 @@ def load_dataset_from_scan(
     clear_parsing_result=False,
     analyze_namespace_info=False,
     name="delme",
-    alias_mappings=None,
+    alias_mappings={},
     step_selection=slice(None),
     verbose=1,
 ):
@@ -234,6 +234,7 @@ def load_dataset_from_scan(
                     for ta in s["scan_parameters"]["namespace_aliases"]
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
+                alias_mappings.update(talias_mappings)
             if "aliases" in s["scan_parameters"].keys():
                 with open(
                     Path(metadata_file).parent
@@ -246,11 +247,7 @@ def load_dataset_from_scan(
                     for ta in aliases_all
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
-
-            if alias_mappings:
                 alias_mappings.update(talias_mappings)
-            else:
-                alias_mappings = talias_mappings
 
             for tmpkey, tmpval in alias_mappings.items():
                 print(tmpval, "      ", tmpkey)
