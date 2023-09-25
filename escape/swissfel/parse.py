@@ -2,6 +2,8 @@ from asyncio import run
 import pickle
 import shutil
 from unicodedata import name
+
+import numpy as np
 from escape.storage.storage import concatenate, Array
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
 from .cluster import parseScanEcoV01
@@ -171,6 +173,7 @@ def load_dataset_from_scan(
     name="delme",
     alias_mappings=None,
     step_selection=slice(None),
+    load_dap_data=False,
     verbose=1,
 ):
     metadata_files = interpret_raw_data_definition(
@@ -314,6 +317,18 @@ def load_dataset_from_scan(
             print("No monitor data  in dataset found.")
             pass
 
+        if load_dap_data:
+            pdata = parse_dap(Path(metadata_file).parent / Path("../raw"))
+            for tdet, step_data in pdata.items():
+                index = []
+                ddata = []
+                steps = []
+                for stepno, step_data in step_data.items():
+                    steps.append(stepno)
+                    index.append(step_data[0])
+
+                # Array()
+
     return ds
 
 
@@ -331,73 +346,20 @@ class MonitorData:
                     self.__dict__[tdn].append(tdv)
 
 
-# class DataSet:
-#     def __init__(
-#         self,
-#         raw_datasets: dict = None,
-#         alias_mappings: dict = None,
-#         results_file=None,
-#         name=None,
-#     ):
-#         self.data_raw = raw_datasets
-#         self.datasets = {}
-
-#         if results_file is not None:
-#             self.results_file = results_file
-#         else:
-#             self.results_file = None
-
-#         if alias_mappings:
-#             for idname in self.data_raw.keys():
-#                 # print(idname)
-#                 if idname in alias_mappings.keys():
-#                     self.append(self.data_raw[idname], name=alias_mappings[idname])
-
-#         self.name = name
-
-#     def append(self, data, name=None):
-#         self.datasets[name] = data
-#         if isinstance(data, escape.Array):
-#             data.name = name
-#             self.datasets[name].set_h5_storage(self.results_file, name)
-
-#         dict2structure({name: data}, base=self)
-
-#     def __repr__(self):
-#         s = object.__repr__(self)
-#         s += "\n"
-#         s += "items\n"
-#         for k in self.__dict__.keys():
-#             if not k[0] == "_":
-#                 s += "    " + k + "\n"
-#         return s
-
-#     def get_structure_tree(self, base=None):
-#         if not base:
-#             base = Tree("")
-#         for key, item in self.__dict__.items():
-#             if hasattr(item, "get_structure_tree"):
-#                 item.get_structure_tree(base=base.add(key))
-#             else:
-#                 base.add(key).add(str(item))
-#         return base
-
-#     @classmethod
-#     def load_from_result_file(cls, results_filepath, mode="r", name=name):
-#         results_filepath = Path(results_filepath)
-#         if not ".esc" in results_filepath.suffixes:
-#             raise Exception("Expecting esc suffix in filename")
-#         if ".h5" in results_filepath.suffixes:
-#             result_file = h5py.File(results_filepath, mode)
-#         elif ".zarr" in results_filepath.suffixes:
-#             result_file = zarr.open(results_filepath, mode=mode)
-
-#         ds = cls(results_file=result_file, name=name)
-
-#         for tname in result_file.keys():
-#             try:
-#                 ds.append(Array.load_from_h5(result_file, tname), name=tname)
-#             except:
-#                 pass
-
-#         return ds
+def parse_dap(fdir, fnames_parsed=[], N_acs_digits=4):
+    p = Path(fdir)
+    fnames = [tf.name for tf in p.glob("acq" + "?" * N_acs_digits + "*.dap")]
+    dets = list(np.unique([tn.split(".")[1] for tn in fnames]))
+    data = {}
+    fnames_parsed_new = []
+    for det in dets:
+        data[det] = {}
+        tfnames = sorted([tn for tn in fnames if det in tn])
+        for tfname in tfnames:
+            if tfname in fnames_parsed:
+                continue
+            step = int(tfname[3 : (3 + N_acs_digits)])
+            tmp = np.genfromtxt(tfname, dtype=None, unpack=True)
+            data[det][step] = dict(index=tmp[0], data=tmp[1:])
+            fnames_parsed_new.append(tfname)
+    return data, fnames_parsed_new
