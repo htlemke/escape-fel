@@ -35,6 +35,15 @@ class StructureGroup:
                 base.add(key).add(str(item))
         return base
 
+    def get_dict(self):
+        d = {}
+        for key, item in self.__dict__.items():
+            if hasattr(item, "get_dict"):
+                d[key] = item.get_dict()
+            else:
+                d[key] = item
+        return d
+
     def append_members_to_namepace(self, namespace=None):
         if namespace is None:
             frame = inspect.currentframe().f_back
@@ -68,6 +77,21 @@ def dict2structure(t, base=None):
         else:
             tbase.__dict__[p[-1]] = tv
     return base
+
+
+from collections import MutableMapping
+
+
+def flatten_dictionary(d, parent_key="", sep="."):
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+
+        if isinstance(v, MutableMapping):
+            items.extend(flatten_dictionary(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 
 def weighted_avg_and_std(values, weights):

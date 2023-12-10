@@ -1,24 +1,38 @@
 import pickle
 from distributed.protocol import serialize, deserialize
 from datastorage.datastorage import dictToH5, dictToH5Group
+import inspect
 
-
-SOURCETYPES = ["factory", "dataset", "status"]
+SOURCETYPES = ["factory", "dataset", "status", "array_map_index_blocks"]
 
 
 class Source:
     def __init__(
-        self, type, factory=None, args=[], kwargs={}, iargout=None, name_dataset=None
+        self,
+        type,
+        factory=None,
+        args=[],
+        kwargs={},
+        base_dataset=None,
+        iargout=None,
+        name_dataset=None,
     ):
         if type not in SOURCETYPES:
             raise ValueError(f'Type "{type}" not in {SOURCETYPES}!')
         self.type = type
         if type == "factory":
+            # sig = inspect.signature(factory)
             self.factory = factory
             self.args = args
             self.kwargs = kwargs
             self.iargout = iargout
-        if type == "dataset":
+        elif type == "array_map_index_blocks":
+            self.factory = factory
+            self.args = args
+            self.kwargs = kwargs
+            self.iargout = 0
+            self.base_dataset = Source("dataset", name_dataset=base_dataset.name)
+        elif type == "dataset":
             self.name_dataset = name_dataset
 
     @classmethod

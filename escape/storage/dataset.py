@@ -47,24 +47,28 @@ class DataSet:
         return data
 
     def store_datasets_max_element_size(
-        self, max_element_size=5000, lock="auto", **kwargs
+        self, max_element_size=5000, lock="auto", verbose=0, **kwargs
     ):
         ks = []
         for k, v in self.datasets.items():
             try:
                 if np.prod(v.shape[1:]) < max_element_size:
-                    print(k)
+                    if verbose:
+                        print(k)
                     ks.append(k)
             except:
                 pass
         escape.store([self.datasets[k] for k in ks], lock=lock, **kwargs)
 
-    def compute_datasets_max_element_size(self, max_element_size=5000, **kwargs):
+    def compute_datasets_max_element_size(
+        self, max_element_size=5000, verbose=0, **kwargs
+    ):
         ds = {}
         for k, v in self.datasets.items():
             try:
                 if np.prod(v.shape[1:]) < max_element_size:
-                    print(k)
+                    if verbose:
+                        print(k)
                     ds[k] = v
             except:
                 pass
@@ -108,5 +112,4 @@ class DataSet:
                 ds.append(escape.Array.load_from_h5(result_file, tname), name=tname)
             except:
                 pass
-
         return ds

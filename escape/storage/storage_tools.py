@@ -12,6 +12,7 @@ class ArrayTools:
         self,
         data_selection=slice(None, 100),
         rois={},
+        show=True,
     ):
         def append_rois(s):
             s.result = {}
@@ -21,7 +22,8 @@ class ArrayTools:
 
         data = self._array[data_selection].mean(axis=0).compute()
         s = MultipleRoiSelector(data, rois=rois, callbacks_changeanyroi=[append_rois])
-        display(s)
+        if show:
+            display(s)
         return s
 
 
@@ -33,7 +35,6 @@ class ScanTools:
         self,
         data_selection=slice(None, 100),
     ):
-
         data = self._scan._array
         s = StepViewer(data)
         display(s)
@@ -93,14 +94,14 @@ class ScanTools:
             )
             s = StepViewerP(data, sm, data_selection=data_selection)
             StepViewerP.rois = property(lambda self: self.output.rois)
-        
-
 
             def append_rois():
                 s.result = {}
                 for nam, roi in sm.rois.items():
                     rroi = [int(np.round(tr)) for tr in roi]
-                    s.result[nam] = self._scan._array[:, slice(*rroi[2:]), slice(*rroi[:2])]
+                    s.result[nam] = self._scan._array[
+                        :, slice(*rroi[2:]), slice(*rroi[:2])
+                    ]
                     s.result[nam].name = nam
 
             sm.callbacks_changeanyroi = [append_rois]
@@ -109,8 +110,10 @@ class ScanTools:
             append_rois()
             display(s)
         else:
+
             class Dummy:
                 pass
+
             s = Dummy()
             s.rois = {}
             s.result = {}

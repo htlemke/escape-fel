@@ -4,7 +4,7 @@ import shutil
 from unicodedata import name
 
 import numpy as np
-from escape.storage.storage import concatenate, Array
+from escape.storage.storage import concatenate, Array, Scan
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
 from .cluster import parseScanEcoV01
 from pathlib import Path
@@ -14,6 +14,11 @@ import warnings
 import logging
 import escape
 from copy import deepcopy as copy
+
+try:
+    from datastorage.datastorage import dictToH5Group
+except:
+    print("issue with datastorage import!")
 
 import traceback
 
@@ -158,6 +163,7 @@ def load_dataset_from_scan(
     result_file=None,
     load_result_only=False,
     clear_result_file=False,
+    store_status=True,
     search_path=[
         "{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
         "{instrument:s}/data/{pgroup:s}/res/scan_info/run{run_number:04d}*.json",
@@ -174,7 +180,8 @@ def load_dataset_from_scan(
     alias_mappings={},
     step_selection=slice(None),
     load_dap_data=False,
-    verbose=1,
+    raw_data_suffix="_rawdata",
+    verbose=0,
 ):
     metadata_files = interpret_raw_data_definition(
         metadata_file=metadata_file,
@@ -230,6 +237,75 @@ def load_dataset_from_scan(
                 step_selection=step_selection,
                 verbose=verbose,
             )
+
+            if raw_data_suffix:
+                dum, scan_info_filepath = readScanEcoJson_v01(
+                    metadata_file, exclude_from_files=exclude_from_files
+                )
+                rscf = []
+                for stepno, step in enumerate(s["scan_files"]):
+                    rscf.append([])
+                    for tf in step:
+                        tp = (
+                            scan_info_filepath.parent.parent
+                            / Path("raw_data")
+                            / Path(tf).name
+                        )
+                        if tp.exists():
+                            rscf[stepno].append(tp.as_posix())
+
+                sr = copy(s)
+
+                # print(rscf)
+                sr["scan_files"] = rscf
+                scan_info_filepath = scan_info_filepath.parent / Path(
+                    scan_info_filepath.stem + "_raw_data" + scan_info_filepath.suffix
+                )
+                # print(scan_info_filepath)
+                trd, sr = parse_scan(
+                    scan_info=sr,
+                    scan_info_filepath=scan_info_filepath,
+                    search_paths=search_paths,
+                    memlimit_MB=memlimit_MB,
+                    createEscArrays=createEscArrays,
+                    lazyEscArrays=lazyEscArrays,
+                    exclude_from_files=exclude_from_files,
+                    checknstore_parsing_result=checknstore_parsing_result,
+                    clear_parsing_result=clear_parsing_result,
+                    return_json_info=True,
+                    step_selection=step_selection,
+                    verbose=verbose,
+                )
+                for nm, ar in trd.items():
+                    td[nm + raw_data_suffix] = ar
+
+            if load_dap_data:
+                pdata, fnames_parsed = parse_dap(
+                    Path(metadata_file).parent / Path("../data")
+                )
+                for tdet, step_data in pdata.items():  # over different detectors
+                    index = []
+                    ddata = {}
+                    steps = []
+                    step_lengths = []
+                    for stepno, step_data in step_data.items():  # over steps
+                        steps.append(stepno)
+                        step_lengths.append(len(step_data["index"]))
+                        index.append(step_data["index"])
+                        for tsdno, tsd in enumerate(
+                            step_data["data"]
+                        ):  # over data columns
+                            if tsdno not in ddata.keys():
+                                ddata[tsdno] = []
+                            ddata[tsdno].append(tsd)
+                    for colno in range(len(ddata.keys())):
+                        td[f"{tdet}_dap_col{colno}"] = Array(
+                            data=np.concatenate(ddata[colno], axis=0),
+                            index=np.concatenate(index, axis=0),
+                            step_lengths=step_lengths,
+                            parameter={"step_number": {"values": steps}},
+                        )
+
             s_collection.append(s)
             if "namespace_aliases" in s["scan_parameters"].keys():
                 talias_mappings = {
@@ -252,8 +328,9 @@ def load_dataset_from_scan(
                 }
                 alias_mappings.update(talias_mappings)
 
-            for tmpkey, tmpval in alias_mappings.items():
-                print(tmpval, "      ", tmpkey)
+            if verbose:
+                for tmpkey, tmpval in alias_mappings.items():
+                    print(tmpval, "      ", tmpkey)
 
             for nm, ar in td.items():
                 if not (nm in d.keys()):
@@ -279,6 +356,18 @@ def load_dataset_from_scan(
                         ds.__dict__[k] = StructureGroup()
                         dict2structure(r[k]["status"], base=ds.__dict__[k])
                     print("found and loaded status")
+
+                if store_status:
+                    if result_type == "zarr":
+                        for k in r.keys():
+                            ds.results_file.require_group(k)
+                            ds.results_file[k] = pickle.dumps(r[k]["status"])
+                            ds.results_file[k].attrs["esc_type"] = "pickled"
+                    elif result_type == "h5":
+                        for k in r.keys():
+                            ds.results_file.require_group(k)
+                            dictToH5Group(r[k]["status"], ds[k])
+                            ds.results_file[k].attrs["esc_type"] = "datastorage"
 
             else:
                 pass
@@ -314,17 +403,8 @@ def load_dataset_from_scan(
             print("No monitor data  in dataset found.")
             pass
 
-        if load_dap_data:
-            pdata = parse_dap(Path(metadata_file).parent / Path("../raw"))
-            for tdet, step_data in pdata.items():
-                index = []
-                ddata = []
-                steps = []
-                for stepno, step_data in step_data.items():
-                    steps.append(stepno)
-                    index.append(step_data[0])
-
-                # Array()
+            # Array()
+            # ds.pdata = pdata
 
     return ds
 
@@ -356,7 +436,7 @@ def parse_dap(fdir, fnames_parsed=[], N_acs_digits=4):
             if tfname in fnames_parsed:
                 continue
             step = int(tfname[3 : (3 + N_acs_digits)])
-            tmp = np.genfromtxt(tfname, dtype=None, unpack=True)
+            tmp = np.genfromtxt(p / Path(tfname), dtype=None, unpack=True)
             data[det][step] = dict(index=tmp[0], data=tmp[1:])
             fnames_parsed_new.append(tfname)
     return data, fnames_parsed_new

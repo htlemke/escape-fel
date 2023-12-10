@@ -5,6 +5,8 @@ from dask import array as da
 from dask import dataframe as ddf
 from dask.diagnostics import ProgressBar
 import operator
+
+from escape.storage.source import Source
 from ..utilities import get_corr, hist_asciicontrast, Hist_ascii
 import logging
 from itertools import chain
@@ -394,7 +396,6 @@ class Array:
         return match_arrays(self, other_array)[1]
 
     def __getitem__(self, *args, **kwargs):
-
         # this is multi dimensional itemgetting
         if type(args[0]) is tuple:
             # expanding ellipses --> TODO: multiple ellipses possible?
@@ -547,7 +548,18 @@ class Array:
         **kwargs,
     ):
         """map a function which works for a chunk of the Array
-        (events along index_dim). This is only really relevant for dask array array data."""
+        (events along index_dim). This is only really relevant for dask array array data.
+        """
+
+        # Test: creating Source instance for origin tracking
+        src = Source(
+            "factory",
+            factory=foo,
+            args=args,
+            kwargs=kwargs,
+            iargout=0,
+            name_dataset=self.name,
+        )
 
         # Getting chunks in the event dimension
         if event_dim == "same":
@@ -1712,7 +1724,8 @@ def compute(*args):
 
 def store(arrays, lock="auto", **kwargs):
     """
-    Storing of multiple escape arrays (as iterable, list or similar), efficient when they originate from the same ancestor"""
+    Storing of multiple escape arrays (as iterable, list or similar), efficient when they originate from the same ancestor
+    """
     if lock == "auto":
         lock = get_lock()
     prep = [
@@ -2016,7 +2029,8 @@ class ArrayH5Dataset:
     def append(self, data, event_ids, scan=None, prep_run=False, lock="auto", **kwargs):
         """
         expects to extend a former dataset, i.e. data includes data already existing,
-        this will likely change in future to also allow real appending of entirely new data."""
+        this will likely change in future to also allow real appending of entirely new data.
+        """
         if lock == "auto":
             lock = get_lock()
         n_new = len(self._n_i)
@@ -2144,7 +2158,8 @@ class ArrayH5File:
     def append(self, data, event_ids, scan=None, prep_run=False):
         """
         expects to extend a former dataset, i.e. data includes data already existing,
-        this will likely change in future to also allow real appending of entirely new data."""
+        this will likely change in future to also allow real appending of entirely new data.
+        """
         n_new = len(self._n_i)
         ids_stored = self.index
         in_previous_indexes = np.in1d(event_ids, ids_stored)
