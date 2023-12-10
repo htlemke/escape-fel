@@ -231,8 +231,8 @@ def plot2D(x, y, C, *args, ax=None, **kwargs):
     """Helper function to create a fals color 3D plot using matplotlib pcolormesh.
 
     Args:
-        x (array-like 1d): [description]
-        y (array-like 1d): [description]
+        x (array-like 1d): may be replaced "auto" for bin number
+        y (array-like 1d): may be replaced "auto" for bin number
         C (array-like 2d): [description]
         ax (matplotlib axis): [description]. Defaults to None.
     """
@@ -240,6 +240,11 @@ def plot2D(x, y, C, *args, ax=None, **kwargs):
     def bin_array(arr):
         arr = np.asarray(arr)
         return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
+
+    if type(x) is str and x == "auto":
+        x = np.arange(C.shape[1])
+    if type(y) is str and y == "auto":
+        y = np.arange(C.shape[0])
 
     Xp, Yp = np.meshgrid(bin_array(x), bin_array(y))
     if ax:

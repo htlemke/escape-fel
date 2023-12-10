@@ -259,8 +259,11 @@ def parseScanEcoV01(
                 / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+        if clear_parsing_result and Path(parse_res_file).exists():
+            Path(parse_res_file).unlink()
 
     files_parsed = set()
+
     if checknstore_parsing_result and Path(parse_res_file).exists():
         with open(parse_res_file, "r") as fp:
             dstores_flat = json.load(fp)
@@ -424,7 +427,6 @@ def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection):
 
     index_array = dask.array.concatenate([tr[0] for tr in arrays], axis=0).ravel()
     data_array = dask.array.concatenate([tr[1] for tr in arrays], axis=0)
-
     try:
         tarr = Array(
             data=data_array,
@@ -432,11 +434,10 @@ def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection):
             step_lengths=s_sl,
             parameter=tparameter,
         )
+        return tarr
 
     except Exception as e:
         print(f"Could not create escape.Array for {ch};\nError: {str(e)}")
-
-    return tarr
 
 
 class LazyContainer:

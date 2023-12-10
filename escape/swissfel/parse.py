@@ -343,6 +343,7 @@ def load_dataset_from_scan(
         )
 
         ds._metafile_parse_results = s_collection
+        ds._alias_mappings = alias_mappings
 
         try:
             if type(s["scan_parameters"]["status"]) is str:
@@ -437,6 +438,9 @@ def parse_dap(fdir, fnames_parsed=[], N_acs_digits=4):
                 continue
             step = int(tfname[3 : (3 + N_acs_digits)])
             tmp = np.genfromtxt(p / Path(tfname), dtype=None, unpack=True)
-            data[det][step] = dict(index=tmp[0], data=tmp[1:])
+            if tmp:
+                data[det][step] = dict(
+                    index=np.atleast_1d(tmp[0]), data=np.atleast_2d(tmp)[1:]
+                )
             fnames_parsed_new.append(tfname)
     return data, fnames_parsed_new
