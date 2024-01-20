@@ -1,3 +1,7 @@
+import base64
+import pickle
+import hickle
+from hickle.fileio import file_opener
 import escape
 from pathlib import Path
 from escape.utilities import dict2structure
@@ -6,6 +10,11 @@ import logging
 import h5py
 import zarr
 import numpy as np
+
+try:
+    from datastorage.datastorage import dictToH5Group, unwrapArray
+except:
+    print("issue with datastorage import!")
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +25,16 @@ class DataSet:
         raw_datasets: dict = None,
         alias_mappings: dict = None,
         results_file=None,
+        mode="r",
         name=None,
     ):
         self.data_raw = raw_datasets
         self.datasets = {}
 
         if results_file is not None:
-            self.results_file = results_file
+            # self.results_file = results_file
+            self.results_file = filespec_to_file(results_file, mode=mode)
+            self._init_datasets()
         else:
             self.results_file = None
 
@@ -36,12 +48,27 @@ class DataSet:
 
         self.name = name
 
-    def append(self, data, name=None):
+    def append(
+        self, data, as_hickle=False, as_pickle=False, as_datastorage=False, name=None
+    ):
         self.datasets[name] = data
         if isinstance(data, escape.Array):
             data.name = name
             if self.results_file is not None:
                 self.datasets[name].set_h5_storage(self.results_file, name)
+        else:
+            if as_pickle:
+                # self.results_file.require_dataset(name)
+                self.results_file[name] = np.string_(pickle.dumps(data))
+                self.results_file[name].attrs["esc_type"] = "pickled"
+            if as_hickle:
+                # self.results_file.require_dataset(name)
+                hickle.dump(data, self.results_file, path=f"/{name}")
+                self.results_file[name].attrs["esc_type"] = "hickled"
+            elif as_datastorage:
+                self.results_file.require_group(name)
+                dictToH5Group(data, self.results_file[name])
+                self.results_file[name].attrs["esc_type"] = "datastorage"
 
         dict2structure({name: data}, base=self)
         return data
@@ -95,21 +122,54 @@ class DataSet:
                 base.add(key).add(str(item))
         return base
 
+    def _init_datasets(self):
+        for tname in self.results_file.keys():
+            if "esc_type" in self.results_file[tname].attrs.keys():
+                if self.results_file[tname].attrs["esc_type"] == "array_dataset":
+                    self.append(
+                        escape.Array.load_from_h5(self.results_file, tname), name=tname
+                    )
+                elif self.results_file[tname].attrs["esc_type"] == "pickled":
+                    self.datasets[tname] = pickle.loads(self.results_file[tname][()])
+                    dict2structure({tname: self.datasets[tname]}, base=self)
+                elif self.results_file[tname].attrs["esc_type"] == "hickled":
+                    self.datasets[tname] = hickle.load(
+                        self.results_file, path=f"/{tname}"
+                    )
+                    dict2structure({tname: self.datasets[tname]}, base=self)
+                elif self.results_file[tname].attrs["esc_type"] == "datastorage":
+                    self.datasets[tname] = unwrapArray(self.results_file[tname])
+                    dict2structure({tname: self.datasets[tname]}, base=self)
+            else:
+                try:
+                    self.append(
+                        escape.Array.load_from_h5(result_file, tname), name=tname
+                    )
+                except:
+                    pass
+
     @classmethod
     def load_from_result_file(cls, results_filepath, mode="r", name=None):
-        results_filepath = Path(results_filepath)
+        ds = cls(results_file=results_filepath, name=name)
+        return ds
+
+    @classmethod
+    def create(cls, results_filepath, mode="w", name=None):
+        ds = cls(results_file=results_filepath, mode=mode, name=name)
+        return ds
+
+
+def filespec_to_file(file, mode="r"):
+    if isinstance(file, Path) or isinstance(file, str):
+        results_filepath = Path(file)
         if not ".esc" in results_filepath.suffixes:
             raise Exception("Expecting esc suffix in filename")
         if ".h5" in results_filepath.suffixes:
             result_file = h5py.File(results_filepath, mode)
         elif ".zarr" in results_filepath.suffixes:
             result_file = zarr.open(results_filepath, mode=mode)
-
-        ds = cls(results_file=result_file, name=name)
-
-        for tname in result_file.keys():
-            try:
-                ds.append(escape.Array.load_from_h5(result_file, tname), name=tname)
-            except:
-                pass
-        return ds
+    elif isinstance(file, h5py.File):
+        result_file = file
+    elif isinstance(file, zarr.Group):
+        result_file = file
+    return result_file

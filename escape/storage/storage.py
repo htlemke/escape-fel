@@ -522,14 +522,21 @@ class Array:
         return self.transpose()
 
     def compute(self, **kwargs):
-        with ProgressBar():
-            return Array(
-                data=self.data.compute(**kwargs),
-                index=self.index,
-                step_lengths=self.scan.step_lengths,
-                parameter=self.scan.parameter,
-                index_dim=self.index_dim,
-            )
+        if self.is_dask_array():
+            with ProgressBar():
+                return Array(
+                    data=self.data.compute(**kwargs),
+                    index=self.index,
+                    step_lengths=self.scan.step_lengths,
+                    parameter=self.scan.parameter,
+                    index_dim=self.index_dim,
+                )
+        else:
+            if self.name:
+                print(f"No `compute` necessary for {self.name}")
+            else:
+                print(f"No `compute` necessary")
+            return self
 
     def persist(self):
         self.data.persist()
@@ -890,8 +897,13 @@ class Array:
                 cmap=plt.cm.Reds,
                 cut_percentage=0,
             )
-            self.scan.plot(axis=ax, fmt="k")
+            if self.dtype == bool:
+                self.scan.plot(axis=ax, fmt="k.-", use_quantiles=False, label="mean")
+            else:
+                self.scan.plot(axis=ax, fmt="k.-", use_quantiles=False, label="median")
+
             plt.ylabel(self.name)
+            ax.legend(fancybox=True, framealpha=0.3, loc="best")
         else:
             to_hist = self.data
             if self.dtype == bool:
@@ -1707,18 +1719,23 @@ def compute(*args):
     """compute multiple escape arrays. Interesting when calculating multiple small arrays
     from the same ancestor dask based array"""
     with ProgressBar():
-        res = da.compute(*[ta.data for ta in args])
+        res = da.compute(*[ta.data for ta in args if ta.is_dask_array()])
+    next_dask_index = 0
     out = []
-    for ta, tr in zip(args, res):
-        out.append(
-            Array(
-                data=tr,
-                index=ta.index,
-                step_lengths=ta.scan.step_lengths,
-                parameter=ta.scan.parameter,
-                index_dim=ta.index_dim,
+    for ta in args:
+        if ta.is_dask_array():
+            out.append(
+                Array(
+                    data=res[next_dask_index],
+                    index=ta.index,
+                    step_lengths=ta.scan.step_lengths,
+                    parameter=ta.scan.parameter,
+                    index_dim=ta.index_dim,
+                )
             )
-        )
+            next_dask_index += 1
+        else:
+            out.append(ta)
     return tuple(out)
 
 
@@ -1991,6 +2008,7 @@ class ArrayH5Dataset:
             self.grp = parent[name]
         except:
             self.grp = parent.require_group(name)
+        self.grp.attrs["esc_type"] = "array_dataset"
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._index_finder = re.compile("^index_[0-9]{4}$")
         self._check_stored_data()

@@ -106,6 +106,7 @@ def interpret_raw_data_definition(
     instrument="bernina",
     search_path=[
         "{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+        "{instrument:s}/data/{pgroup:s}/work/raw/run{run_number:04d}/aux/scan_info*.json",
         "{instrument:s}/data/{pgroup:s}/res/scan_info/run{run_number:04d}*.json",
     ],
     verbose=True,
@@ -166,6 +167,7 @@ def load_dataset_from_scan(
     store_status=True,
     search_path=[
         "{instrument:s}/data/{pgroup:s}/raw/run{run_number:04d}/aux/scan_info*.json",
+        "{instrument:s}/data/{pgroup:s}/work/raw/run{run_number:04d}/aux/scan_info*.json",
         "{instrument:s}/data/{pgroup:s}/res/scan_info/run{run_number:04d}*.json",
     ],
     search_paths=["./", "./scan_data/", "../scan_data"],
