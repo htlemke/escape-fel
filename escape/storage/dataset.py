@@ -49,9 +49,28 @@ class DataSet:
         self.name = name
 
     def append(
-        self, data, as_hickle=False, as_pickle=False, as_datastorage=False, name=None
+        self,
+        data,
+        auto_format=True,
+        as_hickle=False,
+        as_pickle=False,
+        as_datastorage=False,
+        name=None,
     ):
         self.datasets[name] = data
+
+        if (
+            auto_format
+            and (not isinstance(data, escape.Array))
+            and (not as_hickle)
+            and (not as_pickle)
+            and (not as_datastorage)
+        ):
+            if isinstance(self.results_file, h5py.File):
+                as_hickle = True
+            elif isinstance(self.results_file, zarr.Group):
+                as_pickle = True
+
         if isinstance(data, escape.Array):
             data.name = name
             if self.results_file is not None:
