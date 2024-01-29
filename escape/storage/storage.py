@@ -1814,16 +1814,19 @@ def store(arrays, lock="auto", **kwargs):
         array.h5.append(array.data, array.index, prep_run="store_numpy")
         for array in arrays
     ]
+    # return prep
     if not any(prep):
         print("Nothing to append")
     else:
-        ndatas, dsets, n_news = zip(*[tprep for tprep in prep if tprep])
+        arrays_store, ndatas, dsets, n_news = zip(
+            *[(tarray, *tprep) for tarray, tprep in zip(arrays, prep) if tprep]
+        )
         with ProgressBar():
             da.store(ndatas, dsets, lock=lock, **kwargs)
-        for array, n_new in zip(arrays, n_news):
+        for array, n_new in zip(arrays_store, n_news):
             array.h5._n_i.append(n_new)
             array.h5._n_d.append(n_new)
-    for array in arrays:
+    for array in arrays_store:
         array._data = array.h5.get_data_da()
         array._index = array.h5.index
         array.scan._save_to_h5(array.h5.grp)
@@ -2181,8 +2184,8 @@ class ArrayH5Dataset:
                 chunk_size[0] = int(memlimit_MB // size_element)
 
             allarrays.append(da.from_array(ds, chunks=chunk_size))
-        if len(allarrays) < 1:
-            print(ds, ds.shape, chunk_size)
+        # if len(allarrays) < 1:
+        #     print(ds, ds.shape, chunk_size)
 
         return da.concatenate(allarrays)
 

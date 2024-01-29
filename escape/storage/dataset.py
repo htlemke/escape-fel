@@ -4,7 +4,7 @@ import hickle
 from hickle.fileio import file_opener
 import escape
 from pathlib import Path
-from escape.utilities import dict2structure
+from escape.utilities import StructureGroup, dict2structure
 from rich.tree import Tree
 import logging
 import h5py
@@ -89,7 +89,12 @@ class DataSet:
                 dictToH5Group(data, self.results_file[name])
                 self.results_file[name].attrs["esc_type"] = "datastorage"
 
-        dict2structure({name: data}, base=self)
+        if isinstance(data, dict):
+            self.__dict__[name] = StructureGroup()
+            dict2structure(data, base=self.__dict__[name])
+        else:
+            dict2structure({name: data}, base=self)
+
         return data
 
     def store_datasets_max_element_size(
@@ -106,7 +111,7 @@ class DataSet:
                     ks.append(k)
             except:
                 pass
-        escape.store([self.datasets[k] for k in ks], lock=lock, **kwargs)
+        return escape.store([self.datasets[k] for k in ks], lock=lock, **kwargs)
 
     def compute_datasets_max_element_size(
         self, max_element_size=5000, verbose=0, **kwargs

@@ -355,22 +355,27 @@ def load_dataset_from_scan(
                     "r",
                 ) as fh:
                     r = json.load(fh)
+
+                if store_status:
+                    print(";yes")
+                    for k in r.keys():
+                        ds.append(r[k]["status"], name=k)
+                else:
                     for k in r.keys():
                         ds.__dict__[k] = StructureGroup()
                         dict2structure(r[k]["status"], base=ds.__dict__[k])
-                    print("found and loaded status")
 
-                if store_status:
-                    if result_type == "zarr":
-                        for k in r.keys():
-                            ds.results_file.require_group(k)
-                            ds.results_file[k] = pickle.dumps(r[k]["status"])
-                            ds.results_file[k].attrs["esc_type"] = "pickled"
-                    elif result_type == "h5":
-                        for k in r.keys():
-                            ds.results_file.require_group(k)
-                            dictToH5Group(r[k]["status"], ds[k])
-                            ds.results_file[k].attrs["esc_type"] = "datastorage"
+                print("found and loaded status")
+                # if result_type == "zarr":
+                #     for k in r.keys():
+                #         ds.results_file.require_group(k)
+                #         ds.results_file[k] = pickle.dumps(r[k]["status"])
+                #         ds.results_file[k].attrs["esc_type"] = "pickled"
+                # elif result_type == "h5":
+                #     for k in r.keys():
+                #         ds.results_file.require_group(k)
+                #         dictToH5Group(r[k]["status"], ds[k])
+                #         ds.results_file[k].attrs["esc_type"] = "datastorage"
 
             else:
                 pass
