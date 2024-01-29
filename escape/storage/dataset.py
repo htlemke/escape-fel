@@ -97,7 +97,7 @@ class DataSet:
     ):
         ks = []
         for k, v in self.datasets.items():
-            if isinstance(v, escape.Array):
+            if not isinstance(v, escape.Array):
                 continue
             try:
                 if np.prod(v.shape[1:]) < max_element_size:
@@ -113,7 +113,7 @@ class DataSet:
     ):
         ds = {}
         for k, v in self.datasets.items():
-            if isinstance(v, escape.Array):
+            if not isinstance(v, escape.Array):
                 continue
             try:
                 if np.prod(v.shape[1:]) < max_element_size:
