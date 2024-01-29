@@ -89,7 +89,8 @@ def get_max(c, dpx_poly=None, offset=0, verbose_plot=False):
 def find_signal(d, ref, dpx_poly=50, verbose_plot=False, roi=[None]):
     """finding signal ref in d.
     ref is expected to be properly normalized
-    return position is corrected to to center location of the reference signal (as found in signal d)"""
+    return position is corrected to to center location of the reference signal (as found in signal d)
+    """
     # need to invert both to get correct direction
 
     x0 = (len(ref) + 1) // 2
@@ -121,10 +122,12 @@ def refine_reference(data, pos, resolution=1):
     tdata = tdata[sel, :]
     xb = np.arange(len(tdata[0]))
     xd = xb - np.asarray(tpos).ravel()[:, None]
-    xd_mn = np.max(xd[:, 0])
+    # xd_mn = np.max(xd[:, 0])
+    xd_mn = np.min(xd[:, 0])
     xd_mn -= xd_mn % resolution
     xb_mn = xd_mn - resolution / 2
-    xd_mx = np.min(xd[:, -1])
+    # xd_mx = np.min(xd[:, -1])
+    xd_mx = np.max(xd[:, -1])
     xd_mx += resolution - xd_mx % resolution
     xb_mx = xd_mx + resolution / 2
     xr = np.arange(xd_mn, xd_mx + resolution, resolution)

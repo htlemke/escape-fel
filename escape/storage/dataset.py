@@ -97,6 +97,8 @@ class DataSet:
     ):
         ks = []
         for k, v in self.datasets.items():
+            if isinstance(v, escape.Array):
+                continue
             try:
                 if np.prod(v.shape[1:]) < max_element_size:
                     if verbose:
@@ -111,6 +113,8 @@ class DataSet:
     ):
         ds = {}
         for k, v in self.datasets.items():
+            if isinstance(v, escape.Array):
+                continue
             try:
                 if np.prod(v.shape[1:]) < max_element_size:
                     if verbose:
@@ -173,7 +177,20 @@ class DataSet:
         return ds
 
     @classmethod
-    def create(cls, results_filepath, mode="w", name=None):
+    def create_with_new_result_file(
+        cls, results_filepath, mode="w", force_overwrite=False, name=None
+    ):
+        if Path(results_filepath).exists() and not force_overwrite:
+            if (
+                input(
+                    f"Filename {results_filepath} exists, would you like to overwrite its contents? (y/n)"
+                )
+                == "y"
+            ):
+                pass
+            else:
+                return
+
         ds = cls(results_file=results_filepath, mode=mode, name=name)
         return ds
 

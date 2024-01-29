@@ -7,7 +7,7 @@ from dask.diagnostics import ProgressBar
 import operator
 
 from escape.storage.source import Source
-from ..utilities import get_corr, hist_asciicontrast, Hist_ascii
+from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, plot2D
 import logging
 from itertools import chain
 from numbers import Number
@@ -485,6 +485,10 @@ class Array:
     def ndim(self, *args, **kwargs):
         return self.data.ndim
 
+    @property
+    def ndim_nonzero(self, *args, **kwargs):
+        return len(np.asarray(self.shape)[np.nonzero(self.shape)[0]])
+
     def transpose(self, *args):
         if not args:
             axes = tuple(range(self.ndim - 1, -1, -1))
@@ -926,6 +930,32 @@ class Array:
         plt.ion()
         return imgobj
 
+    def _get_repr_map_plot(self, fmt="png", figsize=[5, 3]):
+        plt.ioff()
+        f = plt.figure(figsize=figsize)
+        ax = f.add_subplot(111)
+        # ax_steps = ax.twiny()
+
+        if len(self.scan) > 1:
+            self.scan.plot(axis=ax, cmap=plt.cm.Greens)
+        else:
+            print("non scan repr not implemented yet for maps/waveforms or images!")
+
+        ax.grid("on")
+        # ax_steps.set_xlim(0, len(self.scan) - 1)
+        # ax_steps.set_xlabel("Step number")
+        f.tight_layout()
+        if fmt == "svg":
+            s = io.StringIO()
+            f.savefig(s, format="svg", bbox_inches="tight")
+            imgobj = s.getvalue()
+        elif fmt == "png":
+            tmpfile = BytesIO()
+            f.savefig(tmpfile, format="png", bbox_inches="tight")
+            imgobj = base64.b64encode(tmpfile.getvalue()).decode("utf-8")
+        plt.ion()
+        return imgobj
+
     def _repr_html_(self):
         if self.is_dask_array():
             return (
@@ -939,6 +969,15 @@ class Array:
                     + "<br />\n"
                     + "<img src='data:image/png;base64,{}'>".format(
                         self._get_repr_hist_plot(fmt="png")
+                    )
+                )
+
+            elif self.ndim_nonzero == 2:
+                return (
+                    html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
+                    + "<br />\n"
+                    + "<img src='data:image/png;base64,{}'>".format(
+                        self._get_repr_map_plot(fmt="png")
                     )
                 )
             else:
@@ -1448,35 +1487,61 @@ class Scan:
             names = list(self.parameter.keys())
             scanpar_name = names[0]
         x = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
-        if not weights:
+
+        if self._array.ndim_nonzero == 1:
+            if not weights:
+                if use_quantiles:
+                    tmp = np.asarray(
+                        self.nanquantile(
+                            [0.5, 0.5 - 0.682689492137 / 2, 0.5 + 0.682689492137 / 2],
+                            # axis=0,
+                        )
+                    )
+                    y = tmp[:, 0]
+                    ystd = np.diff(tmp[:, 1:], axis=1)[:, 0] / 2
+                else:
+                    y = np.asarray(self.nanmean(axis=0)).ravel()
+                    ystd = np.asarray(self.nanstd(axis=0)).ravel()
+            else:
+                if use_quantiles:
+                    print(
+                        "Cannot use quantile derivation with weights, using average/std instead!"
+                    )
+                y, ystd = self.weighted_avg_and_std(weights)
+            if norm_samples:
+                yerr = ystd / np.sqrt(np.asarray(self.count()))
+            else:
+                yerr = ystd
+            if not axis:
+                axis = plt.gca()
+            axis.errorbar(x, y, yerr=yerr, *args, **kwargs)
+            axis.set_xlabel(scanpar_name)
+            if self._array.name:
+                axis.set_ylabel(self._array.name)
+        elif self._array.ndim_nonzero == 2:
             if use_quantiles:
                 tmp = np.asarray(
                     self.nanquantile(
                         [0.5, 0.5 - 0.682689492137 / 2, 0.5 + 0.682689492137 / 2],
-                        # axis=0,
+                        axis=0,
                     )
                 )
-                y = tmp[:, 0]
-                ystd = np.diff(tmp[:, 1:], axis=1)[:, 0] / 2
-            else:
-                y = np.asarray(self.nanmean(axis=0)).ravel()
-                ystd = np.asarray(self.nanstd(axis=0)).ravel()
-        else:
-            if use_quantiles:
-                print(
-                    "Cannot use quantile derivation with weights, using average/std instead!"
-                )
-            y, ystd = self.weighted_avg_and_std(weights)
-        if norm_samples:
-            yerr = ystd / np.sqrt(np.asarray(self.count()))
-        else:
-            yerr = ystd
-        if not axis:
-            axis = plt.gca()
-        axis.errorbar(x, y, yerr=yerr, *args, **kwargs)
-        axis.set_xlabel(scanpar_name)
-        if self._array.name:
-            axis.set_ylabel(self._array.name)
+
+                ic = tmp[
+                    :,
+                    0,
+                    :,
+                ]
+                icstd = np.diff(tmp[:, 1:, :], axis=1)[:, 0, :] / 2
+                # return ic, icstd
+                if not axis:
+                    axis = plt.gca()
+                y = np.arange(ic.shape[1])
+                ih = plot2D(x, y, ic.T, ax=axis, *args, **kwargs)
+                axis.set_xlabel(scanpar_name)
+                plt.colorbar(ih, ax=axis, label=self._array.name)
+                axis.set_ylabel("Median step waveform")
+                return ic, icstd
 
     def hist(
         self,
