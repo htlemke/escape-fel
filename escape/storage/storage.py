@@ -2181,6 +2181,8 @@ class ArrayH5Dataset:
                 chunk_size[0] = int(memlimit_MB // size_element)
 
             allarrays.append(da.from_array(ds, chunks=chunk_size))
+        if len(allarrays) < 1:
+            print(ds, ds.shape, chunk_size)
 
         return da.concatenate(allarrays)
 
