@@ -357,9 +357,8 @@ def load_dataset_from_scan(
                     r = json.load(fh)
 
                 if store_status:
-                    print(";yes")
                     for k in r.keys():
-                        ds.append(r[k]["status"], name=k)
+                        ds.append(r[k]["status"], name=k, as_pickle=True)
                 else:
                     for k in r.keys():
                         ds.__dict__[k] = StructureGroup()

@@ -154,20 +154,29 @@ class DataSet:
         for tname in self.results_file.keys():
             if "esc_type" in self.results_file[tname].attrs.keys():
                 if self.results_file[tname].attrs["esc_type"] == "array_dataset":
-                    self.append(
-                        escape.Array.load_from_h5(self.results_file, tname), name=tname
-                    )
-                elif self.results_file[tname].attrs["esc_type"] == "pickled":
-                    self.datasets[tname] = pickle.loads(self.results_file[tname][()])
-                    dict2structure({tname: self.datasets[tname]}, base=self)
-                elif self.results_file[tname].attrs["esc_type"] == "hickled":
-                    self.datasets[tname] = hickle.load(
-                        self.results_file, path=f"/{tname}"
-                    )
-                    dict2structure({tname: self.datasets[tname]}, base=self)
-                elif self.results_file[tname].attrs["esc_type"] == "datastorage":
-                    self.datasets[tname] = unwrapArray(self.results_file[tname])
-                    dict2structure({tname: self.datasets[tname]}, base=self)
+                    larray = escape.Array.load_from_h5(self.results_file, tname)
+                    if larray:
+                        self.append(larray, name=tname)
+                else:
+                    if self.results_file[tname].attrs["esc_type"] == "pickled":
+                        self.datasets[tname] = pickle.loads(
+                            self.results_file[tname][()]
+                        )
+                        dict2structure({tname: self.datasets[tname]}, base=self)
+                    elif self.results_file[tname].attrs["esc_type"] == "hickled":
+                        self.datasets[tname] = hickle.load(
+                            self.results_file, path=f"/{tname}"
+                        )
+                        dict2structure({tname: self.datasets[tname]}, base=self)
+                    elif self.results_file[tname].attrs["esc_type"] == "datastorage":
+                        self.datasets[tname] = unwrapArray(self.results_file[tname])
+                        dict2structure({tname: self.datasets[tname]}, base=self)
+                    if isinstance(self.datasets[tname], dict):
+                        self.__dict__[tname] = StructureGroup()
+                        dict2structure(self.datasets[tname], base=self.__dict__[tname])
+                    else:
+                        dict2structure({tname: self.datasets[tname]}, base=self)
+
             else:
                 try:
                     self.append(

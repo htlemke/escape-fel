@@ -700,16 +700,21 @@ class Array:
         try:
             parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
         except:
-            print("could not read scan metadata")
+            print(f"could not read scan metadata of {name}")
             parameter = None
             step_lengths = None
-        return cls(
-            index=h5.index,
-            data=h5.get_data_da(),
-            parameter=parameter,
-            step_lengths=step_lengths,
-            name=name,
-        )
+
+        data = h5.get_data_da()
+        if data is None:
+            return None
+        else:
+            return cls(
+                index=h5.index,
+                data=data,
+                parameter=parameter,
+                step_lengths=step_lengths,
+                name=name,
+            )
 
     def ones(self, **kwargs):
         return Array(
@@ -1817,6 +1822,7 @@ def store(arrays, lock="auto", **kwargs):
     # return prep
     if not any(prep):
         print("Nothing to append")
+        # arrays_store = arrays
     else:
         arrays_store, ndatas, dsets, n_news = zip(
             *[(tarray, *tprep) for tarray, tprep in zip(arrays, prep) if tprep]
@@ -1826,7 +1832,7 @@ def store(arrays, lock="auto", **kwargs):
         for array, n_new in zip(arrays_store, n_news):
             array.h5._n_i.append(n_new)
             array.h5._n_d.append(n_new)
-    for array in arrays_store:
+    for array in arrays:
         array._data = array.h5.get_data_da()
         array._index = array.h5.index
         array.scan._save_to_h5(array.h5.grp)
@@ -2076,7 +2082,13 @@ class ArrayH5Dataset:
             self.grp = parent[name]
         except:
             self.grp = parent.require_group(name)
-        self.grp.attrs["esc_type"] = "array_dataset"
+        if (
+            "esc_type" in self.grp.attrs.keys()
+            and self.grp.attrs["esc_type"] == "array_dataset"
+        ):
+            pass
+        else:
+            self.grp.attrs["esc_type"] = "array_dataset"
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._index_finder = re.compile("^index_[0-9]{4}$")
         self._check_stored_data()
@@ -2186,8 +2198,10 @@ class ArrayH5Dataset:
             allarrays.append(da.from_array(ds, chunks=chunk_size))
         # if len(allarrays) < 1:
         #     print(ds, ds.shape, chunk_size)
-
-        return da.concatenate(allarrays)
+        if len(allarrays) == 0:
+            return None
+        else:
+            return da.concatenate(allarrays)
 
     def create_array(self):
         return Array(data=self.get_data_da(), index=self.index)
