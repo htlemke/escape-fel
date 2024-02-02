@@ -59,35 +59,41 @@ class DataSet:
     ):
         self.datasets[name] = data
 
-        if (
-            auto_format
-            and (not isinstance(data, escape.Array))
-            and (not as_hickle)
-            and (not as_pickle)
-            and (not as_datastorage)
-        ):
-            if isinstance(self.results_file, h5py.File):
-                as_hickle = True
-            elif isinstance(self.results_file, zarr.Group):
-                as_pickle = True
+        if self.results_file:
+            if (
+                auto_format
+                and (not isinstance(data, escape.Array))
+                and (not as_hickle)
+                and (not as_pickle)
+                and (not as_datastorage)
+            ):
+                if isinstance(self.results_file, h5py.File):
+                    as_hickle = True
+                elif isinstance(self.results_file, zarr.Group):
+                    as_pickle = True
 
-        if isinstance(data, escape.Array):
-            data.name = name
-            if self.results_file is not None:
-                self.datasets[name].set_h5_storage(self.results_file, name)
+            if isinstance(data, escape.Array):
+                data.name = name
+                if self.results_file is not None:
+                    self.datasets[name].set_h5_storage(self.results_file, name)
+            else:
+                if as_pickle:
+                    # self.results_file.require_dataset(name)
+                    self.results_file[name] = np.string_(pickle.dumps(data))
+                    self.results_file[name].attrs["esc_type"] = "pickled"
+                if as_hickle:
+                    # self.results_file.require_dataset(name)
+                    hickle.dump(data, self.results_file, path=f"/{name}")
+                    self.results_file[name].attrs["esc_type"] = "hickled"
+                elif as_datastorage:
+                    self.results_file.require_group(name)
+                    dictToH5Group(data, self.results_file[name])
+                    self.results_file[name].attrs["esc_type"] = "datastorage"
         else:
-            if as_pickle:
-                # self.results_file.require_dataset(name)
-                self.results_file[name] = np.string_(pickle.dumps(data))
-                self.results_file[name].attrs["esc_type"] = "pickled"
-            if as_hickle:
-                # self.results_file.require_dataset(name)
-                hickle.dump(data, self.results_file, path=f"/{name}")
-                self.results_file[name].attrs["esc_type"] = "hickled"
-            elif as_datastorage:
-                self.results_file.require_group(name)
-                dictToH5Group(data, self.results_file[name])
-                self.results_file[name].attrs["esc_type"] = "datastorage"
+            pass
+            # print(
+            #     f"No dataset results_file defined, data {name} will be attached in memory only."
+            # )
 
         if isinstance(data, dict):
             self.__dict__[name] = StructureGroup()
