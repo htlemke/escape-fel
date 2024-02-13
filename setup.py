@@ -18,7 +18,7 @@ setuptools.setup(
     author_email="htlemke@gmail.com",
     url="https://github.com/htlemke/escape",
     packages=setuptools.find_packages(),
-    requires=["dask", "numpy", "h5py", "zarr", "rich", "tqdm"],
+    requires=["dask", "numpy", "h5py", "zarr", "rich", "tqdm", "hickle"],
     classifiers=(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
