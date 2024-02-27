@@ -1408,8 +1408,7 @@ class Scan:
     def count(self):
         return [len(step) for step in self]
 
-    def nancount(self):
-        ...
+    def nancount(self): ...
 
     # TODO
 
@@ -2097,7 +2096,11 @@ class ArrayH5Dataset:
         ):
             pass
         else:
-            self.grp.attrs["esc_type"] = "array_dataset"
+            try:
+                self.grp.attrs["esc_type"] = "array_dataset"
+            except:
+                print("Could not put esc_type metadata.")
+
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._index_finder = re.compile("^index_[0-9]{4}$")
         self._check_stored_data()
