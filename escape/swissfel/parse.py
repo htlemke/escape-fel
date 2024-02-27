@@ -183,6 +183,7 @@ def load_dataset_from_scan(
     step_selection=slice(None),
     load_dap_data=False,
     raw_data_suffix="_rawdata",
+    append_scan_parameter: {"par_name": {"values": list}} = None,
     verbose=0,
 ):
     metadata_files = interpret_raw_data_definition(
@@ -339,6 +340,12 @@ def load_dataset_from_scan(
                     d[nm] = ar
                 else:
                     d[nm] = concatenate([d[nm], ar])
+        if append_scan_parameter:
+            for nm, ar in d.items():
+                try:
+                    ar.scan.append_parameter(append_scan_parameter)
+                except Exception as e:
+                    print(str(e))
 
         ds = DataSet(
             d, name=name, alias_mappings=alias_mappings, results_file=result_file

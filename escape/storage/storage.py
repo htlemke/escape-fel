@@ -1345,6 +1345,15 @@ class Scan:
         # self._add_methods()
         self.tools = ScanTools(self)
 
+    def append_parameter(self, parameter: {"par_name": {"values": list}}):
+        for par, pardict in parameter.items():
+            if not len(pardict["values"]) == len(self):
+                lenthis = len(pardict["values"])
+                raise Exception(
+                    f"Parameter array length of {par} ({lenthis}) does not fit the defined steps ({len(self)})."
+                )
+        self.parameter.update(parameter)
+
     @property
     def par_steps(self):
         data = {name: value["values"] for name, value in self.parameter.items()}

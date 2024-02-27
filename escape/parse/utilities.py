@@ -2,11 +2,17 @@ import h5py
 from pathlib import Path
 
 
-def findItemnamesGroups(toplevel, item_names=[], get_full_name=False):
+def findItemnamesGroups(
+    toplevel, item_names=[], get_full_name=False, group_name_contains=None
+):
     itemGroups = {}
 
     def find_datasets(item, item_h):
         if not isinstance(item_h, h5py.Group):
+            return
+        elif (group_name_contains is not None) and (
+            group_name_contains not in item_h.name
+        ):
             return
         else:
             if set(item_names).issubset(item_h.keys()):
