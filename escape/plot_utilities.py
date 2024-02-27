@@ -81,7 +81,7 @@ class RectangleSelectNB:
         self.selector = RectangleSelector(
             ax,
             self.line_select_callback,
-            drawtype="box",
+            # drawtype="box",
             useblit=False,
             button=[1, 3],  # don't use middle button
             minspanx=5,
@@ -317,6 +317,7 @@ class MultipleRoiSelector(widgets.VBox):
                 ]
             ),
         )
+
         # self._tabs_rois.set_title(len(self._tabs_rois.children)-1,self._roi_title_input.value)
         def update_tab_title(x):
             self._tabs_rois.set_title(ti, x["new"])
@@ -529,7 +530,7 @@ class StepViewerP(widgets.VBox):
         np.random.RandomState(0).shuffle(self.step_order)
 
         # !starting calculation of average DATA in custom order!
-        
+
         self.data_queue = [
             self.array.scan[i][data_selection].nanmean(axis=0).persist()
             for i in self.step_order

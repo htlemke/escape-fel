@@ -90,7 +90,7 @@ class ScanTools:
             sm = MultipleRoiSelector(
                 data[data_selection].mean(axis=0).compute(),
                 rois=rois,
-                # callbacks_changeanyroi=[append_rois],
+                callbacks_changeanyroi=[append_rois],
             )
             s = StepViewerP(data, sm, data_selection=data_selection)
             StepViewerP.rois = property(lambda self: self.output.rois)

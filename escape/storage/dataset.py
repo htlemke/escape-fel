@@ -59,7 +59,7 @@ class DataSet:
     ):
         self.datasets[name] = data
 
-        if self.results_file:
+        if self.results_file is not None:
             if (
                 auto_format
                 and (not isinstance(data, escape.Array))
