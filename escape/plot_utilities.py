@@ -62,7 +62,10 @@ from matplotlib.widgets import RectangleSelector
 
 def make_box_layout():
     return widgets.Layout(
-        border="solid 1px black", margin="0px 10px 10px 0px", padding="5px 5px 5px 5px"
+        border="solid 1px black",
+        margin="0px 10px 10px 0px",
+        padding="5px 5px 5px 5px",
+        flex_flow="row wrap",
     )
 
 
@@ -152,10 +155,10 @@ class RectangleSelectNB:
         return self.selector.extents[3]
 
 
-class MultipleRoiSelector(widgets.VBox):
+class MultipleRoiSelector(widgets.HBox):
     def __init__(self, data, rois={}, callbacks_changeanyroi=[], name="RoiSelector"):
-        super().__init__(layout=widgets.Layout(flex_flow="row wrap"))
-        # super().__init__()
+        # super().__init__(layout=widgets.Layout(flex_flow="row wrap"))
+        super().__init__()
         self.data = data
         self.name = name
         self.roi_selectors = []
@@ -163,8 +166,11 @@ class MultipleRoiSelector(widgets.VBox):
 
         def f(x):
             self.visi_ind = x["new"]
-            self.set_roi_selection_active(i=self.visi_ind)
-            self.set_roi_selection_visible(i=self.visi_ind)
+            try:
+                self.set_roi_selection_active(i=self.visi_ind)
+                self.set_roi_selection_visible(i=self.visi_ind)
+            except IndexError:
+                pass
 
         self._tabs_rois.observe(
             f,
@@ -202,9 +208,12 @@ class MultipleRoiSelector(widgets.VBox):
         self.children = [
             widgets.VBox(
                 [
-                    widgets.HBox([self._clim_slider, self._add_roi_button]),
+                    widgets.HBox(
+                        [self._clim_slider, self._add_roi_button],
+                    ),
                     self._output_data,
-                ]
+                ],
+                # layout=widgets.Layout(min_width="400px"),
             ),
             self._tabs_rois,
         ]
@@ -236,8 +245,9 @@ class MultipleRoiSelector(widgets.VBox):
         with self._output_data:
             plt.close(self.name)
             fig, ax = plt.subplots(
-                num=self.name
+                num=self.name,
                 # constrained_layout=True
+                figsize=[5, 5],
             )
             self.fig_data = fig
             self.ax_data = ax
@@ -283,7 +293,7 @@ class MultipleRoiSelector(widgets.VBox):
         ti = len(self.roi_selectors)
         op = widgets.Output()
         with op:
-            tfig = plt.figure(constrained_layout=True)
+            tfig = plt.figure(constrained_layout=True, figsize=[5, 5])
             self.axs_rois.append(tfig.add_subplot())
             plt.show(tfig)
 
@@ -304,6 +314,7 @@ class MultipleRoiSelector(widgets.VBox):
                 disabled=False,
             )
         )
+
         self._tabs_rois.children += (
             widgets.VBox(
                 [
@@ -351,7 +362,14 @@ class MultipleRoiSelector(widgets.VBox):
     def add_roi(self, *args):
         # self.roi_selectors.append('test')
         ti = len(self.roi_selectors)
+        # with self._output_data:
+        #     print(ti)
+        #     print(self._roi_titles)
         self.add_roi_plot()
+        # with self._output_data:
+        #     print(ti)
+        #     print(self._roi_titles)
+        #     print("got here")
         self.roi_selectors.append(
             RectangleSelectNB(
                 fig=self.fig_data,
@@ -361,6 +379,7 @@ class MultipleRoiSelector(widgets.VBox):
             )
         )
         # self._select_buttons[-1].on_click(lambda dum: self.set_roi_selection_active(ti))
+
         self._tabs_rois.set_trait("selected_index", len(self.roi_selectors) - 1)
         self.set_roi_selection_active(i=ti)
         self.set_roi_selection_visible(i=ti)
