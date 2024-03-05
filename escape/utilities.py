@@ -169,6 +169,15 @@ def corr_nonlin_get_par(
 
 
 def edges_to_center(edges):
+    """Create an array from binning edges that define the centers
+    of those bins (Length of 1D array reduces by one).
+
+    Args:
+        edges (1D list/array): bin edges
+
+    Returns:
+        array: bin centers (1D)
+    """
     edges = np.asarray(edges)
     centers = edges[:-1] + np.diff(edges)
     return centers
@@ -434,6 +443,18 @@ class timeout:
 
 
 def polyfit_with_fixed_points(x, y, n, xf, yf):
+    """Polynomial fit to x/y data with partially fixed x and y data.
+
+    Args:
+        x (np.array): xdata
+        y (np.array): ydata
+        n (integer): polynomial order
+        xf (_type_): _description_
+        yf (_type_): _description_
+
+    Returns:
+        array: polynomial coefficients, length of order n.
+    """
     mat = np.empty((n + 1 + len(xf),) * 2)
     vec = np.empty((n + 1 + len(xf),))
     x_n = x ** np.arange(2 * n + 1)[:, None]

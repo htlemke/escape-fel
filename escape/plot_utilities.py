@@ -57,7 +57,13 @@ class GinputNB:
 
 
 import ipywidgets as widgets
-from matplotlib.widgets import RectangleSelector
+from matplotlib.widgets import (
+    RectangleSelector,
+    SpanSelector,
+    PolygonSelector,
+    LassoSelector,
+)
+from matplotlib.path import Path as MplPath
 
 
 def make_box_layout():
@@ -67,6 +73,316 @@ def make_box_layout():
         padding="5px 5px 5px 5px",
         flex_flow="row wrap",
     )
+
+
+class SpanSelectNB:
+    def __init__(
+        self,
+        fig=None,
+        ax=None,
+        ax_roi=None,
+        direction="horizontal",
+        callbacks_changeroi=[],
+    ):
+        if not fig:
+            fig = plt.gcf()
+        self.fig = fig
+        #         self.evt= Event()
+        self.collecting = 0
+        if not ax:
+            ax = plt.gca()
+        self.ax = ax
+        self.ax_roi = ax_roi
+
+        self.selector = SpanSelector(
+            ax,
+            self.line_select_callback,
+            direction=direction,
+            # drawtype="box",
+            useblit=False,
+            button=[1, 3],  # don't use middle button
+            # minspan=5,
+            # spancoords="data",
+            interactive=True,
+        )
+        fig.canvas.mpl_connect("key_press_event", self.toggle_selector)
+        self.selector.set_active(False)
+        self.callbacks_changeroi = callbacks_changeroi
+
+    def toggle_selector(self, event):
+        if event.key == "t":
+            if self.selector.active:
+                print("Selector deactivated.")
+                self.selector.set_active(False)
+                # self.rectangle = Rectangle([10,10],20,20)
+
+            else:
+                print("Selector activated.")
+                self.selector.set_active(True)
+
+    def line_select_callback(self, eclick, erelease):
+        if self.ax_roi:
+            if self.ax_roi.get_images():
+                i = self.ax_roi.get_images()[0]
+                i.set_data(self.get_image_roi_data())
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
+                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
+            else:
+                self.ax_roi.imshow(self.get_image_roi_data())
+        for callback in self.callbacks_changeroi:
+            callback()
+
+    def get_image_roi_data(self):
+        i = self.ax.get_images()[0]
+        return i.get_array()[self.get_image_slice_selection()]
+
+    def get_image_slice_selection(self):
+        return slice(int(np.round(self.ymin)), int(np.round(self.ymax))), slice(
+            int(np.round(self.xmin)), int(np.round(self.xmax))
+        )
+
+    @property
+    def vmin(self):
+        return self.selector.extents[0]
+
+    @property
+    def vmax(self):
+        return self.selector.extents[1]
+
+
+class PolygonSelectNB:
+    def __init__(
+        self,
+        fig=None,
+        ax=None,
+        ax_roi=None,
+        image_handle=None,
+        direction="horizontal",
+        callbacks_changeroi=[],
+    ):
+        if not fig:
+            fig = plt.gcf()
+        self.fig = fig
+        #         self.evt= Event()
+        self.collecting = 0
+        if not ax:
+            ax = plt.gca()
+        self.ax = ax
+
+        if not image_handle:
+            image_handle = self.ax.get_images()[0]
+        self.image_handle = image_handle
+
+        self.ax_roi = ax_roi
+
+        self.selector = PolygonSelector(
+            ax,
+            self.line_select_callback,
+            # direction=direction,
+            # drawtype="box",
+            useblit=False,
+            # button=[1, 3],  # don't use middle button
+            # minspan=5,
+            # spancoords="data",
+            # interactive=True,
+        )
+        fig.canvas.mpl_connect("key_press_event", self.toggle_selector)
+        self.selector.set_active(False)
+        self.callbacks_changeroi = callbacks_changeroi
+
+    def toggle_selector(self, event):
+        if event.key == "t":
+            if self.selector.active:
+                print("Selector deactivated.")
+                self.selector.set_active(False)
+                # self.rectangle = Rectangle([10,10],20,20)
+
+            else:
+                print("Selector activated.")
+                self.selector.set_active(True)
+
+    def line_select_callback(self, eclick, erelease):
+        if self.ax_roi:
+            if self.ax_roi.get_images():
+                i = self.ax_roi.get_images()[0]
+                i.set_data(self.get_image_roi_data())
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
+                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
+            else:
+                self.ax_roi.imshow(self.get_image_roi_data())
+        for callback in self.callbacks_changeroi:
+            callback()
+
+    def get_image_roi_data(self):
+        i = self.ax.get_images()[0]
+        return i.get_array()[self.get_image_slice_selection()]
+
+    def get_image_slice_selection(self):
+        return slice(int(np.round(self.ymin)), int(np.round(self.ymax))), slice(
+            int(np.round(self.xmin)), int(np.round(self.xmax))
+        )
+
+    def get_mask(self, image=None):
+        """Get binary mask of the ROI polygon.
+
+        Parameters
+        ----------
+        image: numpy array (2D)
+            Image that the mask should be based on. Only used for determining
+            the shape of the binary mask (which is made equal to the shape of
+            the image)
+
+        Returns
+        -------
+        numpy array (2D)
+
+        """
+        if image is None:
+            image = self.image_handle.get_array()
+        ny, nx = np.shape(image)
+        poly_verts = [(self.x[0], self.y[0])] + list(
+            zip(reversed(self.x), reversed(self.y))
+        )
+        # Create vertex coordinates for each grid cell...
+        # (<0,0> is at the top left of the grid in this system)
+        x, y = np.meshgrid(np.arange(nx), np.arange(ny))
+        x, y = x.flatten(), y.flatten()
+        points = np.vstack((x, y)).T
+
+        roi_path = MplPath(poly_verts)
+        mask = roi_path.contains_points(points).reshape((ny, nx))
+        return mask
+
+    @property
+    def verts(self):
+        return self.selector.verts
+
+    @property
+    def x(self):
+        return [tv[0] for tv in self.verts]
+
+    @property
+    def y(self):
+        return [tv[1] for tv in self.verts]
+
+
+class LassoSelectNB:
+    def __init__(
+        self,
+        fig=None,
+        ax=None,
+        ax_roi=None,
+        image_handle=None,
+        direction="horizontal",
+        callbacks_changeroi=[],
+    ):
+        if not fig:
+            fig = plt.gcf()
+        self.fig = fig
+        #         self.evt= Event()
+        self.collecting = 0
+        if not ax:
+            ax = plt.gca()
+        self.ax = ax
+
+        if not image_handle:
+            image_handle = self.ax.get_images()[0]
+        self.image_handle = image_handle
+
+        self.ax_roi = ax_roi
+
+        self.selector = LassoSelector(
+            ax,
+            self.line_select_callback,
+            # direction=direction,
+            # drawtype="box",
+            useblit=False,
+            # button=[1, 3],  # don't use middle button
+            # minspan=5,
+            # spancoords="data",
+            # interactive=True,
+        )
+        fig.canvas.mpl_connect("key_press_event", self.toggle_selector)
+        self.selector.set_active(False)
+        self.callbacks_changeroi = callbacks_changeroi
+
+    def toggle_selector(self, event):
+        if event.key == "t":
+            if self.selector.active:
+                print("Selector deactivated.")
+                self.selector.set_active(False)
+                # self.rectangle = Rectangle([10,10],20,20)
+
+            else:
+                print("Selector activated.")
+                self.selector.set_active(True)
+
+    def line_select_callback(self, eclick, erelease):
+        if self.ax_roi:
+            if self.ax_roi.get_images():
+                i = self.ax_roi.get_images()[0]
+                i.set_data(self.get_image_roi_data())
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
+                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
+            else:
+                self.ax_roi.imshow(self.get_image_roi_data())
+        for callback in self.callbacks_changeroi:
+            callback()
+
+    def get_image_roi_data(self):
+        i = self.ax.get_images()[0]
+        return i.get_array()[self.get_image_slice_selection()]
+
+    def get_image_slice_selection(self):
+        return slice(int(np.round(self.ymin)), int(np.round(self.ymax))), slice(
+            int(np.round(self.xmin)), int(np.round(self.xmax))
+        )
+
+    def get_mask(self, image=None):
+        """Get binary mask of the ROI polygon.
+
+        Parameters
+        ----------
+        image: numpy array (2D)
+            Image that the mask should be based on. Only used for determining
+            the shape of the binary mask (which is made equal to the shape of
+            the image)
+
+        Returns
+        -------
+        numpy array (2D)
+
+        """
+        if image is None:
+            image = self.image_handle.get_array()
+        ny, nx = np.shape(image)
+        poly_verts = [(self.x[0], self.y[0])] + list(
+            zip(reversed(self.x), reversed(self.y))
+        )
+        # Create vertex coordinates for each grid cell...
+        # (<0,0> is at the top left of the grid in this system)
+        x, y = np.meshgrid(np.arange(nx), np.arange(ny))
+        x, y = x.flatten(), y.flatten()
+        points = np.vstack((x, y)).T
+
+        roi_path = MplPath(poly_verts)
+        mask = roi_path.contains_points(points).reshape((ny, nx))
+        return mask
+
+    @property
+    def verts(self):
+        return self.selector.verts
+
+    @property
+    def x(self):
+        return [tv[0] for tv in self.verts]
+
+    @property
+    def y(self):
+        return [tv[1] for tv in self.verts]
 
 
 class RectangleSelectNB:
