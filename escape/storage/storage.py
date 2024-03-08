@@ -312,6 +312,28 @@ class Array:
             **kwargs,
         )
 
+    def all(self, *args, **kwargs):
+        return _apply_method(
+            np.all,
+            da.all,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
+        )
+
+    def any(self, *args, **kwargs):
+        return _apply_method(
+            np.any,
+            da.any,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertesc_axis_kw=False,
+            **kwargs,
+        )
+
     def abs(self, *args, **kwargs):
         return _apply_method(
             np.abs,
@@ -1405,6 +1427,12 @@ class Scan:
     def max(self, *args, **kwargs):
         return [step.max(*args, **kwargs) for step in self]
 
+    def any(self, *args, **kwargs):
+        return [step.any(*args, **kwargs) for step in self]
+
+    def all(self, *args, **kwargs):
+        return [step.all(*args, **kwargs) for step in self]
+
     def count(self):
         return [len(step) for step in self]
 
@@ -1434,6 +1462,29 @@ class Scan:
         if norm_samples:
             mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
         return med, mad
+
+    # def weighted_median_and_mad(self, weights=None, axis=None, k_dist=1.4826, norm_samples=False):
+    #     """Calculate median and median absolute deviation for steps of a scan.
+
+    #     Args:
+    #         axis (int, sequence of int, None, optional): axis argument for median calls.
+    #         k_dist (float, optional): distribution scale factor, should be
+    #             1 for real MAD.
+    #             Defaults to 1.4826 for gaussian distribution.
+    #     """
+    #     # if self._array.is_dask_array():
+    #     #     absfoo = da.abs
+    #     # else:
+    #     #     absfoo = np.abs
+    #     utilities.weighted_quantiles(0.5)
+    #     med = [step.median(axis=axis) for step in self]
+    #     mad = [
+    #         (((step - tmed).abs()) * k_dist).median(axis=axis)
+    #         for step, tmed in zip(self, med)
+    #     ]
+    #     if norm_samples:
+    #         mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
+    #     return med, mad
 
     def weighted_avg_and_std(self, weights=None, norm_samples=False):
         avg = []

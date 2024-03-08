@@ -510,7 +510,7 @@ class MultipleRoiSelector(widgets.HBox):
             min=self.data.min(),
             max=self.data.max(),
             step=self.data.ptp() / 500,
-            continuous_upfate=False,
+            continuous_update=False,
             disabled=False,
         )
 

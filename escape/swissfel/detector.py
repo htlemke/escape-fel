@@ -65,8 +65,8 @@ def jf_correct(
         with h5py.File(dark_file, "r") as fh:
             pedestal = fh["gains"][:]
             if not mask:
-                mask = fh['pixel_mask'][:]
-                print('did set a mask!')
+                mask = fh["pixel_mask"][:]
+                print("did set a mask!")
 
         # figure()
         data_corr = array.map_index_blocks(
@@ -123,12 +123,21 @@ def jf_correct(
             return data_corr
 
 
-def apply_gain_pede_np(image, G, P, pixel_mask=None, mask_value=np.nan):
+def apply_gain_pede_np(
+    image,
+    G=None,
+    P=None,
+    pixel_mask=None,
+    mask_value=np.nan,
+    return_only_gain_mask=False,
+):
+
     # gain and pedestal correction
     mask = int("0b" + 14 * "1", 2)
     mask2 = int("0b" + 2 * "1", 2)
-
     gain_mask = np.bitwise_and(np.right_shift(image, 14), mask2)
+    if return_only_gain_mask:
+        return gain_mask
     data = np.bitwise_and(image, mask)
 
     m1 = gain_mask == 0
@@ -161,6 +170,22 @@ def apply_threshold(data, threshold=0):
     data[data < threshold] = 0
     return data
 
+
+def jungfrau_maskouble_px(ti):
+    ti[::256, :] = np.nan
+    ti[-1::-256, :] = np.nan
+    ti[:, ::256] = np.nan
+    ti[:, -1::-256] = np.nan
+
+
+for n in range(ti.shape[0], 0, -256):
+    ti[n - 1, :] = ti[n - 1, :] / 2
+    ti = np.insert(ti, n - 1, ti[n - 1, :], axis=0)
+    ti[n - 256, :] = ti[n - 256, :] / 2
+    ti = np.insert(ti, n - 256, ti[n - 256, :], axis=0)
+
+
+MultipleRoiSelector(ti[-300:, 230:270])
 
 # class JfCorrector:
 #     def __init__(self,jf_id,gain=None,dark=None,mask=None):
