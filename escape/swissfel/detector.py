@@ -178,14 +178,14 @@ def jungfrau_maskouble_px(ti):
     ti[:, -1::-256] = np.nan
 
 
-for n in range(ti.shape[0], 0, -256):
-    ti[n - 1, :] = ti[n - 1, :] / 2
-    ti = np.insert(ti, n - 1, ti[n - 1, :], axis=0)
-    ti[n - 256, :] = ti[n - 256, :] / 2
-    ti = np.insert(ti, n - 256, ti[n - 256, :], axis=0)
+# for n in range(ti.shape[0], 0, -256):
+#     ti[n - 1, :] = ti[n - 1, :] / 2
+#     ti = np.insert(ti, n - 1, ti[n - 1, :], axis=0)
+#     ti[n - 256, :] = ti[n - 256, :] / 2
+#     ti = np.insert(ti, n - 256, ti[n - 256, :], axis=0)
 
 
-MultipleRoiSelector(ti[-300:, 230:270])
+# MultipleRoiSelector(ti[-300:, 230:270])
 
 # class JfCorrector:
 #     def __init__(self,jf_id,gain=None,dark=None,mask=None):
