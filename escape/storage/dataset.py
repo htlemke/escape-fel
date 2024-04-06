@@ -30,6 +30,7 @@ class DataSet:
     ):
         self.data_raw = raw_datasets
         self.datasets = {}
+        self._esc_types = {}
 
         if results_file is not None:
             # self.results_file = results_file
@@ -55,9 +56,22 @@ class DataSet:
         as_hickle=False,
         as_pickle=False,
         as_datastorage=False,
+        esc_type=None,
         name=None,
     ):
         self.datasets[name] = data
+
+        if esc_type:
+            auto_format = False
+            as_hickle = False
+            as_pickle = False
+            as_datastorage = False
+            if esc_type == "pickled":
+                as_pickle = True
+            elif esc_type == "hickled":
+                as_hickle = True
+            elif esc_type == "datastorage":
+                as_datastorage = True
 
         if self.results_file is not None:
             if (
@@ -81,14 +95,17 @@ class DataSet:
                     # self.results_file.require_dataset(name)
                     self.results_file[name] = np.string_(pickle.dumps(data))
                     self.results_file[name].attrs["esc_type"] = "pickled"
+                    self._esc_types[name] = "pickled"
                 if as_hickle:
                     # self.results_file.require_dataset(name)
                     hickle.dump(data, self.results_file, path=f"/{name}")
                     self.results_file[name].attrs["esc_type"] = "hickled"
+                    self._esc_types[name] = "hickled"
                 elif as_datastorage:
                     self.results_file.require_group(name)
                     dictToH5Group(data, self.results_file[name])
                     self.results_file[name].attrs["esc_type"] = "datastorage"
+                    self._esc_types[name] = "datastorage"
         else:
             pass
             # print(
@@ -163,20 +180,24 @@ class DataSet:
                     larray = escape.Array.load_from_h5(self.results_file, tname)
                     if larray:
                         self.append(larray, name=tname)
+                    self._esc_types[tname] = "array_dataset"
                 else:
                     if self.results_file[tname].attrs["esc_type"] == "pickled":
                         self.datasets[tname] = pickle.loads(
                             self.results_file[tname][()]
                         )
                         dict2structure({tname: self.datasets[tname]}, base=self)
+                        self._esc_types[tname] = "pickled"
                     elif self.results_file[tname].attrs["esc_type"] == "hickled":
                         self.datasets[tname] = hickle.load(
                             self.results_file, path=f"/{tname}"
                         )
                         dict2structure({tname: self.datasets[tname]}, base=self)
+                        self._esc_types[tname] = "hickled"
                     elif self.results_file[tname].attrs["esc_type"] == "datastorage":
                         self.datasets[tname] = unwrapArray(self.results_file[tname])
                         dict2structure({tname: self.datasets[tname]}, base=self)
+                        self._esc_types[tname] = "datastorage"
                     if isinstance(self.datasets[tname], dict):
                         self.__dict__[tname] = StructureGroup()
                         dict2structure(self.datasets[tname], base=self.__dict__[tname])

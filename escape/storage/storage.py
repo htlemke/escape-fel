@@ -696,7 +696,12 @@ class Array:
                 name = self.name
             self.h5 = ArrayH5Dataset(parent_h5py, name)
         else:
-            logger.info(f"h5 storage already set at {name} in {self.h5.file.filename}")
+            try:
+                logger.info(
+                    f"h5 storage already set at {name} in {self.h5.file.filename}"
+                )
+            except:
+                logger.info(f"h5 storage already set for {name}")
 
     def store_file(self, parent_h5py=None, name=None, unit=None, **kwargs):
         """a way to store data, especially expensively computed data, into a new file."""
@@ -1752,6 +1757,8 @@ class Scan:
             if "attributes" in pardict.keys():
                 tpg.require_group("attributes")
                 for attname, attvalue in pardict["attributes"].items():
+                    if isinstance(attvalue, str):
+                        attvalue = str(attvalue)
                     tpg["attributes"][attname] = attvalue
 
     @staticmethod

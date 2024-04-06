@@ -743,3 +743,17 @@ def peakAna(x, y, nb=3, plotpoints=False):
             FWHM = np.nan
             PEAK = np.nan
     return (CEN, FWHM, PEAK)
+
+
+class ReferenceByRunno:
+    def __init__(self, name=None):
+        self.name = name
+        self.data = dict()
+
+    def append(self, run_number, value):
+        self.data[run_number] = value
+
+    def get_closest_before(self, run_number):
+        ks = np.asarray(list(self.data.keys()))
+        cl_k = ks[ks <= run_number].max()
+        return self.data[cl_k]
