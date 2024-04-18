@@ -267,7 +267,7 @@ def merge_datasets(datasets, only_escape_arrays=False, **kwargs_dataset):
     dsets_common = list(set.intersection(*[set(td.datasets.keys()) for td in datasets]))
     dsets_all = list(set.union(*[set(td.datasets.keys()) for td in datasets]))
     dsets_stranded = set(dsets_all)-set(dsets_common)
-    print(dsets_stranded)
+    # print(dsets_stranded)
 
     d_merged = escape.DataSet(**kwargs_dataset)
     for dset_name in dsets_common:
