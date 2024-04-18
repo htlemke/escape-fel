@@ -250,3 +250,39 @@ def filespec_to_file(file, mode="r"):
     elif isinstance(file, zarr.Group):
         result_file = file
     return result_file
+
+
+def merge_datasets(datasets, only_escape_arrays=False, **kwargs_dataset):
+    """Merges datasets of multiple dataset containers into one dataset container. escape.arrays are here concatenated 
+    to a merged escape_array, other datatypes are only merges as python lists.
+
+    Args:
+        datasets list or iterable of the dataset containers to be merged (type DataSet).
+        only_escape_arrays (bool, optional): optionally only merging of escape.arrays. Defaults to False.
+
+    Returns:
+        dataset_merged: new DataSet instance where the data have been merged into. 
+    """
+    
+    dsets_common = list(set.intersection(*[set(td.datasets.keys()) for td in datasets]))
+    dsets_all = list(set.union(*[set(td.datasets.keys()) for td in datasets]))
+    dsets_stranded = set(dsets_all)-set(dsets_common)
+    print(dsets_stranded)
+
+    d_merged = escape.DataSet(**kwargs_dataset)
+    for dset_name in dsets_common:
+        dsets = [td.datasets[dset_name] for td in datasets]
+        if all([isinstance(tdset,escape.Array) for tdset in dsets]):
+            
+            try:
+                ta = escape.concatenate(dsets)
+            except:
+                dsets_simple = [escape.Array(data=td.data,index=td.index) for td in dsets]
+                ta = escape.concatenate(dsets_simple)
+            d_merged.append(ta,name=dset_name)
+        elif (not only_escape_arrays):
+            try:
+                d_merged.append(dsets,name=dset_name)
+            except:
+                print(f"NB: Could not merge and append common dataset {dset_name}")
+    return d_merged

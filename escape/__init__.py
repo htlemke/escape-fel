@@ -18,7 +18,7 @@ from escape.storage import (
     escaped,
 )
 
-from escape.storage.dataset import DataSet
+from escape.storage.dataset import DataSet, merge_datasets
 
 from . import utilities
 
