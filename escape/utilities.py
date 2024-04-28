@@ -59,6 +59,15 @@ class StructureGroup:
 
 
 def dict2structure(t, base=None):
+    """convert flattened dictionary with separator string "." in keys to a StructureGroup object
+
+    Args:
+        t (dict): flattened dictionary
+        base (StructureGroup, optional): Structuregroup instance to append to. Defaults to None.
+
+    Returns:
+        StructureGroup instance
+    """
     if not base:
         base = StructureGroup()
     for tt, tv in t.items():
@@ -83,6 +92,17 @@ from collections import MutableMapping
 
 
 def flatten_dictionary(d, parent_key="", sep="."):
+    """flatten a disctionary to a single hierarchy, based on a separator string. 
+    e.g. flatten_dictionary({'a':{'b':1}}) --> {'a.b':1}
+
+    Args:
+        d (dict): hierarchical dictionary
+        parent_key (str, optional): Optional prefix in tructure. Defaults to "".
+        sep (str, optional): separator string. Defaults to ".".
+
+    Returns:
+        dict: flattened dictionary
+    """
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
@@ -92,6 +112,33 @@ def flatten_dictionary(d, parent_key="", sep="."):
         else:
             items.append((new_key, v))
     return dict(items)
+
+def unflatten_dictionary(dflat,sep='.'):
+    """Unflatten a disctionary with single hierarchy values, based on a separator in string names. 
+    e.g. unflatten_dictionary({'a.b':1}) --> {'a':{'b':1}} 
+
+    Args:
+        dflat (dict): flat dictionary
+        sep (str, optional): separator. Defaults to '.'.
+
+    Returns:
+        dict: unflattened dictionary
+    """
+    d = {}
+    for tka,tv in dflat.items():
+        if isinstance(tka,str):
+            tks = tka.split(sep)
+            p = d
+            for tk in tks[:-1]:
+                if not (tk in p.keys()):
+                    p[tk] = {}
+                p = p[tk]
+            p[tks[-1]] = tv
+        else:
+            d[tka] = tv
+    return d
+
+
 
 
 def weighted_avg_and_std(values, weights):
@@ -668,7 +715,7 @@ def peakAna(x, y, nb=3, plotpoints=False):
         plt.plot(x, b, "g--")
         plt.plot(x, b + ywmax, "g--")
         plt.plot([xhm1, xhm1], polyval(a, xhm1) + [0, ywmax], "g--")
-        plt.plot([xhm2, xhm2], polyval(a, xhm2) + [0, ywmax], "g--")
+        plt.plot([xhm2, xhm2], polyvfal(a, xhm2) + [0, ywmax], "g--")
         plt.plot([CEN, CEN], polyval(a, CEN) + [0, ywmax], "g--")
         plt.plot([xhm1, xhm2], [polyval(a, xhm1), polyval(a, xhm2)] + ywmax / 2, "gx")
         plt.draw()
