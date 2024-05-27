@@ -1,4 +1,5 @@
 import base64
+import os
 import pickle
 import hickle
 from hickle.fileio import file_opener
@@ -236,13 +237,15 @@ class DataSet:
         return ds
 
 
-def filespec_to_file(file, mode="r"):
+def filespec_to_file(file, mode="r", perm=0o0660):
     if isinstance(file, Path) or isinstance(file, str):
         results_filepath = Path(file)
         if not ".esc" in results_filepath.suffixes:
             raise Exception("Expecting esc suffix in filename")
         if ".h5" in results_filepath.suffixes:
             result_file = h5py.File(results_filepath, mode)
+            if perm is not None:
+                os.chmod(results_filepath, perm)
         elif ".zarr" in results_filepath.suffixes:
             result_file = zarr.open(results_filepath, mode=mode)
     elif isinstance(file, h5py.File):

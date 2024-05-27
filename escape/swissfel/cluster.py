@@ -2,6 +2,7 @@ from functools import partial
 from glob import escape
 import json
 from os import stat
+import os
 import pathlib
 from pathlib import Path
 
@@ -216,6 +217,8 @@ def parseScanEcoV01(
     clear_parsing_result=False,
     return_json_info=False,
     step_selection=slice(None),
+    run_root_directory=None,
+    perm="0o0665",
     verbose=0,
 ):
     if file_name_json:
@@ -225,8 +228,6 @@ def parseScanEcoV01(
         )
         if Path(file_name_json).parent.stem == "aux":
             run_root_directory = Path(file_name_json).parent.parent
-        else:
-            run_root_directory = None
     else:
         s = scan_info
 
@@ -259,6 +260,8 @@ def parseScanEcoV01(
                 / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+            if perm is not None:
+                os.chmod(parse_res_file.parent, perm + "0o111")
         if clear_parsing_result and Path(parse_res_file).exists():
             Path(parse_res_file).unlink()
 
@@ -331,6 +334,9 @@ def parseScanEcoV01(
         if checknstore_parsing_result and dstores_flat:
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
+            if perm is not None:
+                os.chmod(parse_res_file, perm)
+
     else:
         if verbose:
             print("No new parsing results")

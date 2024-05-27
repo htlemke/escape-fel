@@ -951,3 +951,42 @@ class StepViewerP(widgets.VBox):
                 dn.append(True)  # assuming computation has happened!
 
         return np.asarray(dn).nonzero()[0]
+
+
+def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=.3, **kwargs):
+    if not axis:
+        axis=plt.gca()
+
+    args = [x,y]
+    if fmt is not None:
+        args.append(fmt)
+    lh = axis.plot(*args,**kwargs)[0]
+    
+    if yerr is not None:
+        yerr = np.atleast_1d(yerr)
+        if yerr.ndim ==     1:
+            fh = axis.fill(np.hstack([np.asarray(x),np.asarray(x)[::-1]]),
+                    np.hstack([np.asarray(y)-yerr,np.asarray(y)[::-1]+yerr[::-1]]),
+                    alpha=falpha,
+                    color = lh.get_color(),
+                    zorder=lh.get_zorder()-0.1
+            )
+        if yerr.ndim == 2:
+            fh = axis.fill(np.hstack([np.asarray(x),np.asarray(x)[::-1]]),
+                    np.hstack([np.asarray(y)-yerr[0,:],np.asarray(y)[::-1]+yerr[1,::-1]]),
+                    alpha=falpha,
+                    color = lh.get_color(),
+                    zorder=lh.get_zorder()-0.1
+            )
+    else:
+        fh = None
+    
+    return lh,fh
+
+
+
+    
+    
+
+
+    

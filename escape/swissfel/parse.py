@@ -245,6 +245,11 @@ def load_dataset_from_scan(
                 dum, scan_info_filepath = readScanEcoJson_v01(
                     metadata_file, exclude_from_files=exclude_from_files
                 )
+                if Path(metadata_file).parent.stem == "aux":
+                    run_root_directory = Path(metadata_file).parent.parent
+                else:
+                    run_root_directory = None
+
                 rscf = []
                 for stepno, step in enumerate(s["scan_files"]):
                     rscf.append([])
@@ -277,6 +282,7 @@ def load_dataset_from_scan(
                     clear_parsing_result=clear_parsing_result,
                     return_json_info=True,
                     step_selection=step_selection,
+                    run_root_directory=run_root_directory,
                     verbose=verbose,
                 )
                 for nm, ar in trd.items():
