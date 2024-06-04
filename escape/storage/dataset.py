@@ -121,6 +121,22 @@ class DataSet:
 
         return data
 
+    def get_datasets_max_element_size(
+        self, max_element_size=5000, verbose=0):
+        ks = []
+        for k, v in self.datasets.items():
+            if not isinstance(v, escape.Array):
+                continue
+            try:
+                if np.prod(v.shape[1:]) < max_element_size:
+                    if verbose:
+                        print(k)
+                    ks.append(k)
+            except:
+                pass
+        return ks
+    
+
     def store_datasets_max_element_size(
         self, max_element_size=5000, lock="auto", verbose=0, **kwargs
     ):
@@ -289,3 +305,65 @@ def merge_datasets(datasets, only_escape_arrays=False, **kwargs_dataset):
             except:
                 print(f"NB: Could not merge and append common dataset {dset_name}")
     return d_merged
+
+def convert_resultsfile(
+    filename, 
+    out_filename=None, 
+    out_directory=None, 
+    out_type='h5', 
+    force_overwrite=False,
+    close_if_feasible=True):
+    """Convert resultsfile, typically from zarr to h5 for easier handling.
+
+    Args:
+        filename (string): Input file name
+        out_filename (string, optional): output filename, if None is deduced from input name. Defaults to None.
+        out_directory (string or Path instance, optional): output directory. Defaults to None.
+        out_type (str, optional): output file type. Defaults to 'h5'.
+        force_overwrite (bool, optional): Fore overwriting if output file exists. Defaults to False.
+        close_if_feasible (bool, optional): close the covertet file (for h5). Defaults to True.
+
+    Returns:
+        str or dataset: returns output filename in case file is closed otherwise the output dataset.
+    """
+    
+    filename = Path(filename)
+    filename = filename.resolve()
+    if not filename.exists():
+        raise(Exception(f"File {filename} is not existing!"))
+    
+    if not out_filename:
+        out_filename = '.'.join([filename.stem,out_type])
+    
+    if out_directory:
+        out_filename = Path(out_directory)/out_filename
+    out_filename
+    
+    ds_in = DataSet.load_from_result_file(filename)
+    ds_out = DataSet.create_with_new_result_file(results_filepath=out_filename,force_overwrite=force_overwrite)
+    
+    escapearrays = {}
+    for tdsname,tdsdat in ds_in.datasets.items():
+        esc_type = ds_in._esc_types.get(tdsname,None)
+        if isinstance(tdsdat,escape.Array):
+            escapearrays[tdsname] = escape.Array(
+                data = tdsdat.data, 
+                index = tdsdat.index, 
+                step_lengths=tdsdat.scan.step_lengths, 
+                parameter= tdsdat.scan.parameter, 
+                name= tdsdat.name
+            )
+            ds_out.append(escapearrays[tdsname], esc_type=esc_type, name=tdsname)
+        else:
+            ds_out.append(tdsdat,esc_type=esc_type,name=tdsname)
+        
+    escape.store([ds_out.datasets[tname] for tname in escapearrays.keys()])
+    
+    if close_if_feasible:
+        if hasattr(ds_out.results_file,'close'):
+            ds_out.results_file.close()
+            print('closed')
+        
+        return out_filename
+    else:
+        return ds_out

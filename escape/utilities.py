@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 import numpy as np
 from bisect import bisect
 from random import randint
@@ -230,7 +231,7 @@ def edges_to_center(edges):
     return centers
 
 
-def center_to_edges(centers):
+def center_to_edges_old(centers):
     """Create an edges array for digitizing / binning from  a given monotonic array.
     Edges are based on the half difference between neighboring values.
 
@@ -253,6 +254,26 @@ def center_to_edges(centers):
         [-df[:1] / 2, df / 2, df[-1:] / 2]
     )
     return edges
+
+def center_to_edges(a,axis=-1):
+
+    nd = np.ndim(a)
+    if isinstance(axis,Iterable):
+        o = center_to_edges(a,axis=axis[0])
+        for taxis in axis[1:]:
+            o = center_to_edges(o,axis=taxis)
+        return o
+    #     axis = nd+axis
+    
+    d = np.diff(a,axis=axis)
+    # print(d)
+    o = np.concatenate((
+        a.take(indices=(0,),axis=axis) - d.take(indices=(0,),axis=axis)/2,
+        a.take(indices=range(0,a.shape[axis]-1),axis=axis) + d/2,
+        a.take(indices=(-1,),axis=axis) + d.take(indices=(-1,),axis=axis)/2,
+    ),
+        axis=axis)
+    return o
 
 
 def hist_scan(
