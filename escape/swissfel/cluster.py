@@ -335,7 +335,9 @@ def parseScanEcoV01(
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
             if perm is not None:
-                os.chmod(parse_res_file, int(perm))
+                if type(perm) is str:
+                    perm = int(perm,8)
+                os.chmod(parse_res_file, perm)
 
     else:
         if verbose:

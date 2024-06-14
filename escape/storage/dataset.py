@@ -261,7 +261,9 @@ def filespec_to_file(file, mode="r", perm=0o0660):
         if ".h5" in results_filepath.suffixes:
             result_file = h5py.File(results_filepath, mode)
             if perm is not None:
-                os.chmod(results_filepath, int(perm))
+                if type(perm) is str:
+                    perm = int(perm,8)
+                os.chmod(results_filepath, perm)
         elif ".zarr" in results_filepath.suffixes:
             result_file = zarr.open(results_filepath, mode=mode)
     elif isinstance(file, h5py.File):
