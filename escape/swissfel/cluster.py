@@ -261,7 +261,7 @@ def parseScanEcoV01(
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
             if perm is not None:
-                os.chmod(parse_res_file.parent, perm + "0o111")
+                os.chmod(parse_res_file.parent, oct(int(perm,8) + int("0o111",8)))
         if clear_parsing_result and Path(parse_res_file).exists():
             Path(parse_res_file).unlink()
 

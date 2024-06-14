@@ -1852,14 +1852,32 @@ weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
 
 
 def compute(*args):
-    """compute multiple escape arrays. Interesting when calculating multiple small arrays
+    """compute multiple escape arrays or dask arrays. Interesting when calculating multiple small arrays
     from the same ancestor dask based array"""
+    argtypes = []
+    argcollection = []
+    for arg in args:
+        targtype = []
+        if isinstance(arg,Array):
+            targtype.append('esc-array')
+            if arg.is_dask_array():
+                targtype.append('dask_array')
+                argcollection.append(arg.data)
+        elif isinstance(arg,DaskCollection):
+            targtype.append('daskcollection')
+            if isinstance(arg,da.Array):
+                targtype.append('dask_array')
+                argcollection.append(arg)
+        else:
+            targtypes.append('nodask')
+        argtypes.append(targtype)
+
     with ProgressBar():
-        res = da.compute(*[ta.data for ta in args if ta.is_dask_array()])
+        res = da.compute(*argcollection)
     next_dask_index = 0
     out = []
-    for ta in args:
-        if ta.is_dask_array():
+    for ta,argtype in zip(args,argtypes):
+        if ('esc-array' in argtype) and ('dask_array' in argtype):
             out.append(
                 Array(
                     data=res[next_dask_index],
@@ -1869,6 +1887,9 @@ def compute(*args):
                     index_dim=ta.index_dim,
                 )
             )
+            next_dask_index += 1
+        elif ('daskcollection' in argtype) and ('dask_array' in argtype):
+            out.append(res[next_dask_index])
             next_dask_index += 1
         else:
             out.append(ta)
