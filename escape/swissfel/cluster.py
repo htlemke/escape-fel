@@ -268,7 +268,10 @@ def parseScanEcoV01(
         if perm is not None:
             tp = parse_res_file.parent
             while not tp == checknstore_parent:
-                oschmod.set_mode(tp,perm)
+                try:
+                    oschmod.set_mode(tp,perm)
+                except PermissionError:
+                    break
                 tp = tp.parent
                 
         if clear_parsing_result and Path(parse_res_file).exists():
