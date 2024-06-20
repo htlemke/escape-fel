@@ -41,6 +41,7 @@ import socket
 import getpass
 import escape.storage
 from rich.progress import track
+import oschmod
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +219,7 @@ def parseScanEcoV01(
     return_json_info=False,
     step_selection=slice(None),
     run_root_directory=None,
-    perm="0o0665",
+    perm="g+rw",
     verbose=0,
 ):
     if file_name_json:
@@ -233,8 +234,9 @@ def parseScanEcoV01(
 
     if checknstore_parsing_result:
         if checknstore_parsing_result == "same_directory":
+            checknstore_parent = scan_info_filepath.parent.resolve()
             parse_res_file = (
-                scan_info_filepath.parent.resolve()
+                checknstore_parent
                 / scan_info_filepath.with_suffix(".parse_result.json")
             )
 
@@ -245,23 +247,30 @@ def parseScanEcoV01(
                     pgroup = p.name
                     tp = Path(f"/das/work/{pgroup[:3]}/{pgroup}")
                     break
+            checknstore_parent = tp
 
             parse_res_file = (
-                tp
+                checknstore_parent
                 / Path(".escape_parse_result")
                 / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
 
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
         else:
+            checknstore_parent = Path(checknstore_parsing_result)
             parse_res_file = (
-                Path(checknstore_parsing_result)
+                checknstore_parent
                 / Path(".escape_parse_result")
                 / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
             )
             parse_res_file.parent.mkdir(parents=True, exist_ok=True)
-            if perm is not None:
-                os.chmod(parse_res_file.parent, (int(perm,8) + int("0o111",8)))
+
+        if perm is not None:
+            tp = parse_res_file.parent
+            while not tp == checknstore_parent:
+                oschmod.set_mode(tp,perm)
+                tp = tp.parent
+                
         if clear_parsing_result and Path(parse_res_file).exists():
             Path(parse_res_file).unlink()
 
@@ -332,12 +341,12 @@ def parseScanEcoV01(
             dstores_flat.append(tmp)
 
         if checknstore_parsing_result and dstores_flat:
+            print(f'writing new parsing result, parsed {len(fls["toparse"])} files.')
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
             if perm is not None:
-                if type(perm) is str:
-                    perm = int(perm,8)
-                os.chmod(parse_res_file, perm)
+                oschmod.set_mode(parse_res_file,perm)
+                
 
     else:
         if verbose:

@@ -11,6 +11,7 @@ import logging
 import h5py
 import zarr
 import numpy as np
+import oschmod
 
 try:
     from datastorage.datastorage import dictToH5Group, unwrapArray
@@ -253,19 +254,19 @@ class DataSet:
         return ds
 
 
-def filespec_to_file(file, mode="r", perm=0o0660):
+def filespec_to_file(file, mode="r", perm='g+rw'):
     if isinstance(file, Path) or isinstance(file, str):
         results_filepath = Path(file)
         if not ".esc" in results_filepath.suffixes:
             raise Exception("Expecting esc suffix in filename")
         if ".h5" in results_filepath.suffixes:
             result_file = h5py.File(results_filepath, mode)
-            if perm is not None:
-                if type(perm) is str:
-                    perm = int(perm,8)
-                os.chmod(results_filepath, perm)
+    
         elif ".zarr" in results_filepath.suffixes:
             result_file = zarr.open(results_filepath, mode=mode)
+        if perm is not None:
+            print("changing perms")
+            oschmod(results_filepath,perm)
     elif isinstance(file, h5py.File):
         result_file = file
     elif isinstance(file, zarr.Group):

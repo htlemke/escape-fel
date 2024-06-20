@@ -14,6 +14,7 @@ import warnings
 import logging
 import escape
 from copy import deepcopy as copy
+import oschmod
 
 try:
     from datastorage.datastorage import dictToH5Group
@@ -185,6 +186,7 @@ def load_dataset_from_scan(
     raw_data_suffix="_rawdata",
     append_scan_parameter: {"par_name": {"values": list}} = None,
     verbose=0,
+    perm_result_file='g+rw',
 ):
     metadata_files = interpret_raw_data_definition(
         metadata_file=metadata_file,
@@ -218,7 +220,15 @@ def load_dataset_from_scan(
             if clear_result_file and result_filepath.exists():
                 shutil.rmtree(result_filepath)
             result_file = zarr.open(result_filepath)
+        
+
+
         print(f"Automatic creation of result file: {result_filepath.as_posix()} .")
+        if perm_result_file:
+            try:
+                oschmod.set_mode_recursive(result_filepath,perm_result_file)
+            except:
+                print(f'Warning: could not set permissions {perm_result_file:s}!')
 
     if load_result_only:
         ds = DataSet.load_from_result_file(result_filepath)
