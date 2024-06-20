@@ -266,7 +266,10 @@ def filespec_to_file(file, mode="r", perm='g+rw'):
             result_file = zarr.open(results_filepath, mode=mode)
         if perm is not None:
             print("changing perms")
-            oschmod.set_mode_recursive(results_filepath,perm)
+            try:
+                oschmod.set_mode_recursive(results_filepath,perm)
+            except:
+                print(f'Warning:failed setting permissions {perm:s}')
     elif isinstance(file, h5py.File):
         result_file = file
     elif isinstance(file, zarr.Group):
