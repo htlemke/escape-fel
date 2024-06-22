@@ -347,7 +347,7 @@ def load_dataset_from_scan(
                     for ta in aliases_all
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
-                file_alias_mappings.update(alias_mappings)
+                file_alias_mappings.update(talias_mappings)
             
             file_alias_mappings.update(alias_mappings)
             alias_mappings = file_alias_mappings
