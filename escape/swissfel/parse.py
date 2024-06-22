@@ -318,7 +318,7 @@ def load_dataset_from_scan(
                                 ddata[tsdno] = []
                             ddata[tsdno].append(tsd)
                     for colno in range(len(ddata.keys())):
-                        td[f"{tdet}_dap_col{colno}"] = Array(
+                        td[f"{tdet}_dap_col{cof"Changing {tname} from {start} by {rel_change} to {end}."lno}"] = Array(
                             data=np.concatenate(ddata[colno], axis=0),
                             index=np.concatenate(index, axis=0),
                             step_lengths=step_lengths,
@@ -332,7 +332,8 @@ def load_dataset_from_scan(
                     for ta in s["scan_parameters"]["namespace_aliases"]
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
-                alias_mappings.update(talias_mappings)
+                talias_mappings.update(alias_mappings)
+                alias_mappings = talias_mappings
             if "aliases" in s["scan_parameters"].keys():
                 with open(
                     Path(metadata_file).parent
@@ -345,7 +346,8 @@ def load_dataset_from_scan(
                     for ta in aliases_all
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
-                alias_mappings.update(talias_mappings)
+                talias_mappings.update(alias_mappings)
+                alias_mappings = talias_mappings
 
             if verbose:
                 for tmpkey, tmpval in alias_mappings.items():
