@@ -326,14 +326,15 @@ def load_dataset_from_scan(
                         )
 
             s_collection.append(s)
+            file_alias_mappings = {}
             if "namespace_aliases" in s["scan_parameters"].keys():
                 talias_mappings = {
                     ta["channel"]: ta["alias"]
                     for ta in s["scan_parameters"]["namespace_aliases"]
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
-                talias_mappings.update(alias_mappings)
-                alias_mappings = talias_mappings
+                file_alias_mappings.update(talias_mappings)
+                
             if "aliases" in s["scan_parameters"].keys():
                 with open(
                     Path(metadata_file).parent
@@ -346,8 +347,10 @@ def load_dataset_from_scan(
                     for ta in aliases_all
                     if ta["channeltype"] in ["BS", "BSCAM", "JF"]
                 }
-                talias_mappings.update(alias_mappings)
-                alias_mappings = talias_mappings
+                file_alias_mappings.update(alias_mappings)
+            
+            file_alias_mappings.update(alias_mappings)
+            alias_mappings = file_alias_mappings
 
             if verbose:
                 for tmpkey, tmpval in alias_mappings.items():
