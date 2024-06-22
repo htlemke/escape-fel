@@ -318,7 +318,7 @@ def load_dataset_from_scan(
                                 ddata[tsdno] = []
                             ddata[tsdno].append(tsd)
                     for colno in range(len(ddata.keys())):
-                        td[f"{tdet}_dap_col{cof"Changing {tname} from {start} by {rel_change} to {end}."lno}"] = Array(
+                        td[f"{tdet}_dap_col{colno}"] = Array(
                             data=np.concatenate(ddata[colno], axis=0),
                             index=np.concatenate(index, axis=0),
                             step_lengths=step_lengths,
