@@ -17,6 +17,16 @@ from scipy.interpolate import interp1d
 import scipy
 
 
+units = {  0:' ',
+           1:'K',  2:'M',  3:'G',  4:'T',  5:'P',  6:'E',  7:'Z',  8:'Y',  9:'R',  10:'Q',
+          -1:'m', -2:'u', -3:'n', -4:'p', -5:'f', -6:'a', -7:'z', -8:'y', -9:'r', -10:'q'
+        }
+def num2sci(a):
+    a = np.atleast_1d(a)
+    exp = np.log10(np.max(a))//3
+    u = units[exp]
+    return a/(10**(exp*3)),u
+
 class StructureGroup:
     def __repr__(self):
         s = object.__repr__(self)

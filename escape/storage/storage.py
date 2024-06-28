@@ -727,7 +727,7 @@ class Array:
         try:
             parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
         except:
-            print(f"could not read scan metadata of {name}")
+            # print(f"could not read scan metadata of {name}")
             parameter = None
             step_lengths = None
 
