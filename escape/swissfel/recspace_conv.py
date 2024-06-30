@@ -4,6 +4,7 @@ import jungfrau_utils
 import numpy as np
 from functools import lru_cache
 import matplotlib.pyplot as plt
+from scipy.spatial.transform import Rotation
 
 
 class THC_robot:
@@ -12,6 +13,12 @@ class THC_robot:
         self.JF_ID = JF_ID
         self.angles = ["mu", "eta", "chi", "phi", "gamma", "delta"]
         self.qconv = xu.QConversion(("y+", "x-", "z+", "x-"), ("y+", "x-"), (0, 0, 1))
+
+        self.rot_sf2you = (
+            Rotation.from_rotvec(-np.pi / 2 * np.array([0, 0, 1])).as_matrix()
+            @ Rotation.from_rotvec(-np.pi / 2 * np.array([0, 1, 0])).as_matrix()
+        )
+        self.rot_you2sf = np.linalg.inv(self.rot_sf2you)
 
     @property
     @lru_cache(maxsize=1)
