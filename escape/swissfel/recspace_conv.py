@@ -63,7 +63,7 @@ class THC_robot:
         )
 
         if ub_matrix is None:
-            ub_matrix(self.qconv.UB)
+            ub_matrix = self.qconv.UB
 
         pxpos = deque(
             self.qconv.area(mu, eta, 90, phi, gamma, delta, en=energy, UB=ub_matrix)
