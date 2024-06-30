@@ -1357,7 +1357,7 @@ def match_scans(a0, a1, parameters=[]):
 
 
 class Scan:
-    def __init__(self, parameter={}, step_lengths=None, array=None):
+    def __init__(self, parameter={}, step_lengths=None, array=None, data=None):
         self.step_lengths = step_lengths
         if parameter:
             for par, pardict in parameter.items():
@@ -1370,6 +1370,10 @@ class Scan:
         self.parameter = parameter
         self._array = array
         # self._add_methods()
+        
+        if data is not None:
+            self._data = data
+
         self.tools = ScanTools(self)
 
     def append_parameter(self, parameter: {"par_name": {"values": list}}):
