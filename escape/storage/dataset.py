@@ -28,6 +28,7 @@ class DataSet:
         alias_mappings: dict = None,
         results_file=None,
         mode="r",
+        perm=None,
         name=None,
     ):
         self.data_raw = raw_datasets
@@ -36,7 +37,7 @@ class DataSet:
 
         if results_file is not None:
             # self.results_file = results_file
-            self.results_file = filespec_to_file(results_file, mode=mode)
+            self.results_file = filespec_to_file(results_file, mode=mode, perm=perm)
             self._init_datasets()
         else:
             self.results_file = None
@@ -122,8 +123,7 @@ class DataSet:
 
         return data
 
-    def get_datasets_max_element_size(
-        self, max_element_size=5000, verbose=0):
+    def get_datasets_max_element_size(self, max_element_size=5000, verbose=0):
         ks = []
         for k, v in self.datasets.items():
             if not isinstance(v, escape.Array):
@@ -136,7 +136,6 @@ class DataSet:
             except:
                 pass
         return ks
-    
 
     def store_datasets_max_element_size(
         self, max_element_size=5000, lock="auto", verbose=0, **kwargs
@@ -231,8 +230,8 @@ class DataSet:
                     pass
 
     @classmethod
-    def load_from_result_file(cls, results_filepath, mode="r", name=None):
-        ds = cls(results_file=results_filepath, name=name)
+    def load_from_result_file(cls, results_filepath, mode="r", name=None, perm=None):
+        ds = cls(results_file=results_filepath, name=name, perm=perm)
         return ds
 
     @classmethod
@@ -254,22 +253,22 @@ class DataSet:
         return ds
 
 
-def filespec_to_file(file, mode="r", perm='g+rw'):
+def filespec_to_file(file, mode="r", perm="g+rw"):
     if isinstance(file, Path) or isinstance(file, str):
         results_filepath = Path(file)
         if not ".esc" in results_filepath.suffixes:
             raise Exception("Expecting esc suffix in filename")
         if ".h5" in results_filepath.suffixes:
             result_file = h5py.File(results_filepath, mode)
-    
+
         elif ".zarr" in results_filepath.suffixes:
             result_file = zarr.open(results_filepath, mode=mode)
         if perm is not None:
             print("changing perms")
             try:
-                oschmod.set_mode_recursive(results_filepath,perm)
+                oschmod.set_mode_recursive(results_filepath, perm)
             except:
-                print(f'Warning:failed setting permissions {perm:s}')
+                print(f"Warning:failed setting permissions {perm:s}")
     elif isinstance(file, h5py.File):
         result_file = file
     elif isinstance(file, zarr.Group):
@@ -278,7 +277,7 @@ def filespec_to_file(file, mode="r", perm='g+rw'):
 
 
 def merge_datasets(datasets, only_escape_arrays=False, **kwargs_dataset):
-    """Merges datasets of multiple dataset containers into one dataset container. escape.arrays are here concatenated 
+    """Merges datasets of multiple dataset containers into one dataset container. escape.arrays are here concatenated
     to a merged escape_array, other datatypes are only merges as python lists.
 
     Args:
@@ -286,39 +285,43 @@ def merge_datasets(datasets, only_escape_arrays=False, **kwargs_dataset):
         only_escape_arrays (bool, optional): optionally only merging of escape.arrays. Defaults to False.
 
     Returns:
-        dataset_merged: new DataSet instance where the data have been merged into. 
+        dataset_merged: new DataSet instance where the data have been merged into.
     """
-    
+
     dsets_common = list(set.intersection(*[set(td.datasets.keys()) for td in datasets]))
     dsets_all = list(set.union(*[set(td.datasets.keys()) for td in datasets]))
-    dsets_stranded = set(dsets_all)-set(dsets_common)
+    dsets_stranded = set(dsets_all) - set(dsets_common)
     # print(dsets_stranded)
 
     d_merged = escape.DataSet(**kwargs_dataset)
     for dset_name in dsets_common:
         dsets = [td.datasets[dset_name] for td in datasets]
-        if all([isinstance(tdset,escape.Array) for tdset in dsets]):
-            
+        if all([isinstance(tdset, escape.Array) for tdset in dsets]):
+
             try:
                 ta = escape.concatenate(dsets)
             except:
-                dsets_simple = [escape.Array(data=td.data,index=td.index) for td in dsets]
+                dsets_simple = [
+                    escape.Array(data=td.data, index=td.index) for td in dsets
+                ]
                 ta = escape.concatenate(dsets_simple)
-            d_merged.append(ta,name=dset_name)
-        elif (not only_escape_arrays):
+            d_merged.append(ta, name=dset_name)
+        elif not only_escape_arrays:
             try:
-                d_merged.append(dsets,name=dset_name)
+                d_merged.append(dsets, name=dset_name)
             except:
                 print(f"NB: Could not merge and append common dataset {dset_name}")
     return d_merged
 
+
 def convert_resultsfile(
-    filename, 
-    out_filename=None, 
-    out_directory=None, 
-    out_type='h5', 
+    filename,
+    out_filename=None,
+    out_directory=None,
+    out_type="h5",
     force_overwrite=False,
-    close_if_feasible=True):
+    close_if_feasible=True,
+):
     """Convert resultsfile, typically from zarr to h5 for easier handling.
 
     Args:
@@ -332,44 +335,46 @@ def convert_resultsfile(
     Returns:
         str or dataset: returns output filename in case file is closed otherwise the output dataset.
     """
-    
+
     filename = Path(filename)
     filename = filename.resolve()
     if not filename.exists():
-        raise(Exception(f"File {filename} is not existing!"))
-    
+        raise (Exception(f"File {filename} is not existing!"))
+
     if not out_filename:
-        out_filename = '.'.join([filename.stem,out_type])
-    
+        out_filename = ".".join([filename.stem, out_type])
+
     if out_directory:
-        out_filename = Path(out_directory)/out_filename
+        out_filename = Path(out_directory) / out_filename
     out_filename
-    
+
     ds_in = DataSet.load_from_result_file(filename)
-    ds_out = DataSet.create_with_new_result_file(results_filepath=out_filename,force_overwrite=force_overwrite)
-    
+    ds_out = DataSet.create_with_new_result_file(
+        results_filepath=out_filename, force_overwrite=force_overwrite
+    )
+
     escapearrays = {}
-    for tdsname,tdsdat in ds_in.datasets.items():
-        esc_type = ds_in._esc_types.get(tdsname,None)
-        if isinstance(tdsdat,escape.Array):
+    for tdsname, tdsdat in ds_in.datasets.items():
+        esc_type = ds_in._esc_types.get(tdsname, None)
+        if isinstance(tdsdat, escape.Array):
             escapearrays[tdsname] = escape.Array(
-                data = tdsdat.data, 
-                index = tdsdat.index, 
-                step_lengths=tdsdat.scan.step_lengths, 
-                parameter= tdsdat.scan.parameter, 
-                name= tdsdat.name
+                data=tdsdat.data,
+                index=tdsdat.index,
+                step_lengths=tdsdat.scan.step_lengths,
+                parameter=tdsdat.scan.parameter,
+                name=tdsdat.name,
             )
             ds_out.append(escapearrays[tdsname], esc_type=esc_type, name=tdsname)
         else:
-            ds_out.append(tdsdat,esc_type=esc_type,name=tdsname)
-        
+            ds_out.append(tdsdat, esc_type=esc_type, name=tdsname)
+
     escape.store([ds_out.datasets[tname] for tname in escapearrays.keys()])
-    
+
     if close_if_feasible:
-        if hasattr(ds_out.results_file,'close'):
+        if hasattr(ds_out.results_file, "close"):
             ds_out.results_file.close()
-            print('closed')
-        
+            print("closed")
+
         return out_filename
     else:
         return ds_out

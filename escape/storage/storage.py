@@ -246,6 +246,28 @@ class Array:
             **kwargs,
         )
 
+    def isinf(self, *args, **kwargs):
+        return _apply_method(
+            np.isinf,
+            da.isinf,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertOutput2EscData=[0],
+            **kwargs,
+        )
+
+    def isfinite(self, *args, **kwargs):
+        return _apply_method(
+            np.isfinite,
+            da.isfinite,
+            self,
+            self.is_dask_array(),
+            *args,
+            convertOutput2EscData=[0],
+            **kwargs,
+        )
+
     def mean(self, *args, **kwargs):
         return _apply_method(
             np.mean,
@@ -1370,7 +1392,7 @@ class Scan:
         self.parameter = parameter
         self._array = array
         # self._add_methods()
-        
+
         if data is not None:
             self._data = data
 
@@ -1862,26 +1884,26 @@ def compute(*args):
     argcollection = []
     for arg in args:
         targtype = []
-        if isinstance(arg,Array):
-            targtype.append('esc-array')
+        if isinstance(arg, Array):
+            targtype.append("esc-array")
             if arg.is_dask_array():
-                targtype.append('dask_array')
+                targtype.append("dask_array")
                 argcollection.append(arg.data)
-        elif isinstance(arg,DaskCollection):
-            targtype.append('daskcollection')
-            if isinstance(arg,da.Array):
-                targtype.append('dask_array')
+        elif isinstance(arg, DaskCollection):
+            targtype.append("daskcollection")
+            if isinstance(arg, da.Array):
+                targtype.append("dask_array")
                 argcollection.append(arg)
         else:
-            targtypes.append('nodask')
+            targtypes.append("nodask")
         argtypes.append(targtype)
 
     with ProgressBar():
         res = da.compute(*argcollection)
     next_dask_index = 0
     out = []
-    for ta,argtype in zip(args,argtypes):
-        if ('esc-array' in argtype) and ('dask_array' in argtype):
+    for ta, argtype in zip(args, argtypes):
+        if ("esc-array" in argtype) and ("dask_array" in argtype):
             out.append(
                 Array(
                     data=res[next_dask_index],
@@ -1892,7 +1914,7 @@ def compute(*args):
                 )
             )
             next_dask_index += 1
-        elif ('daskcollection' in argtype) and ('dask_array' in argtype):
+        elif ("daskcollection" in argtype) and ("dask_array" in argtype):
             out.append(res[next_dask_index])
             next_dask_index += 1
         else:
