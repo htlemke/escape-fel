@@ -285,6 +285,20 @@ def parseScanEcoV01(
         for step in dstores_flat:
             for dsn, dss in step.items():
                 files_parsed.add(Path(dss["file_path"]))
+
+
+
+        with open(parse_res_file, "r") as fp:
+            dstores_flat = json.load(fp)
+        for step in dstores_flat:
+            for dsn, dss in step.items():
+                tpath = Path(dss["file_path"])
+                tmtime = os.path.getmtime(tpath)
+                if "file_mtime" in dss.keys():
+                    if dss["file_mtime"] == tmtime:
+                        # print(os.path.getmtime(tpath))
+                        files_parsed.add(tpath)
+                dss["file_mtime"] = tmtime
     else:
         dstores_flat = []
 
