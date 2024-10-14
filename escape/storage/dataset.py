@@ -257,7 +257,8 @@ def filespec_to_file(
     file,
     mode="r",
     perm="g+rw",
-    default_dataset_compression={"compression": "lzf", "compression_opts": None},
+    default_dataset_compression="lzf",
+    default_dataset_compression_opts=None,
 ):
     if isinstance(file, Path) or isinstance(file, str):
         results_filepath = Path(file)
@@ -280,6 +281,10 @@ def filespec_to_file(
         result_file = file
     if default_dataset_compression:
         result_file.attrs["default_dataset_compression"] = default_dataset_compression
+    if default_dataset_compression_opts:
+        result_file.attrs["default_dataset_compression_opts"] = (
+            default_dataset_compression_opts
+        )
     return result_file
 
 
