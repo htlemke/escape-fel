@@ -129,7 +129,7 @@ class DataSet:
             if not isinstance(v, escape.Array):
                 continue
             try:
-                if np.prod(v.shape[1:]) < max_element_size:
+                if np.prod(v.shape[1:]) <= max_element_size:
                     if verbose:
                         print(k)
                     ks.append(k)
@@ -253,7 +253,12 @@ class DataSet:
         return ds
 
 
-def filespec_to_file(file, mode="r", perm="g+rw"):
+def filespec_to_file(
+    file,
+    mode="r",
+    perm="g+rw",
+    default_dataset_compression={"compression": "lzf", "compression_opts": None},
+):
     if isinstance(file, Path) or isinstance(file, str):
         results_filepath = Path(file)
         if not ".esc" in results_filepath.suffixes:
@@ -273,6 +278,8 @@ def filespec_to_file(file, mode="r", perm="g+rw"):
         result_file = file
     elif isinstance(file, zarr.Group):
         result_file = file
+    if default_dataset_compression:
+        result_file.attrs["default_dataset_compression"] = default_dataset_compression
     return result_file
 
 

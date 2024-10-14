@@ -2283,12 +2283,24 @@ class ArrayH5Dataset:
         elif isinstance(data, da.Array):
             # ToDo, smarter chunking when writing small data
             new_chunks = tuple(c[0] for c in new_data.chunks)
-            dset = self.grp.create_dataset(
-                f"data_{n_new:04d}",
-                shape=new_data.shape,
-                chunks=new_chunks,
-                dtype=new_data.dtype,
-            )
+
+            if "default_dataset_compression" in self.grp.file.attrs:
+                dc = self.grp.file.attrs["default_dataset_compression"]
+                dset = self.grp.create_dataset(
+                    f"data_{n_new:04d}",
+                    shape=new_data.shape,
+                    chunks=new_chunks,
+                    dtype=new_data.dtype,
+                    compression=dc["compression"],
+                    compression_opts=dc["compression_opts"],
+                )
+            else:
+                dset = self.grp.create_dataset(
+                    f"data_{n_new:04d}",
+                    shape=new_data.shape,
+                    chunks=new_chunks,
+                    dtype=new_data.dtype,
+                )
             if prep_run:
                 return new_data, dset, n_new
             da.store(new_data, dset, lock=lock, **kwargs)
