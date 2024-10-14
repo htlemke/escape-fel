@@ -145,7 +145,7 @@ class DataSet:
             if not isinstance(v, escape.Array):
                 continue
             try:
-                if np.prod(v.shape[1:]) < max_element_size:
+                if np.prod(v.shape[1:]) <= max_element_size:
                     if verbose:
                         print(k)
                     ks.append(k)
@@ -161,7 +161,7 @@ class DataSet:
             if not isinstance(v, escape.Array):
                 continue
             try:
-                if np.prod(v.shape[1:]) < max_element_size:
+                if np.prod(v.shape[1:]) <= max_element_size:
                     if verbose:
                         print(k)
                     ds[k] = v
