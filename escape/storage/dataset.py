@@ -281,6 +281,7 @@ def filespec_to_file(
         result_file = file
     if default_dataset_compression:
         result_file.attrs["default_dataset_compression"] = default_dataset_compression
+    if default_dataset_compression_opts:
         result_file.attrs["default_dataset_compression_opts"] = (
             default_dataset_compression_opts
         )

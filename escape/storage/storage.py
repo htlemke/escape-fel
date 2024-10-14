@@ -2285,24 +2285,26 @@ class ArrayH5Dataset:
             new_chunks = tuple(c[0] for c in new_data.chunks)
 
             if "default_dataset_compression" in self.grp.file.attrs:
-
-                dset = self.grp.create_dataset(
-                    f"data_{n_new:04d}",
-                    shape=new_data.shape,
-                    chunks=new_chunks,
-                    dtype=new_data.dtype,
-                    compression=self.grp.file.attrs["default_dataset_compression"],
-                    compression_opts=self.grp.file.attrs[
-                        "default_dataset_compression_opts"
-                    ],
-                )
+                compression = self.grp.file.attrs["default_dataset_compression"]
             else:
-                dset = self.grp.create_dataset(
-                    f"data_{n_new:04d}",
-                    shape=new_data.shape,
-                    chunks=new_chunks,
-                    dtype=new_data.dtype,
-                )
+                compression = None
+
+            if "default_dataset_compression_opts" in self.grp.file.attrs:
+                compression_opts = self.grp.file.attrs[
+                    "default_dataset_compression_opts"
+                ]
+            else:
+                compression_opts = None
+
+            dset = self.grp.create_dataset(
+                f"data_{n_new:04d}",
+                shape=new_data.shape,
+                chunks=new_chunks,
+                dtype=new_data.dtype,
+                compression=compression,
+                compression_opts=compression_opts,
+            )
+
             if prep_run:
                 return new_data, dset, n_new
             da.store(new_data, dset, lock=lock, **kwargs)
