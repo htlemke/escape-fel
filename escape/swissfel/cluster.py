@@ -294,11 +294,17 @@ def parseScanEcoV01(
             for dsn, dss in step.items():
                 tpath = Path(dss["file_path"])
                 tmtime = os.path.getmtime(tpath)
-                if "file_mtime" in dss.keys():
-                    if dss["file_mtime"] == tmtime:
+                tfsize = os.stat(tpath).st_size
+                # if "file_mtime" in dss.keys():
+                #     if dss["file_mtime"] == tmtime:
+                #         # print(os.path.getmtime(tpath))
+                #         files_parsed.add(tpath)
+                if "file_size" in dss.keys():
+                    if dss["file_size"] == tfsize:
                         # print(os.path.getmtime(tpath))
                         files_parsed.add(tpath)
                 dss["file_mtime"] = tmtime
+                dss["file_size"] = tfsize
     else:
         dstores_flat = []
 
