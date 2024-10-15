@@ -2302,19 +2302,21 @@ class ArrayH5Dataset:
                     shape=new_data.shape,
                     chunks=new_chunks,
                     dtype=new_data.dtype,
+                    compression=compression,
+                    compression_opts=compression_opts,
                     )
             except:
                 compression = None
                 compression_opts = None
 
-            dset = self.grp.create_dataset(
-                f"data_{n_new:04d}",
-                shape=new_data.shape,
-                chunks=new_chunks,
-                dtype=new_data.dtype,
-                compression=compression,
-                compression_opts=compression_opts,
-            )
+
+
+                dset = self.grp.create_dataset(
+                    f"data_{n_new:04d}",
+                    shape=new_data.shape,
+                    chunks=new_chunks,
+                    dtype=new_data.dtype,
+                )
 
             if prep_run:
                 return new_data, dset, n_new
