@@ -278,7 +278,7 @@ class THC_robot:
 
 
 class GIC_robot:
-    def __init__(self, pixsz=0.075, JF_ID="JF01T03V01", jf_util_keyword_dict={}):
+    def __init__(self, pixsz=0.075, JF_ID="JF01T03V01", jf_util_shape_kwargs={}):
         self.pixsz = pixsz
         self.JF_ID = JF_ID
         self.angles = ["mu", "eta", "chi", "phi", "gamma", "delta"]
@@ -289,13 +289,13 @@ class GIC_robot:
             @ Rotation.from_rotvec(-np.pi / 2 * np.array([0, 1, 0])).as_matrix()
         )
         self.rot_you2sf = np.linalg.inv(self.rot_sf2you)
-        self.JF_UTIL_KWARGS = jf_util_keyword_dict
+        self._jf_util_shape_kwargs = jf_util_shape_kwargs
 
     @property
     @lru_cache(maxsize=1)
     def det_sz_px(self):
-        jfh = jungfrau_utils.JFDataHandler(self.JF_ID, **self.JF_UTIL_KWARGS)
-        return np.asarray(jfh.get_shape_out())
+        jfh = jungfrau_utils.JFDataHandler(self.JF_ID)
+        return np.asarray(jfh.get_shape_out(self._jf_util_shape_kwargs))
 
     @property
     def beam_center_x_px(self):
