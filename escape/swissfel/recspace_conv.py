@@ -295,7 +295,7 @@ class GIC_robot:
     @lru_cache(maxsize=1)
     def det_sz_px(self):
         jfh = jungfrau_utils.JFDataHandler(self.JF_ID)
-        return np.asarray(jfh.get_shape_out(self._jf_util_shape_kwargs))
+        return np.asarray(jfh.get_shape_out(**self._jf_util_shape_kwargs))
 
     @property
     def beam_center_x_px(self):
