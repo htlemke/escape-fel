@@ -47,8 +47,11 @@ class DataSet:
             for idname in self.data_raw.keys():
                 # print(idname)
                 if idname in alias_mappings.keys():
+                    taliasnames = alias_mappings[idname]
+                    taliasnames = taliasnames if isinstance(taliasnames,(list,tuple)) else [taliasnames]
                     # print(idname)
-                    self.append(self.data_raw[idname], name=alias_mappings[idname])
+                    for taliasname in taliasnames:
+                        self.append(self.data_raw[idname], name=taliasnames)
 
         self.name = name
 
