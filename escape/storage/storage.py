@@ -1,3 +1,4 @@
+from copy import deepcopy
 import io
 import numpy as np
 import dask
@@ -1969,14 +1970,14 @@ def concatenate(arraylist):
 
     for array in arraylist:
         if not parameter:
-            parameter.update(array.scan.parameter)
+            parameter.update(deepcopy(array.scan.parameter))
         else:
             if not all(tk in parameter.keys() for tk in array.scan.parameter.keys()):
                 raise Exception(
                     "Scans can not be concatenated due to mismatch in parameters!"
                 )
             for par_name, par_dict in array.scan.parameter.items():
-                parameter[par_name]["values"].extend(list(par_dict["values"]))
+                parameter[par_name]["values"].extend(list(deepcopy(par_dict["values"])))
                 if hasattr(par_dict, "attributes") and (
                     not parameter[par_name]["attributes"] == par_dict["attributes"]
                 ):
