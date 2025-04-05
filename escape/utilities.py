@@ -121,7 +121,10 @@ def dict2structure(t, base=None):
     return base
 
 
-from collections.abc import MutableMapping
+try:
+    from collections.abc import MutableMapping
+except:
+    from collections import MutableMapping
 
 
 def flatten_dictionary(d, parent_key="", sep="."):
