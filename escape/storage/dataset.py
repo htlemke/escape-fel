@@ -51,7 +51,7 @@ class DataSet:
                     taliasnames = taliasnames if isinstance(taliasnames,(list,tuple)) else [taliasnames]
                     # print(idname)
                     for taliasname in taliasnames:
-                        self.append(self.data_raw[idname], name=taliasnames)
+                        self.append(self.data_raw[idname], name=taliasname)
 
         self.name = name
 

@@ -187,6 +187,7 @@ def readScanEcoJson_v01(file_name_json, exclude_from_files=None):
     assert p.is_file(), "Input string does not describe a valid file path."
     with p.open(mode="r") as f:
         s = json.load(f)
+        print("re-loaded meta info")
     assert len(s["scan_files"]) == len(
         s["scan_values"]
     ), "number of files and scan values don't match in {}".format(file_name_json)

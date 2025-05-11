@@ -196,7 +196,8 @@ def load_dataset_from_scan(
         instrument=instrument,
         search_path=search_path,
     )
-
+    
+    # create result gfile is desired
     if result_filename is None:
         pass
     elif result_filename == "auto":
