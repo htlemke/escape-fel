@@ -102,6 +102,10 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
     #     files = [files]
     fina = Path(fina)
     try:
+
+        
+        tmtime = os.path.getmtime(fina)
+        tfsize = os.stat(fina).st_size
         with h5py.File(fina.resolve(), mode="r") as fh:
             datasets = utilities.findItemnamesGroups(fh, ["data", "pulse_id"])
             logger.info("Successfully parsed file %s" % fina.resolve())
@@ -140,6 +144,8 @@ def parse_bs_h5_file(fina, memlimit_MB=100):
                     "index_dsp": ds_index.name,
                     "index_dtype": ds_index.dtype.str,
                     "index_shape": ds_index.shape,
+                    "file_mtime" :  tmtime,
+                    "file_size" : tfsize,
                 }
                 # dstores[name]["stepLengths"] = []
                 # dstores[name]["stepLengths"].append(len(datasets[name][0]))
@@ -187,7 +193,7 @@ def readScanEcoJson_v01(file_name_json, exclude_from_files=None):
     assert p.is_file(), "Input string does not describe a valid file path."
     with p.open(mode="r") as f:
         s = json.load(f)
-        print("re-loaded meta info")
+        
     assert len(s["scan_files"]) == len(
         s["scan_values"]
     ), "number of files and scan values don't match in {}".format(file_name_json)
@@ -220,7 +226,7 @@ def parseScanEcoV01(
     return_json_info=False,
     step_selection=slice(None),
     run_root_directory=None,
-    perm="g+rw",
+    perm=None,
     verbose=0,
 ):
     if file_name_json:
@@ -232,7 +238,7 @@ def parseScanEcoV01(
             run_root_directory = Path(file_name_json).parent.parent
     else:
         s = scan_info
-
+    # >>> parse result file/directory creation clearing if needed 
     if checknstore_parsing_result:
         if checknstore_parsing_result == "same_directory":
             checknstore_parent = scan_info_filepath.parent.resolve()
@@ -253,68 +259,75 @@ def parseScanEcoV01(
             parse_res_file = (
                 checknstore_parent
                 / Path(".escape_parse_result")
-                / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
+                / Path(str(hash(scan_info_filepath.as_posix()))).with_suffix(".parse_result.json")
             )
 
-            parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+            if not parse_res_file.parent.exists():
+                parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+                os.chmod(parse_res_file.parent,0o777)
         else:
             checknstore_parent = Path(checknstore_parsing_result)
             parse_res_file = (
                 checknstore_parent
                 / Path(".escape_parse_result")
-                / Path(*scan_info_filepath.with_suffix(".parse_result.json").parts[1:])
+                / Path(str(hash(scan_info_filepath.as_posix()))).with_suffix(".parse_result.json")
             )
-            parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+            if not parse_res_file.parent.exists():
+                parse_res_file.parent.mkdir(parents=True, exist_ok=True)
+                os.chmod(parse_res_file.parent,0o777)
 
         if perm is not None:
             tp = parse_res_file.parent
             while not tp == checknstore_parent:
                 try:
-                    oschmod.set_mode(tp,perm)
+                    os.chmod(tp,perm)
                 except PermissionError:
                     break
                 tp = tp.parent
                 
         if clear_parsing_result and Path(parse_res_file).exists():
             Path(parse_res_file).unlink()
+        # <<< parse result file/directory creation clearing if needed 
 
     files_parsed = set()
-
+    
+    # finding previously parsed files that didn't change in filesize.
     if checknstore_parsing_result and Path(parse_res_file).exists():
+        # with open(parse_res_file, "r") as fp:
+        #     dstores_flat = json.load(fp)
+
+
+        # for step in dstores_flat:
+        #     for dsn, dss in step.items():
+        #         files_parsed.add(Path(dss["file_path"]))
+
+        
+
         with open(parse_res_file, "r") as fp:
             dstores_flat = json.load(fp)
-        for step in dstores_flat:
-            for dsn, dss in step.items():
-                files_parsed.add(Path(dss["file_path"]))
-
-
-
-        with open(parse_res_file, "r") as fp:
-            dstores_flat = json.load(fp)
+        
+        
         for step in dstores_flat:
             for dsn, dss in step.items():
                 tpath = Path(dss["file_path"])
                 tmtime = os.path.getmtime(tpath)
                 tfsize = os.stat(tpath).st_size
-                # if "file_mtime" in dss.keys():
-                #     if dss["file_mtime"] == tmtime:
-                #         # print(os.path.getmtime(tpath))
-                #         files_parsed.add(tpath)
+
                 if "file_size" in dss.keys():
-                    if dss["file_size"] == tfsize:
-                        # print(os.path.getmtime(tpath))
+                    if dss["file_size"] == tfsize:  
                         files_parsed.add(tpath)
-                dss["file_mtime"] = tmtime
-                dss["file_size"] = tfsize
     else:
         dstores_flat = []
 
     dstores = []
     fls = dict(known=[], toparse=[])
-    for files_step in s["scan_files"][step_selection]:
+    steps_complete = []
+    non_existing_files = []
+    for n_step,files_step in enumerate(s["scan_files"][step_selection]):
         dstores_step = []
-        lastpath = None
-        searchpaths = None
+        lastpath = None #???
+        searchpaths = None #???
+        complete_files_in_step = 0
         for fina in files_step:
             fp = pathlib.Path(fina)
             if (not fp.is_absolute()) and run_root_directory:
@@ -334,13 +347,20 @@ def parseScanEcoV01(
                     break
             if file_path.resolve() in files_parsed:
                 fls["known"].append(file_path)
+                complete_files_in_step+=1
                 continue
             elif file_path.resolve().exists():
+                # print(f'new_file {file_path}')
                 fls["toparse"].append(file_path)
+                dstores_step.append(parse_bs_h5_file(file_path))
+                complete_files_in_step+=1
             else:
-                continue
-            dstores_step.append(parse_bs_h5_file(file_path))
+                non_existing_files.append(file_path)
+        steps_complete.append(complete_files_in_step == len(files_step))
+        # if not len(dstores_step)==0:
         dstores.append(dstores_step)
+    # print(f'{sum(steps_complete)} out of selected {len(steps_complete)} steps completely parsed.')
+        # print(f'dstores hash : {hash(repr(dstores))}')
     if verbose:
         statstr = "Data files analyzed: "
         statstr += "{} to parse of {}".format(
@@ -357,29 +377,35 @@ def parseScanEcoV01(
     if verbose:
         print("... done parsing data files.")
     # flatten files in step
+    
     if any(dstores):
-        for dstore in dstores:
+        for step_no,dstore in enumerate(dstores):
+            # collect all in step as dict
             tmp = {}
             for i in dstore:
                 tmp.update(i)
-            dstores_flat.append(tmp)
+
+            if step_no < len(dstores_flat):
+                dstores_flat[step_no].update(tmp)
+            else:
+                dstores_flat.append(tmp)
 
         if checknstore_parsing_result and dstores_flat:
             print(f'writing new parsing result, parsed {len(fls["toparse"])} files.')
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
-            if perm is not None:
-                oschmod.set_mode(parse_res_file,perm)
+            # if perm is not None:
+            #     oschmod.set_mode(parse_res_file,perm)
                 
 
     else:
         if verbose:
             print("No new parsing results")
-
+     
+    # finding all names 
     chs = set()
     for dstore in dstores_flat:
-        chs = chs.union(chs, set(list(dstore.keys())))
-
+        chs = chs.union(set(list(dstore.keys())))
     # general scan info
     parameter = {
         parname: {"values": [], "attributes": {"Id": id_name}}
