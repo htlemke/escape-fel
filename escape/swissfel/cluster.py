@@ -407,20 +407,33 @@ def parseScanEcoV01(
     for dstore in dstores_flat:
         chs = chs.union(set(list(dstore.keys())))
     # general scan info
-    parameter = {
-        parname: {"values": [], "attributes": {"Id": id_name}}
-        for parname, id_name in zip(
-            s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
-        )
-    }
-    parameter.update(
-        {
-            f"{parname}_readback": {"values": [], "attributes": {"Id": id_name}}
+    if "Id" in s["scan_parameters"]:
+        parameter = {
+            parname: {"values": [], "attributes": {"Id": id_name}}
             for parname, id_name in zip(
                 s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
             )
         }
-    )
+        parameter.update(
+            {
+                f"{parname}_readback": {"values": [], "attributes": {"Id": id_name}}
+                for parname, id_name in zip(
+                    s["scan_parameters"]["name"], s["scan_parameters"]["Id"]
+                )
+            }
+        )
+    else:
+        parameter = {
+            parname: {"values": []}
+            for parname in s["scan_parameters"]["name"]
+        }
+        parameter.update(
+            {
+                f"{parname}_readback": {"values": []}
+                for parname in s["scan_parameters"]["name"]
+            }
+        )
+    
     parameter.update({"scan_step_info": {"values": []}})
 
     if verbose:
