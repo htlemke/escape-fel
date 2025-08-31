@@ -96,6 +96,10 @@ class DataSet:
                 data.name = name
                 if self.results_file is not None:
                     self.datasets[name].set_h5_storage(self.results_file, name)
+            # elif isinstance(data, escape.ArrayTimestamps):
+            #     data.name = name
+            #     if self.results_file is not None:
+            #         self.datasets[name].set_h5_storage(self.results_file, name)
             else:
                 if as_pickle:
                     # self.results_file.require_dataset(name)

@@ -10,7 +10,9 @@ import escape.storage as storage
 
 from escape.storage import (
     Array,
+    ArrayTimestamps,
     Scan,
+    ScanTimestamps,
     concatenate,
     store,
     compute,

@@ -13,4 +13,5 @@
 from .storage import *
 from .test_data import get_test_data
 from .dataset import DataSet
+from .array_timestamps import ArrayTimestamps, ScanTimestamps
 
