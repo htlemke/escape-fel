@@ -53,7 +53,11 @@ class DataSet:
                 # print(idname)
                 if idname in alias_mappings.keys():
                     taliasnames = alias_mappings[idname]
-                    taliasnames = taliasnames if isinstance(taliasnames,(list,tuple)) else [taliasnames]
+                    taliasnames = (
+                        taliasnames
+                        if isinstance(taliasnames, (list, tuple))
+                        else [taliasnames]
+                    )
                     # print(idname)
                     for taliasname in taliasnames:
                         self.append(self.data_raw[idname], name=taliasname)
@@ -103,10 +107,10 @@ class DataSet:
                     self.datasets[name].set_h5_storage(self.results_file, name)
             elif isinstance(data, Proxy):
                 data = copy.copy(data)
-            # elif isinstance(data, escape.ArrayTimestamps):
-            #     data.name = name
-            #     if self.results_file is not None:
-            #         self.datasets[name].set_h5_storage(self.results_file, name)
+            elif isinstance(data, escape.ArrayTimestamps):
+                data.name = name
+                if self.results_file is not None:
+                    self.datasets[name].set_h5_storage(self.results_file, name)
             else:
                 if as_pickle:
                     # self.results_file.require_dataset(name)
@@ -212,10 +216,22 @@ class DataSet:
                     if larray:
                         self.append(larray, name=tname)
                     self._esc_types[tname] = "array_dataset"
+                elif (
+                    self.results_file[tname].attrs["esc_type"]
+                    == "array_timestamps_dataset"
+                ):
+                    larray = escape.ArrayTimestamps.load_from_h5(
+                        self.results_file, tname
+                    )
+                    if larray:
+                        self.append(larray, name=tname)
+                    self._esc_types[tname] = "array_timestamps_dataset"
                 else:
                     if self.results_file[tname].attrs["esc_type"] == "pickled":
                         if lazy_loading:
-                            self.datasets[tname] = Proxy(partial(pickle.loads,self.results_file[tname][()]))
+                            self.datasets[tname] = Proxy(
+                                partial(pickle.loads, self.results_file[tname][()])
+                            )
                         else:
                             self.datasets[tname] = pickle.loads(
                                 self.results_file[tname][()]
@@ -224,7 +240,11 @@ class DataSet:
                         self._esc_types[tname] = "pickled"
                     elif self.results_file[tname].attrs["esc_type"] == "hickled":
                         if lazy_loading:
-                            self.datasets[tname] = Proxy(partial(hickle.load,self.results_file, path=f"/{tname}"))
+                            self.datasets[tname] = Proxy(
+                                partial(
+                                    hickle.load, self.results_file, path=f"/{tname}"
+                                )
+                            )
                         else:
                             self.datasets[tname] = hickle.load(
                                 self.results_file, path=f"/{tname}"
@@ -235,10 +255,9 @@ class DataSet:
                         self.datasets[tname] = unwrapArray(self.results_file[tname])
                         dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "datastorage"
-                    
-                    
+
                     if not lazy_loading and isinstance(self.datasets[tname], dict):
-                        
+
                         self.__dict__[tname] = StructureGroup()
                         dict2structure(self.datasets[tname], base=self.__dict__[tname])
                     else:
@@ -253,8 +272,16 @@ class DataSet:
                     pass
 
     @classmethod
-    def load_from_result_file(cls, results_filepath, lazy_loading=False, name=None, perm=None):
-        ds = cls(results_file=results_filepath, name=name, mode="r", perm=perm, lazy_loading=lazy_loading)
+    def load_from_result_file(
+        cls, results_filepath, lazy_loading=False, name=None, perm=None
+    ):
+        ds = cls(
+            results_file=results_filepath,
+            name=name,
+            mode="r",
+            perm=perm,
+            lazy_loading=lazy_loading,
+        )
         return ds
 
     @classmethod

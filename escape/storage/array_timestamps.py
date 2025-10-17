@@ -96,21 +96,23 @@ class ArrayTimestamps:
     def load_from_h5(cls, parent_h5py, name):
         h5 = ArrayH5Dataset(parent_h5py, name)
         try:
-            parameter, step_lengths = ScanTimestamps._load_from_h5(parent_h5py[name])
+            parameter, timestamp_intervals = ScanTimestamps._load_from_h5(
+                parent_h5py[name]
+            )
         except:
             # print(f"could not read scan metadata of {name}")
             parameter = None
-            step_lengths = None
+            timestamp_intervals = None
 
         data = h5.get_data_da()
         if data is None:
             return None
         else:
             return cls(
-                index=h5.timestamps,
+                timestamps=h5.timestamps,
                 data=data,
                 parameter=parameter,
-                step_lengths=step_lengths,
+                timestamp_intervals=timestamp_intervals,
                 name=name,
             )
 
@@ -464,16 +466,15 @@ class ArrayH5Dataset:
     def timestamps(self):
         if self._n_t:
             return np.concatenate(
-                [
-                    np.asarray(self.grp[f"timestamps_{n:04d}"][:])
-                    for n in self._n_t
-                ],
+                [np.asarray(self.grp[f"timestamps_{n:04d}"][:]) for n in self._n_t],
                 axis=0,
             )
         else:
             return np.asarray([], dtype=int)
 
-    def append(self, data, timestamps, scan=None, prep_run=False, lock="auto", **kwargs):
+    def append(
+        self, data, timestamps, scan=None, prep_run=False, lock="auto", **kwargs
+    ):
         """
         expects to extend a former dataset, i.e. data includes data already existing,
         this will likely change in future to also allow real appending of entirely new data.
@@ -625,9 +626,7 @@ class ArrayH5File:
             with h5py.File(self.file_name, "r") as f:
                 return np.concatenate(
                     [
-                        np.asarray(
-                            f[self.group_name][f"timestamps_{n:04d}"][:]
-                        )
+                        np.asarray(f[self.group_name][f"timestamps_{n:04d}"][:])
                         for n in self._n_t
                     ],
                     axis=0,
