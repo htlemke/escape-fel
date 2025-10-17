@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from matplotlib import colors
 import numpy as np
 from bisect import bisect
 from random import randint
@@ -291,6 +292,8 @@ def center_to_edges_old(centers):
     )
     return edges
 
+def roundto(v,interval):
+    return np.rint(v/interval)*interval
 
 def center_to_edges(a, axis=-1):
 
@@ -343,7 +346,18 @@ def hist_scan(
     return x_scan, hbins, hdat
 
 
-def plot2D(x, y, C, *args, ax=None, **kwargs):
+def plot2D(x, y, C, *args, 
+           axis=None, 
+           diverging=False, 
+           log_colors=False, 
+           pars_symlognorm = dict(
+               linthresh=1.0,
+               linscale=1.0,
+               vmin='auto',
+               vmax='auto',
+               base=10,
+           ),
+           **kwargs):
     """Helper function to create a fals color 3D plot using matplotlib pcolormesh.
 
     Args:
@@ -352,10 +366,13 @@ def plot2D(x, y, C, *args, ax=None, **kwargs):
         C (array-like 2d): [description]
         ax (matplotlib axis): [description]. Defaults to None.
     """
-
+    if axis is None:
+        axis = kwargs.pop("ax", None)
     def bin_array(arr):
         arr = np.asarray(arr)
         return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
+    
+    C = np.asarray(C)
 
     if type(x) is str and x == "auto":
         x = np.arange(C.shape[1])
@@ -363,9 +380,26 @@ def plot2D(x, y, C, *args, ax=None, **kwargs):
         y = np.arange(C.shape[0])
 
     Xp, Yp = np.meshgrid(bin_array(x), bin_array(y))
-    if ax:
-        plt.sca(ax)
-    out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
+    if axis:
+        plt.sca(axis)
+    if diverging:
+        if log_colors:
+            if pars_symlognorm.get("vmin","auto")=="auto":
+                vminmax=np.max(
+                    np.ceil(np.log10(np.abs(np.nanmin(C)))).astype(int), 
+                    np.ceil(np.log10(np.abs(np.nanmax(C)))).astype(int),
+                    )
+            out = plt.pcolormesh(Xp, Yp, 
+                                 C, *args, **kwargs, 
+                                 cmap=kwargs.get("cmap","coolwarm"), 
+                                 norm=colors.SymLogNorm(**pars_symlognorm))
+        else:
+            out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs, cmap=kwargs.get("cmap","coolwarm"), norm=colors.CenteredNorm())
+    else:
+        if log_colors:
+            out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs, norm=colors.LogNorm(vmin=np.nanmin(C[np.nonzero(C)]), vmax=np.nanmax(C)))
+        else:
+            out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
     try:
         plt.xlabel(x.name)
     except:
@@ -579,7 +613,7 @@ def polyfit_with_fixed_points(x, y, n, xf, yf):
     return params[: n + 1][::-1]
 
 
-def get_corr(data, ref, order=2):
+def get_corr(data, ref, order=2, weighted=True):
     p = []
     p_fx = []
     std = []
@@ -588,8 +622,16 @@ def get_corr(data, ref, order=2):
         if len(data) > 1:
             p.append(np.polyfit(ref, data, i))
             p_fx.append(polyfit_with_fixed_points(ref, data, i, [0], [0]))
-            std.append(np.std(data / np.polyval(p[-1], ref)))
-            std_fx.append(np.std(data / np.polyval(p_fx[-1], ref)))
+
+            if weighted:
+                avg_tmp, std_tmp = weighted_avg_and_std(data / np.polyval(p[-1], ref), np.polyval(p[-1], ref))
+                std.append(std_tmp)
+                avg_tmp, std_tmp = weighted_avg_and_std(data / np.polyval(p_fx[-1], ref), np.polyval(p_fx[-1], ref))
+                std_fx.append(std_tmp)
+
+            else:
+                std.append(np.std(data / np.polyval(p[-1], ref)))
+                std_fx.append(np.std(data / np.polyval(p_fx[-1], ref)))
         else:
             std.append(np.nan)
             std_fx.append(np.nan)

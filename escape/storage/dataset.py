@@ -1,4 +1,6 @@
 import base64
+import copy
+from functools import partial
 import os
 import pickle
 import hickle
@@ -6,6 +8,8 @@ from hickle.fileio import file_opener
 import escape
 from pathlib import Path
 from escape.utilities import StructureGroup, dict2structure
+from lazy_object_proxy import Proxy
+
 from rich.tree import Tree
 import logging
 import h5py
@@ -30,6 +34,7 @@ class DataSet:
         mode="r",
         perm=None,
         name=None,
+        lazy_loading=False,
     ):
         self.data_raw = raw_datasets
         self.datasets = {}
@@ -38,7 +43,7 @@ class DataSet:
         if results_file is not None:
             # self.results_file = results_file
             self.results_file = filespec_to_file(results_file, mode=mode, perm=perm)
-            self._init_datasets()
+            self._init_datasets(lazy_loading=lazy_loading)
         else:
             self.results_file = None
 
@@ -96,6 +101,8 @@ class DataSet:
                 data.name = name
                 if self.results_file is not None:
                     self.datasets[name].set_h5_storage(self.results_file, name)
+            elif isinstance(data, Proxy):
+                data = copy.copy(data)
             # elif isinstance(data, escape.ArrayTimestamps):
             #     data.name = name
             #     if self.results_file is not None:
@@ -197,7 +204,7 @@ class DataSet:
                 base.add(key).add(str(item))
         return base
 
-    def _init_datasets(self):
+    def _init_datasets(self, lazy_loading=False):
         for tname in self.results_file.keys():
             if "esc_type" in self.results_file[tname].attrs.keys():
                 if self.results_file[tname].attrs["esc_type"] == "array_dataset":
@@ -207,22 +214,31 @@ class DataSet:
                     self._esc_types[tname] = "array_dataset"
                 else:
                     if self.results_file[tname].attrs["esc_type"] == "pickled":
-                        self.datasets[tname] = pickle.loads(
-                            self.results_file[tname][()]
-                        )
-                        dict2structure({tname: self.datasets[tname]}, base=self)
+                        if lazy_loading:
+                            self.datasets[tname] = Proxy(partial(pickle.loads,self.results_file[tname][()]))
+                        else:
+                            self.datasets[tname] = pickle.loads(
+                                self.results_file[tname][()]
+                            )
+                            dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "pickled"
                     elif self.results_file[tname].attrs["esc_type"] == "hickled":
-                        self.datasets[tname] = hickle.load(
-                            self.results_file, path=f"/{tname}"
-                        )
-                        dict2structure({tname: self.datasets[tname]}, base=self)
+                        if lazy_loading:
+                            self.datasets[tname] = Proxy(partial(hickle.load,self.results_file, path=f"/{tname}"))
+                        else:
+                            self.datasets[tname] = hickle.load(
+                                self.results_file, path=f"/{tname}"
+                            )
+                            dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "hickled"
                     elif self.results_file[tname].attrs["esc_type"] == "datastorage":
                         self.datasets[tname] = unwrapArray(self.results_file[tname])
                         dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "datastorage"
-                    if isinstance(self.datasets[tname], dict):
+                    
+                    
+                    if not lazy_loading and isinstance(self.datasets[tname], dict):
+                        
                         self.__dict__[tname] = StructureGroup()
                         dict2structure(self.datasets[tname], base=self.__dict__[tname])
                     else:
@@ -231,14 +247,14 @@ class DataSet:
             else:
                 try:
                     self.append(
-                        escape.Array.load_from_h5(result_file, tname), name=tname
+                        escape.Array.load_from_h5(self.results_file, tname), name=tname
                     )
                 except:
                     pass
 
     @classmethod
-    def load_from_result_file(cls, results_filepath, mode="r", name=None, perm=None):
-        ds = cls(results_file=results_filepath, name=name, perm=perm)
+    def load_from_result_file(cls, results_filepath, lazy_loading=False, name=None, perm=None):
+        ds = cls(results_file=results_filepath, name=name, mode="r", perm=perm, lazy_loading=lazy_loading)
         return ds
 
     @classmethod

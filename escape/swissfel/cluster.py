@@ -53,7 +53,7 @@ class SwissFelCluster:
         if local:
             self.client = distributed.Client()
         else:
-            self.cluster = SLURMCluster(cores=cores, memory=memory, **kwags_cluster)
+            self.cluster = SLURMCluster(cores=cores, memory=memory, queue='hour', **kwags_cluster)
             self.client = Client(self.cluster)
         self.ip = socket.gethostbyname(socket.gethostname())
         self.dashboard_port_scheduler = self.client._scheduler_identity.get("services")[
@@ -67,7 +67,7 @@ class SwissFelCluster:
         return self.client._repr_html_()
 
     def scale_workers(self, N_workers):
-        self.cluster.scale(N_workers)
+        self.cluster.scale(N_workers,jobs=N_workers)
 
     def create_dashboard_tunnel(self, ssh_host="ra"):
         print(
@@ -340,11 +340,14 @@ def parseScanEcoV01(
                 ]
             for path in searchpaths:
                 file_path = path / fn
-                if file_path.is_file():
-                    if not lastpath:
-                        lastpath = path
-                        searchpaths.insert(0, path)
-                    break
+                try:  # neded if permissions fail.
+                    if file_path.is_file():
+                        if not lastpath:
+                            lastpath = path
+                            searchpaths.insert(0, path)
+                        break
+                except:
+                    pass
             if file_path.resolve() in files_parsed:
                 fls["known"].append(file_path)
                 complete_files_in_step+=1

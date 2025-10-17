@@ -8,7 +8,7 @@ from dask.diagnostics import ProgressBar
 import operator
 
 from escape.storage.source import Source
-from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, plot2D
+from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, plot2D, roundto
 import logging
 from itertools import chain
 from numbers import Number
@@ -166,7 +166,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -177,7 +177,8 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
+            # convertOutput2EscData=[0],
             **kwargs,
         )
 
@@ -188,7 +189,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -199,7 +200,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -210,7 +211,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -221,7 +222,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -232,7 +233,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -276,7 +277,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -287,7 +288,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -298,7 +299,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -309,7 +310,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -320,7 +321,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -331,7 +332,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -342,7 +343,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -353,7 +354,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -364,7 +365,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -375,7 +376,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -386,7 +387,7 @@ class Array:
             self,
             self.is_dask_array(),
             *args,
-            convertesc_axis_kw=False,
+            convertesc_axis_kw=True,
             **kwargs,
         )
 
@@ -1733,6 +1734,49 @@ class Scan:
         return Array(
             data=data, index=index, parameter=parameter, step_lengths=step_lengths
         )
+
+    def merge_scans(self, *others,roundto_interval=None, par_name=None):
+        if roundto_interval is None:
+            raise Exception("Please provide roundto value for merging scans.")
+        if par_name is None:
+            par_name = self.par_steps.keys()[0]
+            print(f"Using {par_name} as scan parameter for merging scans.")
+        pars = self.par_steps[par_name]
+        all_pars = roundto(pars,roundto_interval)
+        for other in others:
+            all_pars = np.union1d(all_pars,roundto(other.par_steps[par_name],roundto_interval))
+        # all_pars = sorted(all_pars)
+
+        # return all_pars
+        data = []
+        index = []
+        step_lengths = []
+        for par in all_pars:
+            step_len = 0
+            for thisscan in [self]+list(others):
+                thisscan_values = roundto(thisscan.par_steps[par_name].values,roundto_interval)
+                if par in thisscan_values:
+                    ind = np.where(thisscan_values==par)[0][0]
+                    data.append(thisscan[ind].data)
+                    index.append(thisscan[ind].index)
+                    step_len += len(thisscan[ind])
+            step_lengths.append(step_len)
+        
+        if any([isinstance(tmp, da.Array) for tmp in data]):
+            data = da.concatenate(data)
+        else:
+            data = np.concatenate(data)
+        index = np.concatenate(index)
+
+        return Array(data=data,index=index,step_lengths=step_lengths,parameter={par_name:{"values":list(all_pars)}})
+
+
+
+
+
+
+            
+
 
     def get_step_indexes(self, ix_step):
         """ "array getter for multiple steps, more efficient than get_step_array"""
