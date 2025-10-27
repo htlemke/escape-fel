@@ -9,6 +9,7 @@ from dask.diagnostics import ProgressBar
 import h5py
 import escape
 import logging
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ArrayTimestamps:
         self.scan = ScanTimestamps(
             parameter=parameter, timestamp_intervals=timestamp_intervals, array=self
         )
+        self._append_methods()
 
     @property
     def shape(self, *args, **kwargs):
@@ -92,6 +94,18 @@ class ArrayTimestamps:
         else:
             logger.info(f"h5 storage already set at {name} in {self.h5.file_name}")
 
+    def _apply_method(self, method, *args, **kwargs):
+        return method(self.data, *args, **kwargs)
+
+    def _append_methods(self):
+        for name in ["mean", "std", "min"]:
+            method = np.__dict__[name]
+
+            def tmet(self, *args, **kwargs):
+                return self._apply_method(method, *args, **kwargs)
+
+            setattr(type(self), name, tmet)
+
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
         h5 = ArrayH5Dataset(parent_h5py, name)
@@ -152,7 +166,8 @@ class ScanTimestamps:
     @property
     def par_steps(self):
         data = {name: value["values"] for name, value in self.parameter.items()}
-        data.update({"step_length": self.step_lengths})
+        data.update({"timestamp_start": self.timestamp_intervals[:, 0]})
+        data.update({"timestamp_stop": self.timestamp_intervals[:, 1]})
         return pd.DataFrame(data, index=list(range(len(self))))
 
     def append_step(self, parameter, timestamp_interval):
@@ -288,14 +303,14 @@ class ScanTimestamps:
     # def nansum(self, *args, **kwargs):
     #     return [step.nansum(*args, **kwargs) for step in self]
 
-    # def nanmean(self, *args, **kwargs):
-    #     return [step.nanmean(*args, **kwargs) for step in self]
+    def nanmean(self, *args, **kwargs):
+        return [step.nanmean(*args, **kwargs) for step in self]
 
-    # def nanstd(self, *args, **kwargs):
-    #     return [step.nanstd(*args, **kwargs) for step in self]
+    def nanstd(self, *args, **kwargs):
+        return [step.nanstd(*args, **kwargs) for step in self]
 
-    # def nanmedian(self, *args, **kwargs):
-    #     return [step.nanmedian(*args, **kwargs) for step in self]
+    def nanmedian(self, *args, **kwargs):
+        return [step.nanmedian(*args, **kwargs) for step in self]
 
     # def nanpercentile(self, *args, **kwargs):
     #     return [step.nanpercentile(*args, **kwargs) for step in self]
@@ -303,41 +318,41 @@ class ScanTimestamps:
     # def nanquantile(self, *args, **kwargs):
     #     return [step.nanquantile(*args, **kwargs) for step in self]
 
-    # def nanmin(self, *args, **kwargs):
-    #     return [step.nanmin(*args, **kwargs) for step in self]
+    def nanmin(self, *args, **kwargs):
+        return [step.nanmin(*args, **kwargs) for step in self]
 
-    # def nanmax(self, *args, **kwargs):
-    #     return [step.nanmax(*args, **kwargs) for step in self]
+    def nanmax(self, *args, **kwargs):
+        return [step.nanmax(*args, **kwargs) for step in self]
 
-    # def sum(self, *args, **kwargs):
-    #     return [step.sum(*args, **kwargs) for step in self]
+    def sum(self, *args, **kwargs):
+        return [step.sum(*args, **kwargs) for step in self]
 
-    # def mean(self, *args, **kwargs):
-    #     return [step.mean(*args, **kwargs) for step in self]
+    def mean(self, *args, **kwargs):
+        return [step.mean(*args, **kwargs) for step in self]
 
-    # def average(self, *args, **kwargs):
-    #     return [step.average(*args, **kwargs) for step in self]
+    def average(self, *args, **kwargs):
+        return [step.average(*args, **kwargs) for step in self]
 
-    # def std(self, *args, **kwargs):
-    #     return [step.std(*args, **kwargs) for step in self]
+    def std(self, *args, **kwargs):
+        return [step.std(*args, **kwargs) for step in self]
 
-    # def median(self, *args, **kwargs):
-    #     return [step.median(*args, **kwargs) for step in self]
+    def median(self, *args, **kwargs):
+        return [step.median(*args, **kwargs) for step in self]
 
-    # def min(self, *args, **kwargs):
-    #     return [step.min(*args, **kwargs) for step in self]
+    def min(self, *args, **kwargs):
+        return [step.min(*args, **kwargs) for step in self]
 
-    # def max(self, *args, **kwargs):
-    #     return [step.max(*args, **kwargs) for step in self]
+    def max(self, *args, **kwargs):
+        return [step.max(*args, **kwargs) for step in self]
 
-    # def any(self, *args, **kwargs):
-    #     return [step.any(*args, **kwargs) for step in self]
+    def any(self, *args, **kwargs):
+        return [step.any(*args, **kwargs) for step in self]
 
-    # def all(self, *args, **kwargs):
-    #     return [step.all(*args, **kwargs) for step in self]
+    def all(self, *args, **kwargs):
+        return [step.all(*args, **kwargs) for step in self]
 
-    # def count(self):
-    #     return [len(step) for step in self]
+    def count(self):
+        return [len(step) for step in self]
 
     # def nancount(self): ...
 
