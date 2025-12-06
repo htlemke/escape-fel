@@ -89,10 +89,10 @@ class Array:
         source=None,
     ):
         if index_dim is None:
-            logger.debug(
-                "No event dimension event_dim defined,\
-                    assuming 0th Dimension."
-            )
+            # logger.debug(
+            #     "No event dimension event_dim defined,\
+            #         assuming 0th Dimension."
+            # )
             self.index_dim = 0
         else:
             self.index_dim = index_dim
@@ -115,12 +115,25 @@ class Array:
         self._index = index
         self._data = data
         self._data_selector = None
-
-        self.scan = Scan(parameter, step_lengths, self)
+        self._scan = None
+        self._scan_parameter = parameter
+        self._scan_step_lengths = step_lengths
         self.name = name
         self.source = source
         self._touched = False
-        self.tools = ArrayTools(self)
+        self._tools = None
+
+    @property
+    def scan(self):
+        if self._scan is None:
+            self._scan = Scan(self._scan_parameter, self._scan_step_lengths, self)
+        return self._scan
+
+    @property    
+    def tools(self):
+        if self._tools is None:
+            self._tools = ArrayTools(self)
+        return self._tools
 
     def _touch(self):
         if not self._touched:
@@ -1383,6 +1396,8 @@ def match_scans(a0, a1, parameters=[]):
 class Scan:
     def __init__(self, parameter={}, step_lengths=None, array=None, data=None):
         self.step_lengths = step_lengths
+        self._tools = None
+        self.__step_index_ranges = None
         if parameter:
             for par, pardict in parameter.items():
                 if not len(pardict["values"]) == len(self):
@@ -1398,7 +1413,18 @@ class Scan:
         if data is not None:
             self._data = data
 
-        self.tools = ScanTools(self)
+    @property
+    def _step_index_ranges(self):
+        if self.__step_index_ranges is None:
+            self.__step_index_ranges = np.cumsum(np.hstack([0,np.asarray(self.step_lengths)]))
+        return self.__step_index_ranges
+    
+    @property    
+    def tools(self):
+        if self._tools is None:
+            self._tools = ScanTools(self)
+        return self._tools
+
 
     def append_parameter(self, parameter: {"par_name": {"values": list}}):
         for par, pardict in parameter.items():
@@ -1415,6 +1441,17 @@ class Scan:
         data.update({"step_length": self.step_lengths})
         return pd.DataFrame(data, index=list(range(len(self))))
 
+    def steps_where(self, data_condition=None):
+        """Get step indices where condition is true.
+
+        Args:
+            data_condition (function, optional): function which gets data array as input and returns boolean array.
+            """
+        if data_condition is not None:
+            ix_data = [data_condition(tdata) for tdata in self.get_step_data()]
+
+        return self[ix_data]
+    
     def nansum(self, *args, **kwargs):
         return [step.nansum(*args, **kwargs) for step in self]
 
@@ -1718,12 +1755,18 @@ class Scan:
         elif not n < len(self.step_lengths):
             raise IndexError(f"Only {len(self.step_lengths)} steps")
         else:
-            data = self._array.data[
-                sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            # data = self._array.data[
+            #     sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            # ]
+            # index = self._array.index[
+            #     sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
+            # ]
+            ix_range = self._step_index_ranges[n: (n + 2)]
+
+            data = self._array.data[slice(*ix_range)]
+            index = self._array.index[slice(*ix_range)
             ]
-            index = self._array.index[
-                sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
-            ]
+            
             step_lengths = [self.step_lengths[n]]
             parameter = {}
             for par_name, par in self.parameter.items():
@@ -1734,6 +1777,19 @@ class Scan:
         return Array(
             data=data, index=index, parameter=parameter, step_lengths=step_lengths
         )
+
+    def get_step_data(self, n):
+        """data getter for scan"""
+        assert n >= 0, "Step index needs to be positive"
+        if n == 0 and self.step_lengths is None:
+            data = self._array.data[:]
+        # assert not self.step_lengths is None, "No step sizes defined."
+        elif not n < len(self.step_lengths):
+            raise IndexError(f"Only {len(self.step_lengths)} steps")
+        else:
+            ix_range = self._step_index_ranges[n: (n + 2)]
+            data = self._array.data[slice(*ix_range)]
+        return data
 
     def merge_scans(self, *others,roundto_interval=None, par_name=None):
         if roundto_interval is None:
@@ -1769,14 +1825,6 @@ class Scan:
         index = np.concatenate(index)
 
         return Array(data=data,index=index,step_lengths=step_lengths,parameter={par_name:{"values":list(all_pars)}})
-
-
-
-
-
-
-            
-
 
     def get_step_indexes(self, ix_step):
         """ "array getter for multiple steps, more efficient than get_step_array"""
@@ -1913,14 +1961,11 @@ def to_dataframe(*args):
     ]
     return ddf.concat(dfs, axis=0, join="outer", interleave_partitions=False)
 
-
 @escaped
 def match_arrays(*args):
     return args
 
-
 weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
-
 
 def compute(*args):
     """compute multiple escape arrays or dask arrays. Interesting when calculating multiple small arrays
