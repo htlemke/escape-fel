@@ -64,6 +64,20 @@ class DataSet:
 
         self.name = name
 
+    def __enter__(self):
+        if self.results_file is None:
+            raise Warning("No results file defined!")
+        return self
+
+    def __exit__(self, type, value, traceback):
+        try:
+            self.results_file.close()
+        except:
+            pass
+
+    def close(self):
+        self.__exit__()
+
     def append(
         self,
         data,
