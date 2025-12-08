@@ -1556,6 +1556,7 @@ class Scan:
     #         mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
     #     return med, mad
 
+
     def weighted_avg_and_std(self, weights=None, norm_samples=False):
         avg = []
         std = []
@@ -1570,6 +1571,21 @@ class Scan:
         if norm_samples:
             std = [tstd / da.sqrt(ct) for tstd, ct in zip(std, self.count())]
         return np.asarray(avg), np.asarray(std)
+    
+    def weighted_stat(self,weights=None):
+        array,weightsf = escape.match_arrays(self._array,weights)
+        qsig = 0.682689492
+        med = []
+        err = []
+        # if len(weights.shape) == 3:
+        #     weights = weights[:,0,0]
+        for n, (ta,tw) in enumerate(zip(array.scan,weightsf.scan)):
+            if len(ta.shape)==3:
+                print(f"step {n}/{len(array.scan)}")
+            r = utilities.weighted_quantile(ta.data,[0.5-qsig/2, 0.5, 0.5+qsig/2],sample_weight=tw.data) 
+            med.append(r[1])
+            err.append(np.diff(r)/np.sqrt(len(ta.data)))
+        return np.asarray(med),np.asarray(err).T
 
     def correlation_analysis_to(self, ref, *args, **kwargs):
         (td, tr) = match_arrays(self._array, ref)

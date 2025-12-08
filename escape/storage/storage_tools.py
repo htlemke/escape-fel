@@ -25,6 +25,13 @@ class ArrayTools:
         if show:
             display(s)
         return s
+    
+
+    
+
+
+
+        # return (N_sig <= len(self._array[is_sig])) and (N_ref <= len(self._array[is_ref]))
 
 
 class ScanTools:
@@ -39,6 +46,25 @@ class ScanTools:
         s = StepViewer(data)
         display(s)
         return s
+    
+
+    def has_N_refsig(self,is_ref,is_sig=None,N_ref = 1, N_sig=1):
+        if is_sig is not None:
+            sel = is_ref | is_sig
+            #TODO
+        
+        is_ref = self._scan._array.categorize(is_ref).compute()
+
+        valid_steps = []
+        for n,step in enumerate(is_ref.scan):
+            if (N_ref <= sum(step.data)) and (N_sig <= sum(~step.data)):
+                valid_steps.append(n)
+
+        return self._scan[valid_steps]
+    
+
+        
+
 
     def corr_ana_plot(self, referece, scanpar_name=None, axis=None):
         if not scanpar_name:
