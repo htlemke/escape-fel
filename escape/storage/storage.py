@@ -1872,6 +1872,25 @@ class Scan:
                 par_out[par]["attributes"] = pardict["attributes"]
         return par_out
 
+    def get_parameter_array(self, key=None):
+        if key:
+            keys = [key]
+        else:
+            keys = self.parameter.keys()
+        dall = {}
+        iall = self._array.index
+        for n,stl in enumerate(self.step_lengths):
+            ons = np.ones(stl)
+            for key in keys:
+                tval = self.parameter[key]["values"][n]
+                if not isinstance(tval, Number):
+                    continue
+                if not key in dall.keys():
+                    dall[key] = []
+                dall[key].append(ons*tval)
+        arrays = [Array(data=np.hstack(dall[key]),index=iall,name=key,step_lengths=self.step_lengths,parameter=self.parameter) for key in dall.keys()]
+        return arrays if len(arrays)>1 else arrays[0]
+
     def _save_to_h5(self, group):
         self._check_consistency()
         if "scan" in group.keys():
