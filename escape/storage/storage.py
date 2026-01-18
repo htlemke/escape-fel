@@ -129,7 +129,7 @@ class Array:
             self._scan = Scan(self._scan_parameter, self._scan_step_lengths, self)
         return self._scan
 
-    @property    
+    @property
     def tools(self):
         if self._tools is None:
             self._tools = ArrayTools(self)
@@ -1416,15 +1416,16 @@ class Scan:
     @property
     def _step_index_ranges(self):
         if self.__step_index_ranges is None:
-            self.__step_index_ranges = np.cumsum(np.hstack([0,np.asarray(self.step_lengths)]))
+            self.__step_index_ranges = np.cumsum(
+                np.hstack([0, np.asarray(self.step_lengths)])
+            )
         return self.__step_index_ranges
-    
-    @property    
+
+    @property
     def tools(self):
         if self._tools is None:
             self._tools = ScanTools(self)
         return self._tools
-
 
     def append_parameter(self, parameter: {"par_name": {"values": list}}):
         for par, pardict in parameter.items():
@@ -1446,12 +1447,12 @@ class Scan:
 
         Args:
             data_condition (function, optional): function which gets data array as input and returns boolean array.
-            """
+        """
         if data_condition is not None:
             ix_data = [data_condition(tdata) for tdata in self.get_step_data()]
 
         return self[ix_data]
-    
+
     def nansum(self, *args, **kwargs):
         return [step.nansum(*args, **kwargs) for step in self]
 
@@ -1556,7 +1557,6 @@ class Scan:
     #         mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
     #     return med, mad
 
-
     def weighted_avg_and_std(self, weights=None, norm_samples=False):
         avg = []
         std = []
@@ -1571,21 +1571,23 @@ class Scan:
         if norm_samples:
             std = [tstd / da.sqrt(ct) for tstd, ct in zip(std, self.count())]
         return np.asarray(avg), np.asarray(std)
-    
-    def weighted_stat(self,weights=None):
-        array,weightsf = escape.match_arrays(self._array,weights)
+
+    def weighted_stat(self, weights=None):
+        array, weightsf = escape.match_arrays(self._array, weights)
         qsig = 0.682689492
         med = []
         err = []
         # if len(weights.shape) == 3:
         #     weights = weights[:,0,0]
-        for n, (ta,tw) in enumerate(zip(array.scan,weightsf.scan)):
-            if len(ta.shape)==3:
+        for n, (ta, tw) in enumerate(zip(array.scan, weightsf.scan)):
+            if len(ta.shape) == 3:
                 print(f"step {n}/{len(array.scan)}")
-            r = utilities.weighted_quantile(ta.data,[0.5-qsig/2, 0.5, 0.5+qsig/2],sample_weight=tw.data) 
+            r = utilities.weighted_quantile(
+                ta.data, [0.5 - qsig / 2, 0.5, 0.5 + qsig / 2], sample_weight=tw.data
+            )
             med.append(r[1])
-            err.append(np.diff(r)/np.sqrt(len(ta.data)))
-        return np.asarray(med),np.asarray(err).T
+            err.append(np.diff(r) / np.sqrt(len(ta.data)))
+        return np.asarray(med), np.asarray(err).T
 
     def correlation_analysis_to(self, ref, *args, **kwargs):
         (td, tr) = match_arrays(self._array, ref)
@@ -1777,12 +1779,11 @@ class Scan:
             # index = self._array.index[
             #     sum(self.step_lengths[:n]) : sum(self.step_lengths[: (n + 1)])
             # ]
-            ix_range = self._step_index_ranges[n: (n + 2)]
+            ix_range = self._step_index_ranges[n : (n + 2)]
 
             data = self._array.data[slice(*ix_range)]
-            index = self._array.index[slice(*ix_range)
-            ]
-            
+            index = self._array.index[slice(*ix_range)]
+
             step_lengths = [self.step_lengths[n]]
             parameter = {}
             for par_name, par in self.parameter.items():
@@ -1803,20 +1804,22 @@ class Scan:
         elif not n < len(self.step_lengths):
             raise IndexError(f"Only {len(self.step_lengths)} steps")
         else:
-            ix_range = self._step_index_ranges[n: (n + 2)]
+            ix_range = self._step_index_ranges[n : (n + 2)]
             data = self._array.data[slice(*ix_range)]
         return data
 
-    def merge_scans(self, *others,roundto_interval=None, par_name=None):
+    def merge_scans(self, *others, roundto_interval=None, par_name=None):
         if roundto_interval is None:
             raise Exception("Please provide roundto value for merging scans.")
         if par_name is None:
             par_name = self.par_steps.keys()[0]
             print(f"Using {par_name} as scan parameter for merging scans.")
         pars = self.par_steps[par_name]
-        all_pars = roundto(pars,roundto_interval)
+        all_pars = roundto(pars, roundto_interval)
         for other in others:
-            all_pars = np.union1d(all_pars,roundto(other.par_steps[par_name],roundto_interval))
+            all_pars = np.union1d(
+                all_pars, roundto(other.par_steps[par_name], roundto_interval)
+            )
         # all_pars = sorted(all_pars)
 
         # return all_pars
@@ -1825,22 +1828,29 @@ class Scan:
         step_lengths = []
         for par in all_pars:
             step_len = 0
-            for thisscan in [self]+list(others):
-                thisscan_values = roundto(thisscan.par_steps[par_name].values,roundto_interval)
+            for thisscan in [self] + list(others):
+                thisscan_values = roundto(
+                    thisscan.par_steps[par_name].values, roundto_interval
+                )
                 if par in thisscan_values:
-                    ind = np.where(thisscan_values==par)[0][0]
+                    ind = np.where(thisscan_values == par)[0][0]
                     data.append(thisscan[ind].data)
                     index.append(thisscan[ind].index)
                     step_len += len(thisscan[ind])
             step_lengths.append(step_len)
-        
+
         if any([isinstance(tmp, da.Array) for tmp in data]):
             data = da.concatenate(data)
         else:
             data = np.concatenate(data)
         index = np.concatenate(index)
 
-        return Array(data=data,index=index,step_lengths=step_lengths,parameter={par_name:{"values":list(all_pars)}})
+        return Array(
+            data=data,
+            index=index,
+            step_lengths=step_lengths,
+            parameter={par_name: {"values": list(all_pars)}},
+        )
 
     def get_step_indexes(self, ix_step):
         """ "array getter for multiple steps, more efficient than get_step_array"""
@@ -1879,7 +1889,7 @@ class Scan:
             keys = self.parameter.keys()
         dall = {}
         iall = self._array.index
-        for n,stl in enumerate(self.step_lengths):
+        for n, stl in enumerate(self.step_lengths):
             ons = np.ones(stl)
             for key in keys:
                 tval = self.parameter[key]["values"][n]
@@ -1887,9 +1897,18 @@ class Scan:
                     continue
                 if not key in dall.keys():
                     dall[key] = []
-                dall[key].append(ons*tval)
-        arrays = [Array(data=np.hstack(dall[key]),index=iall,name=key,step_lengths=self.step_lengths,parameter=self.parameter) for key in dall.keys()]
-        return arrays if len(arrays)>1 else arrays[0]
+                dall[key].append(ons * tval)
+        arrays = [
+            Array(
+                data=np.hstack(dall[key]),
+                index=iall,
+                name=key,
+                step_lengths=self.step_lengths,
+                parameter=self.parameter,
+            )
+            for key in dall.keys()
+        ]
+        return arrays if len(arrays) > 1 else arrays[0]
 
     def _save_to_h5(self, group):
         self._check_consistency()
@@ -1996,11 +2015,14 @@ def to_dataframe(*args):
     ]
     return ddf.concat(dfs, axis=0, join="outer", interleave_partitions=False)
 
+
 @escaped
 def match_arrays(*args):
     return args
 
+
 weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
+
 
 def compute(*args):
     """compute multiple escape arrays or dask arrays. Interesting when calculating multiple small arrays
@@ -2268,6 +2290,17 @@ def digitize(
     )
 
 
+def unravel_arrays(*arrays):
+    """Unravel multiple escape arrays to 1D arrays, matching their indexes.
+
+    Args:
+        *arrays: arbitrary number of escape arrays."""
+    indexes = [array.index for array in arrays]
+    ixmaster, ixslaves, stepLengthsNew = match_indexes(
+        arrays[0].index, [t.index for t in arrays[1:]]
+    )
+
+
 def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):
     """general filter function for escape arrays. checking for 1D arrays, applies
     arbitrary number of
@@ -2408,7 +2441,7 @@ class ArrayH5Dataset:
         elif isinstance(data, da.Array):
             # ToDo, smarter chunking when writing small data
             new_chunks = tuple(c[0] for c in new_data.chunks)
-            
+
             try:
                 if "default_dataset_compression" in self.grp.file.attrs:
                     compression = self.grp.file.attrs["default_dataset_compression"]
@@ -2429,12 +2462,10 @@ class ArrayH5Dataset:
                     dtype=new_data.dtype,
                     compression=compression,
                     compression_opts=compression_opts,
-                    )
+                )
             except:
                 compression = None
                 compression_opts = None
-
-
 
                 dset = self.grp.create_dataset(
                     f"data_{n_new:04d}",

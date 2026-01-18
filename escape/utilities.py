@@ -182,7 +182,7 @@ def weighted_avg_and_std(values, weights):
     Return the weighted average and standard deviation.
     values, weights -- Numpy ndarrays with the same shape.
     """
-    if (np.asarray(weights)==0).all():
+    if (np.asarray(weights) == 0).all():
         return (np.nan, np.nan)
     average = np.average(values, weights=weights)
     variance = np.average(
@@ -292,8 +292,10 @@ def center_to_edges_old(centers):
     )
     return edges
 
-def roundto(v,interval):
-    return np.rint(v/interval)*interval
+
+def roundto(v, interval):
+    return np.rint(v / interval) * interval
+
 
 def center_to_edges(a, axis=-1):
 
@@ -346,32 +348,44 @@ def hist_scan(
     return x_scan, hbins, hdat
 
 
-def plot2D(x, y, C, *args, 
-           axis=None, 
-           diverging=False, 
-           log_colors=False, 
-           pars_symlognorm = dict(
-               linthresh=1.0,
-               linscale=1.0,
-               vmin='auto',
-               vmax='auto',
-               base=10,
-           ),
-           **kwargs):
+def plot2D(
+    x,
+    y,
+    C,
+    *args,
+    axis=None,
+    diverging=False,
+    log_colors=False,
+    pars_symlognorm=dict(
+        linthresh=1.0,
+        linscale=1.0,
+        vmin="auto",
+        vmax="auto",
+        base=10,
+    ),
+    **kwargs,
+):
     """Helper function to create a fals color 3D plot using matplotlib pcolormesh.
 
     Args:
         x (array-like 1d): may be replaced "auto" for bin number
         y (array-like 1d): may be replaced "auto" for bin number
         C (array-like 2d): [description]
-        ax (matplotlib axis): [description]. Defaults to None.
-    """
+        axis (matplotlib axis): [description]. Defaults to None.
+        diverging (bool, optional): Use centered colormap. Defaults to False.
+        log_colors (bool, optional): Use logarithmic color scale. Defaults to False.
+        pars_symlognorm (dict, optional): parameters for SymLogNorm if diverging and log_colors are True.
+            Defaults to  dict( linthresh=1.0, linscale=1.0, vmin='auto', vmax='auto', base=10,)
+        kwargs: additional arguments passed to pcolormesh
+        Returns: pcolormesh object"""
+
     if axis is None:
         axis = kwargs.pop("ax", None)
+
     def bin_array(arr):
         arr = np.asarray(arr)
         return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
-    
+
     C = np.asarray(C)
 
     if type(x) is str and x == "auto":
@@ -384,20 +398,42 @@ def plot2D(x, y, C, *args,
         plt.sca(axis)
     if diverging:
         if log_colors:
-            if pars_symlognorm.get("vmin","auto")=="auto":
-                vminmax=np.max(
-                    np.ceil(np.log10(np.abs(np.nanmin(C)))).astype(int), 
+            if pars_symlognorm.get("vmin", "auto") == "auto":
+                vminmax = np.max(
+                    np.ceil(np.log10(np.abs(np.nanmin(C)))).astype(int),
                     np.ceil(np.log10(np.abs(np.nanmax(C)))).astype(int),
-                    )
-            out = plt.pcolormesh(Xp, Yp, 
-                                 C, *args, **kwargs, 
-                                 cmap=kwargs.get("cmap","coolwarm"), 
-                                 norm=colors.SymLogNorm(**pars_symlognorm))
+                )
+            out = plt.pcolormesh(
+                Xp,
+                Yp,
+                C,
+                *args,
+                **kwargs,
+                cmap=kwargs.get("cmap", "coolwarm"),
+                norm=colors.SymLogNorm(**pars_symlognorm),
+            )
         else:
-            out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs, cmap=kwargs.get("cmap","coolwarm"), norm=colors.CenteredNorm())
+            out = plt.pcolormesh(
+                Xp,
+                Yp,
+                C,
+                *args,
+                **kwargs,
+                cmap=kwargs.get("cmap", "coolwarm"),
+                norm=colors.CenteredNorm(),
+            )
     else:
         if log_colors:
-            out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs, norm=colors.LogNorm(vmin=np.nanmin(C[np.nonzero(C)]), vmax=np.nanmax(C)))
+            out = plt.pcolormesh(
+                Xp,
+                Yp,
+                C,
+                *args,
+                **kwargs,
+                norm=colors.LogNorm(
+                    vmin=np.nanmin(C[np.nonzero(C)]), vmax=np.nanmax(C)
+                ),
+            )
         else:
             out = plt.pcolormesh(Xp, Yp, C, *args, **kwargs)
     try:
@@ -624,9 +660,13 @@ def get_corr(data, ref, order=2, weighted=True):
             p_fx.append(polyfit_with_fixed_points(ref, data, i, [0], [0]))
 
             if weighted:
-                avg_tmp, std_tmp = weighted_avg_and_std(data / np.polyval(p[-1], ref), np.polyval(p[-1], ref))
+                avg_tmp, std_tmp = weighted_avg_and_std(
+                    data / np.polyval(p[-1], ref), np.polyval(p[-1], ref)
+                )
                 std.append(std_tmp)
-                avg_tmp, std_tmp = weighted_avg_and_std(data / np.polyval(p_fx[-1], ref), np.polyval(p_fx[-1], ref))
+                avg_tmp, std_tmp = weighted_avg_and_std(
+                    data / np.polyval(p_fx[-1], ref), np.polyval(p_fx[-1], ref)
+                )
                 std_fx.append(std_tmp)
 
             else:
@@ -641,6 +681,9 @@ def get_corr(data, ref, order=2, weighted=True):
 def pgroup2name(pgroup, beamline="bernina"):
     tp = f"/sf/{beamline}/exp/"
     d = Path(tp)
+    if not d.exists():
+        tp = f"/sf/{beamline}/misc/exp/"
+        d = Path(tp)
     dirs = [i for i in d.glob("*") if i.is_symlink()]
     names = [i.name for i in dirs]
     targets = [i.resolve().name for i in dirs]
@@ -650,6 +693,9 @@ def pgroup2name(pgroup, beamline="bernina"):
 def name2pgroups(name, beamline="bernina"):
     tp = f"/sf/{beamline}/exp/"
     d = Path(tp)
+    if not d.exists():
+        tp = f"/sf/{beamline}/misc/exp/"
+        d = Path(tp)
     dirs = [i for i in d.glob("*") if i.is_symlink()]
     names = [i.name for i in dirs]
     targets = [i.resolve().name for i in dirs]
