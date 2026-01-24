@@ -6,7 +6,7 @@ from threading import Thread
 
 
 class GinputNB:
-    def __init__(self, fig=None):
+    def __init__(self, fig=None, Npts=-1.0, plotspec="rd-"):
         self.x = []
         self.y = []
         if not fig:
@@ -14,6 +14,7 @@ class GinputNB:
         self.fig = fig
         #         self.evt= Event()
         self.collecting = 0
+        self.get(Npts, plotspec)
 
     def get(self, Npts=-1.0, plotspec="rd-"):
         self.mcid = self.fig.canvas.mpl_connect("button_press_event", self.onclick)
@@ -22,6 +23,13 @@ class GinputNB:
             self.line = plt.plot(self.x, self.y, plotspec)[0]
         self.collecting = Npts
         return self
+
+    def toggle_selector(self, event):
+        if event.key == "t":
+            if self.collecting == 0:
+                self.collecting = 1
+            if self.collecting == 1:
+                self.collecting = 0
 
     def onclick(self, event):
         if self.collecting == 0:

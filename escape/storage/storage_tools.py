@@ -1,3 +1,5 @@
+from numbers import Number
+from escape import utilities
 from escape.utilities import MultipleRoiSelector, StepViewer, StepViewerP
 import numpy as np
 from IPython.display import display
@@ -26,8 +28,83 @@ class ArrayTools:
             display(s)
         return s
     
+    def compare_to_reference(
+        self, 
+        is_reference, 
+        N_agg_ref=100, 
+        weights=None, 
+        cmp_type='ratio',
+        axis_survey=None,
+    ):  
+        array = self._array
+        resort = is_reference.get_index_array(N_index_aggregation=N_agg_ref) # new sorting according to pulse id (/ real time) bins for reference taking
+        array = resort.categorize(array)
+        array = array.scan.tools.has_N_refsig(is_reference) # filter out steps that don't have any reference or signal 
 
+        array_sig = array[~is_reference]
+        array_ref = array[is_reference]
+        
+        if cmp_type =='ratio':
+            array_cmp = array_sig.scan / array_ref.scan.weighted_stat(weights)[0]
+        if cmp_type =='difference':
+            array_cmp = array_sig.scan - array_ref.scan.weighted_stat(weights)[0]
+
+        if axis_survey:
+            array_ref.plot(axis=axis_survey,ms=.3,label="Reference, single pulse")
+            # array_sig.plot(axis=axis.survey,ms=.3,label="Signal")
+
+            array_ref.plot(axis=axis_survey,ms=.3, label='ref (off) single plse')
+            array_ref.scan.plot(axis=axis_survey, label='Reference, aggregated')
+            array_sig.scan.plot(axis=axis_survey, label='Signal, aggregated')
+
+        return array_cmp
     
+    def timetool_binning(self,timetool, time_vec=None, time_bins=None, tbinsize=20e-15):
+        array = self._array
+
+        if not time_vec: 
+            t = timetool.scan.par_steps.iloc[:,0] # timevec scan
+
+        t_tt = timetool.scan + t # taking the time of the step and adding the time tool delay for each shot - the real measured delay 
+        
+        tt_med = timetool.nanmedian() # try to get the average tt values as median, for binning. 
+
+        if isinstance(time_bins,Number):
+            time_bins = np.arange(
+                utilities.roundto(np.nanmin(t)+tt_med,time_bins),
+                utilities.roundto(np.nanmax(t)+tt_med,time_bins)+time_bins,
+                tbinsize)
+        t_tt_binned = t_tt.digitize(time_bins)
+        
+        array_tt = (t_tt_binned).categorize(array)
+        
+        return array_tt
+
+#>>>>>>>>>>>>>>>
+
+
+def timetool_binning(array,timetool, time_vec=None, time_bins=None, tbinsize=20e-15):
+
+    if not time_vec: 
+        t = timetool.scan.par_steps.iloc[:,0] # timevec scan
+
+    t_tt = timetool.scan + t # taking the time of the step and adding the time tool delay for each shot - the real measured delay 
+    
+    tt_med = timetool.nanmedian() # try to get the average tt values as median, for binning. 
+
+    if isinstance(time_bins,Number):
+        time_bins = np.arange(
+            utilities.roundto(np.nanmin(t)+tt_med,time_bins),
+            utilities.roundto(np.nanmax(t)+tt_med,time_bins)+time_bins,
+            tbinsize)
+    t_tt_binned = t_tt.digitize(time_bins)
+    
+    array_tt = (t_tt_binned).categorize(array)
+    
+    return array_tt
+
+
+#<<<<<<<<<<<<<<<
 
 
 

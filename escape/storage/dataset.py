@@ -155,6 +155,19 @@ class DataSet:
 
         return data
 
+    def get_array(self,spec, computed=True):
+        dataset = self
+        if type(spec) is str:
+            array =  dataset.datasets[spec]
+        elif isinstance(spec,escape.Array):
+            array = spec
+        if computed:
+            if array.is_dask_array():
+                array = array.compute()
+            if type(spec) is str:
+                dataset.datasets[spec] = array
+        return array
+
     def get_datasets_max_element_size(self, max_element_size=5000, verbose=0):
         ks = []
         for k, v in self.datasets.items():

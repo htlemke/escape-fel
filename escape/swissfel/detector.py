@@ -1,6 +1,8 @@
 # from jungfrau_utils.corrections import apply_gain_pede_numba
 from jungfrau_utils.data_handler import JFDataHandler
 import h5py
+
+import escape
 from ..storage.storage import ArraySelector
 from pathlib import Path
 import numpy as np
@@ -167,7 +169,12 @@ def apply_gain_pede_np(
 
 
 def apply_threshold(data, threshold=0):
-    data[data < threshold] = 0
+    if isinstance(data, escape.Array):
+        data = data.map_index_blocks(
+                        apply_threshold,
+                        threshold = threshold)
+    else:
+        data[data < threshold] = 0
     return data
 
 

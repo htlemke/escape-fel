@@ -446,6 +446,16 @@ def plot2D(
         pass
     return out
 
+def vertices_to_mask(vertices, shape):
+    from matplotlib.path import Path
+
+    y, x = np.mgrid[0 : shape[0], 0 : shape[1]]
+    points = np.vstack((x.ravel(), y.ravel())).T
+
+    path = Path(vertices)
+    grid = path.contains_points(points)
+    mask = grid.reshape(shape)
+    return mask
 
 def pickle_figure(filename, figure=None):
     if not figure:
