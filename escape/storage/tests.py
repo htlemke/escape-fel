@@ -14,7 +14,7 @@ def testEventIds(N=100 * 60 * 10, Nsteps=100, shuffle=False):
 
 
 def finder1(i1, i2, stepLens=None):
-    com = i1[np.in1d(i1, i2, assume_unique=True)]
+    com = i1[np.isin(i1, i2, assume_unique=True)]
     srt = i2.argsort(axis=0)
     return srt[np.searchsorted(i2, com, sorter=srt)]
 

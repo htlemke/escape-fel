@@ -1393,6 +1393,28 @@ def match_scans(a0, a1, parameters=[]):
     return get_step_indexes(s0, s0_sel), get_step_indexes(s1, s1_sel)
 
 
+class Grid:
+    def __init__(self, shape, positions, scan=None ):
+        self.scan = scan
+        self.shape = shape
+        self.positions = positions
+        
+    def get_grid_indices(self):
+        grid_indices = [
+            tmp['grid_index'] for tmp in self.scan.parameter['scan_step_info']['values']
+            ]
+        return grid_indices
+    
+    def to_grid(self, data):
+        grid_shape = self.shape
+        grid_data = np.empty(grid_shape + data.shape[1:], dtype=data.dtype)
+        grid_data[:] = np.nan  # or any other fill value
+
+        for tdat,step_index in zip(data,self.get_grid_indices()):
+            grid_data[tuple(step_index)] = tdat
+        return grid_data
+    
+
 class Scan:
     def __init__(self, parameter={}, step_lengths=None, array=None, data=None):
         self.step_lengths = step_lengths
@@ -1863,7 +1885,7 @@ class Scan:
             ],
             axis=0,
         )
-        return self._array[np.in1d(self._array.index, index_sel).nonzero()[0]]
+        return self._array[np.isin(self._array.index, index_sel).nonzero()[0]]
 
     def _check_consistency(self):
         for par, pardict in self.parameter.items():
@@ -2138,7 +2160,7 @@ def concatenate(arraylist):
 def match_indexes(ids_master, ids_slaves, stepLengths_master=None):
     ids_res = ids_master
     for tid in ids_slaves:
-        ids_res = ids_res[np.in1d(ids_res, tid, assume_unique=True)]
+        ids_res = ids_res[np.isin(ids_res, tid, assume_unique=True)]
     inds_slaves = []
     for tid in ids_slaves:
         srt = tid.argsort(axis=0)
@@ -2408,7 +2430,7 @@ class ArrayH5Dataset:
             lock = get_lock()
         n_new = len(self._n_i)
         ids_stored = self.index
-        in_previous_indexes = np.in1d(event_ids, ids_stored)
+        in_previous_indexes = np.isin(event_ids, ids_stored)
         if ~in_previous_indexes.any():
             # real appending data
             new_event_ids = event_ids
@@ -2566,7 +2588,7 @@ class ArrayH5File:
         """
         n_new = len(self._n_i)
         ids_stored = self.index
-        in_previous_indexes = np.in1d(event_ids, ids_stored)
+        in_previous_indexes = np.isinb(event_ids, ids_stored)
         if ~in_previous_indexes.any():
             # real appending data
             new_event_ids = event_ids

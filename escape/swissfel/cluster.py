@@ -436,6 +436,11 @@ def parseScanEcoV01(
                 for parname in s["scan_parameters"]["name"]
             }
         )
+
+    if "grid_specs" in s["scan_parameters"]:
+        grid_specs = s["scan_parameters"]["grid_specs"]
+    else:
+        grid_specs = None
     
     parameter.update({"scan_step_info": {"values": []}})
 

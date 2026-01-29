@@ -308,8 +308,8 @@ class PlotCorrelation:
         xd = np.asarray(flatten(self.data_x.data))
         yd = np.asarray(flatten(self.data_y.data))
 
-        xsel = np.in1d(xi, yi)
-        ysel = np.in1d(yi, xi)
+        xsel = np.isin(xi, yi)
+        ysel = np.isin(yi, xi)
 
         xi = xi[np.where(xsel)]
         xd = xd[np.where(xsel)]
