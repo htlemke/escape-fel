@@ -36,7 +36,15 @@ class ArrayTools:
         cmp_type='ratio',
         axis_survey=None,
     ):  
+        """Compare the array to a reference defined by a boolean mask is_reference.
+        The comparison can be done by ratio or difference. The reference is aggregated
+        over N_agg_ref pulses, and weights can be applied."""
         array = self._array
+        if array.ndim >1:
+            print("Warning: array has more than one dimension, no weights applied.")
+            hdim = True
+        else:
+            hdim = False
         resort = is_reference.get_index_array(N_index_aggregation=N_agg_ref) # new sorting according to pulse id (/ real time) bins for reference taking
         array = resort.categorize(array)
         array = array.scan.tools.has_N_refsig(is_reference) # filter out steps that don't have any reference or signal 
@@ -44,12 +52,18 @@ class ArrayTools:
         array_sig = array[~is_reference]
         array_ref = array[is_reference]
         
-        if cmp_type =='ratio':
-            array_cmp = array_sig.scan / array_ref.scan.weighted_stat(weights)[0]
-        if cmp_type =='difference':
-            array_cmp = array_sig.scan - array_ref.scan.weighted_stat(weights)[0]
+        if not hdim:
+            if cmp_type =='ratio':
+                array_cmp = array_sig.scan / array_ref.scan.weighted_stat(weights)[0]
+            if cmp_type =='difference':
+                array_cmp = array_sig.scan - array_ref.scan.weighted_stat(weights)[0]
+        else:
+            if cmp_type =='ratio':
+                array_cmp = array_sig.scan / array_ref.scan.mean(axis=0)
+            if cmp_type =='difference':
+                array_cmp = array_sig.scan - array_ref.scan.mean(axis=0)
 
-        if axis_survey:
+        if axis_survey and not hdim:
             array_ref.plot(axis=axis_survey,ms=.3,label="Reference, single pulse")
             # array_sig.plot(axis=axis.survey,ms=.3,label="Signal")
 
@@ -59,7 +73,7 @@ class ArrayTools:
 
         return array_cmp
     
-    def timetool_binning(self,timetool, time_vec=None, time_bins=None, tbinsize=20e-15):
+    def timetool_binning(self,timetool, time_vec=None, time_bins=None):
         array = self._array
 
         if not time_vec: 
@@ -71,9 +85,9 @@ class ArrayTools:
 
         if isinstance(time_bins,Number):
             time_bins = np.arange(
-                utilities.roundto(np.nanmin(t)+tt_med,time_bins),
-                utilities.roundto(np.nanmax(t)+tt_med,time_bins)+time_bins,
-                tbinsize)
+                utilities.roundto(np.nanmin(t)+tt_med,time_bins) - time_bins/2,
+                utilities.roundto(np.nanmax(t)+tt_med,time_bins) + time_bins/2,
+                time_bins)
         t_tt_binned = t_tt.digitize(time_bins)
         
         array_tt = (t_tt_binned).categorize(array)
