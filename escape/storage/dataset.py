@@ -128,7 +128,7 @@ class DataSet:
             else:
                 if as_pickle:
                     # self.results_file.require_dataset(name)
-                    self.results_file[name] = np.string_(pickle.dumps(data))
+                    self.results_file[name] = np.bytes_(pickle.dumps(data))
                     self.results_file[name].attrs["esc_type"] = "pickled"
                     self._esc_types[name] = "pickled"
                 if as_hickle:
