@@ -3,6 +3,7 @@ from time import sleep
 import ipywidgets as widgets
 import numpy as np
 from threading import Thread
+from dask.array import ptp
 
 
 class GinputNB:
@@ -517,7 +518,7 @@ class MultipleRoiSelector(widgets.HBox):
             description="Colormap range",
             min=self.data.min(),
             max=self.data.max(),
-            step=self.data.ptp() / 500,
+            step=ptp(data) / 500,
             continuous_update=False,
             disabled=False,
         )
