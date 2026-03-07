@@ -131,14 +131,19 @@ class SpanSelectNB:
 
     def line_select_callback(self, eclick, erelease):
         if self.ax_roi:
+            roi_data = self.get_image_roi_data()
             if self.ax_roi.get_images():
                 i = self.ax_roi.get_images()[0]
-                i.set_data(self.get_image_roi_data())
+                i.set_data(roi_data)
                 shape = i.get_array().shape
                 i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
-                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
             else:
-                self.ax_roi.imshow(self.get_image_roi_data())
+                # Create new image with synchronized colormap
+                main_image = self.ax.get_images()[0]
+                vmin, vmax = main_image.get_clim()
+                i = self.ax_roi.imshow(roi_data, vmin=vmin, vmax=vmax)
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
         for callback in self.callbacks_changeroi:
             callback()
 
@@ -213,14 +218,19 @@ class PolygonSelectNB:
 
     def line_select_callback(self, eclick, erelease):
         if self.ax_roi:
+            roi_data = self.get_image_roi_data()
             if self.ax_roi.get_images():
                 i = self.ax_roi.get_images()[0]
-                i.set_data(self.get_image_roi_data())
+                i.set_data(roi_data)
                 shape = i.get_array().shape
                 i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
-                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
             else:
-                self.ax_roi.imshow(self.get_image_roi_data())
+                # Create new image with synchronized colormap
+                main_image = self.ax.get_images()[0]
+                vmin, vmax = main_image.get_clim()
+                i = self.ax_roi.imshow(roi_data, vmin=vmin, vmax=vmax)
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
         for callback in self.callbacks_changeroi:
             callback()
 
@@ -330,14 +340,19 @@ class LassoSelectNB:
 
     def line_select_callback(self, eclick, erelease):
         if self.ax_roi:
+            roi_data = self.get_image_roi_data()
             if self.ax_roi.get_images():
                 i = self.ax_roi.get_images()[0]
-                i.set_data(self.get_image_roi_data())
+                i.set_data(roi_data)
                 shape = i.get_array().shape
                 i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
-                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
             else:
-                self.ax_roi.imshow(self.get_image_roi_data())
+                # Create new image with synchronized colormap
+                main_image = self.ax.get_images()[0]
+                vmin, vmax = main_image.get_clim()
+                i = self.ax_roi.imshow(roi_data, vmin=vmin, vmax=vmax)
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
         for callback in self.callbacks_changeroi:
             callback()
 
@@ -433,24 +448,20 @@ class RectangleSelectNB:
                 self.selector.set_active(True)
 
     def line_select_callback(self, eclick, erelease):
-        #         if self.selector.active_handle:
-        #             self.selector.set_active(True)
-        #         else:
-        #             self.selector.set_active(False)
-        #         'eclick and erelease are the press and release events'
-        #         x1, y1 = eclick.xdata, eclick.ydata
-        #         x2, y2 = erelease.xdata, erelease.ydata
-        #         print("(%3.2f, %3.2f) --> (%3.2f, %3.2f)" % (x1, y1, x2, y2))
-        #         print(" The button you used were: %s %s" % (eclick.button, erelease.button))
         if self.ax_roi:
+            roi_data = self.get_image_roi_data()
             if self.ax_roi.get_images():
                 i = self.ax_roi.get_images()[0]
-                i.set_data(self.get_image_roi_data())
+                i.set_data(roi_data)
                 shape = i.get_array().shape
                 i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
-                # self.ax_roi.set_aspect(abs(shape[0] / shape[1]))
             else:
-                self.ax_roi.imshow(self.get_image_roi_data())
+                # Create new image with synchronized colormap
+                main_image = self.ax.get_images()[0]
+                vmin, vmax = main_image.get_clim()
+                i = self.ax_roi.imshow(roi_data, vmin=vmin, vmax=vmax)
+                shape = i.get_array().shape
+                i.set_extent((-0.5, shape[1] + 0.5, shape[0] + 0.5, -0.5))
         for callback in self.callbacks_changeroi:
             callback()
 
@@ -518,7 +529,7 @@ class MultipleRoiSelector(widgets.HBox):
             description="Colormap range",
             min=self.data.min(),
             max=self.data.max(),
-            step=ptp(data) / 500,
+            step=ptp(data) / 5000,
             continuous_update=False,
             disabled=False,
         )
@@ -571,14 +582,14 @@ class MultipleRoiSelector(widgets.HBox):
             plt.close(self.name)
             fig, ax = plt.subplots(
                 num=self.name,
-                # constrained_layout=True
-                figsize=[5, 5],
+                constrained_layout=True,
+                figsize=[4, 4],
             )
             self.fig_data = fig
             self.ax_data = ax
             ih = self.ax_data.imshow(self.data)
             plt.colorbar(mappable=ih)
-            plt.tight_layout()
+            # plt.tight_layout()
             plt.show(self.fig_data)
 
         mn = np.nanmin(self.data)
@@ -600,19 +611,26 @@ class MultipleRoiSelector(widgets.HBox):
         # widgets.interact(lambda val:self.set_clim(*val),val=self._clim_slider)
         self._clim_slider.observe(lambda val: self.set_clim(*val["new"]), names="value")
 
-    def set_clim(self, *args, **kwargs):
-
-        with self.debug:
-            print(*args, **kwargs)
-        i = self.ax_data.get_images()[0]
-        i.set_clim(*args, **kwargs)
-        plt.draw()
-        for n, ax in enumerate(self.axs_rois):
-            print(n)
+    def set_clim(self, vmin, vmax):
+        """Update colormap limits for all plots."""
+        # Update main data plot
+        main_image = self.ax_data.get_images()[0]
+        main_image.set_clim(vmin, vmax)
+        
+        # Update all ROI plots
+        for ax in self.axs_rois:
             if ax.get_images():
-                i = ax.get_images()[0]
-                i.set_clim(*args, **kwargs)
+                roi_image = ax.get_images()[0]
+                roi_image.set_clim(vmin, vmax)
+        
+        # Force redraw of all figures
         plt.draw()
+    
+    def synchronize_colormaps(self):
+        """Manually synchronize all colormap limits to match the main plot."""
+        if self.ax_data.get_images():
+            vmin, vmax = self.ax_data.get_images()[0].get_clim()
+            self.set_clim(vmin, vmax)
 
     def add_roi_plot(self):
         ti = len(self.roi_selectors)
@@ -993,9 +1011,3 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=.3, **kwar
     return lh,fh
 
 
-
-    
-    
-
-
-    

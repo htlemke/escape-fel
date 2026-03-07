@@ -1,14 +1,18 @@
 from copy import deepcopy
 import io
+import time
+from traceback import format_exc
 import numpy as np
 import dask
 from dask import array as da
 from dask import dataframe as ddf
 from dask.diagnostics import ProgressBar
+from dask.distributed import get_client, progress, wait
+from dask.typing import DaskCollection
 import operator
 
 from escape.storage.source import Source
-from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, plot2D, roundto
+from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, is_local_client_distributed, plot2D, roundto
 import logging
 from itertools import chain
 from numbers import Number
@@ -2069,7 +2073,7 @@ def compute(*args):
                 targtype.append("dask_array")
                 argcollection.append(arg)
         else:
-            targtypes.append("nodask")
+            targtype.append("nodask")
         argtypes.append(targtype)
 
     with ProgressBar():
@@ -2114,8 +2118,24 @@ def store(arrays, lock="auto", **kwargs):
         arrays_store, ndatas, dsets, n_news = zip(
             *[(tarray, *tprep) for tarray, tprep in zip(arrays, prep) if tprep]
         )
-        with ProgressBar():
-            da.store(ndatas, dsets, lock=lock, **kwargs)
+        
+        if is_local_client_distributed():
+            client = get_client()
+            print("Found dask distributed client")
+            t_tmp = time.time()
+            storage_return = da.store(ndatas, dsets, lock=lock, compute=False, **kwargs)
+            future = client.persist(storage_return)
+            # print("persisted, length of future: ", len(future))
+            # from IPython.display import display
+            progress(future,notebook=False)
+            # print('calling wait on future')
+            # time.sleep(0.2)
+            wait(future)
+            print(f'storing data done in {time.time() - t_tmp} s.')
+        else:
+            with ProgressBar():
+                da.store(ndatas, dsets, lock=lock, **kwargs)        
+            
         for array, n_new in zip(arrays_store, n_news):
             array.h5._n_i.append(n_new)
             array.h5._n_d.append(n_new)
@@ -2123,6 +2143,117 @@ def store(arrays, lock="auto", **kwargs):
         array._data = array.h5.get_data_da()
         array._index = array.h5.index
         array.scan._save_to_h5(array.h5.grp)
+
+
+def store_all(
+    arrays,
+    parent_h5py=None,
+    lock="auto",
+    names=None,
+    indexes=None,
+    scans=None,
+    **kwargs
+):
+    """
+    Store a mix of escape arrays and raw dask/numpy arrays efficiently.
+    
+    Handles three types of inputs:
+    1. Escape arrays with h5 already configured (via set_h5_storage)
+    2. Escape arrays without h5 configured (will set up h5 storage)
+    3. Raw dask/numpy arrays (will wrap in escape.Array objects with h5 storage)
+    
+    Args:
+        arrays: List of mixed array types (escape.Array, da.Array, or np.ndarray)
+        parent_h5py: h5py parent group/file for storing data
+        lock: Lock mechanism for dask store operations ("auto" or specific lock)
+        names: Optional list of dataset names (defaults to array.name or auto-generated)
+        indexes: Optional list of event IDs for each array
+        scans: Optional list of Scan objects for each array
+        **kwargs: Additional arguments passed to da.store()
+    
+    Returns:
+        List of escape.Array objects with h5 storage configured
+    
+    Example:
+        >>> # Mix of escape arrays and raw dask arrays
+        >>> esc_array = escape.Array(data=my_data, index=my_index, name="array1")
+        >>> raw_dask = da.from_delayed(...)
+        >>> result = store_all(
+        ...     [esc_array, raw_dask],
+        ...     parent_h5py=h5file,
+        ...     indexes=[esc_array.index, raw_index],
+        ...     names=["array1", "array2"]
+        ... )
+    """
+    if lock == "auto":
+        lock = get_lock()
+    
+    if parent_h5py is None:
+        raise ValueError("parent_h5py must be provided")
+    
+    # Standardize input to escape.Array objects
+    normalized_arrays = []
+    for i, arr in enumerate(arrays):
+        if isinstance(arr, Array):
+            # Already an escape array
+            normalized_arrays.append(arr)
+        elif isinstance(arr, (da.Array, np.ndarray)):
+            # Raw dask or numpy array - wrap in escape.Array
+            name = names[i] if names and i < len(names) else f"imported_{i:04d}"
+            index = indexes[i] if indexes and i < len(indexes) else np.arange(arr.shape[0])
+            scan_obj = scans[i] if scans and i < len(scans) else None
+            
+            normalized_arrays.append(
+                Array(data=arr, index=index, parameter=scan_obj, name=name)
+            )
+        else:
+            raise TypeError(f"Unsupported array type: {type(arr)}")
+    
+    # Set up h5 storage for arrays that don't have it
+    for arr in normalized_arrays:
+        if not hasattr(arr, "h5"):
+            arr.set_h5_storage(parent_h5py, name=arr.name)
+    
+    # Now use the existing store() logic for all normalized escape arrays
+    prep = [
+        array.h5.append(array.data, array.index, prep_run="store_numpy")
+        for array in normalized_arrays
+    ]
+    
+    if not any(prep):
+        print("Nothing to append")
+    else:
+        arrays_store, ndatas, dsets, n_news = zip(
+            *[(tarray, *tprep) for tarray, tprep in zip(normalized_arrays, prep) if tprep]
+        )
+        
+        if is_local_client_distributed():
+            client = get_client()
+            print(f"Found dask distributed client, storing {len(ndatas)} datasets")
+            storage_return = da.store(ndatas, dsets, lock=lock, compute=False, **kwargs)
+            future = client.persist(storage_return)
+            print("persisted, length of future: ", len(future))
+            progress(future, notebook=False)
+            print("calling wait on future")
+            time.sleep(0.2)
+            t_tmp = time.time()
+            wait(future)
+            print(f"waited for future ({time.time() - t_tmp:.2f}s)")
+        else:
+            with ProgressBar():
+                da.store(ndatas, dsets, lock=lock, **kwargs)
+        
+        for array, n_new in zip(arrays_store, n_news):
+            array.h5._n_i.append(n_new)
+            array.h5._n_d.append(n_new)
+    
+    # Update all arrays with stored data
+    for array in normalized_arrays:
+        array._data = array.h5.get_data_da()
+        array._index = array.h5.index
+        array.scan._save_to_h5(array.h5.grp)
+    
+    return normalized_arrays
 
 
 def get_lock():

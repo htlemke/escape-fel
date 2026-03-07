@@ -1,4 +1,6 @@
 from collections.abc import Iterable
+import dask
+from distributed import get_client
 from matplotlib import colors
 import numpy as np
 from bisect import bisect
@@ -962,3 +964,19 @@ class ReferenceByRunno:
         ks = np.asarray(list(self.data.keys()))
         cl_k = ks[ks <= run_number].max()
         return self.data[cl_k]
+
+
+def is_local_client_distributed():
+    # Check the locally scoped config first
+    current_sched = dask.config.get("scheduler", None)
+    
+    if current_sched == 'threads':
+        return False
+    # If no local config is set, check if a global client exists
+    try:
+        get_client()
+        return True
+    except ValueError:
+        return "Default Local (Synchronous)"
+    
+    

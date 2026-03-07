@@ -3,6 +3,8 @@ import copy
 from functools import partial
 import os
 import pickle
+import warnings
+from dask.distributed import Client, LocalCluster
 import hickle
 from hickle.fileio import file_opener
 import escape
@@ -16,6 +18,7 @@ import h5py
 import zarr
 import numpy as np
 import oschmod
+import dask
 
 try:
     from datastorage.datastorage import dictToH5Group, unwrapArray
@@ -439,34 +442,45 @@ def convert_resultsfile(
     if out_directory:
         out_filename = Path(out_directory) / out_filename
     out_filename
+    # with LocalCluster(n_workers=1, processes=False, threads_per_worker=4) as local_cluster:
+    #     with Client(local_cluster) as local_client:
+    #         with local_client.as_current():
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Running on a single-machine scheduler",
+            category=UserWarning,
+        )
+    
+        with dask.config.set(scheduler='threads'):
+    
+                ds_in = DataSet.load_from_result_file(filename)
+                ds_out = DataSet.create_with_new_result_file(
+                    results_filepath=out_filename, force_overwrite=force_overwrite
+                )
 
-    ds_in = DataSet.load_from_result_file(filename)
-    ds_out = DataSet.create_with_new_result_file(
-        results_filepath=out_filename, force_overwrite=force_overwrite
-    )
+                escapearrays = {}
+                for tdsname, tdsdat in ds_in.datasets.items():
+                    esc_type = ds_in._esc_types.get(tdsname, None)
+                    if isinstance(tdsdat, escape.Array):
+                        escapearrays[tdsname] = escape.Array(
+                            data=tdsdat.data,
+                            index=tdsdat.index,
+                            step_lengths=tdsdat.scan.step_lengths,
+                            parameter=tdsdat.scan.parameter,
+                            name=tdsdat.name,
+                        )
+                        ds_out.append(escapearrays[tdsname], esc_type=esc_type, name=tdsname)
+                    else:
+                        ds_out.append(tdsdat, esc_type=esc_type, name=tdsname)
 
-    escapearrays = {}
-    for tdsname, tdsdat in ds_in.datasets.items():
-        esc_type = ds_in._esc_types.get(tdsname, None)
-        if isinstance(tdsdat, escape.Array):
-            escapearrays[tdsname] = escape.Array(
-                data=tdsdat.data,
-                index=tdsdat.index,
-                step_lengths=tdsdat.scan.step_lengths,
-                parameter=tdsdat.scan.parameter,
-                name=tdsdat.name,
-            )
-            ds_out.append(escapearrays[tdsname], esc_type=esc_type, name=tdsname)
-        else:
-            ds_out.append(tdsdat, esc_type=esc_type, name=tdsname)
+                escape.store([ds_out.datasets[tname] for tname in escapearrays.keys()])
 
-    escape.store([ds_out.datasets[tname] for tname in escapearrays.keys()])
+                if close_if_feasible:
+                    if hasattr(ds_out.results_file, "close"):
+                        ds_out.results_file.close()
+                        print("closed")
 
-    if close_if_feasible:
-        if hasattr(ds_out.results_file, "close"):
-            ds_out.results_file.close()
-            print("closed")
-
-        return out_filename
-    else:
-        return ds_out
+                    return out_filename
+                else:
+                    return ds_out

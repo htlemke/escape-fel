@@ -49,12 +49,32 @@ logger = logging.getLogger(__name__)
 
 
 class SwissFelCluster:
-    def __init__(self, local=True, cores=8, memory="24 GB", workers=5, **kwags_cluster):
+    def __init__(self, local=True, cores=8, memory="24 GB", workers=5, processes=8, minimum_jobs=1, maximum_jobs=10, **kwags_cluster):
         if local:
             self.client = distributed.Client()
         else:
-            self.cluster = SLURMCluster(cores=cores, memory=memory, queue='hour', **kwags_cluster)
+            self.cluster = SLURMCluster(
+                n_workers=workers, 
+                processes=processes, 
+                cores=cores, 
+                memory=memory, 
+                job_extra_directives=[
+                    '--output=/dev/null',
+                    '--error=/dev/null',
+                    "--job-name=escape",
+                ],
+                queue='hour',
+                
+                **kwags_cluster
+                    )
             self.client = Client(self.cluster)
+
+            self.cluster.adapt(
+                minimum_jobs=minimum_jobs, 
+                maximum_jobs=maximum_jobs, 
+                wait_count=5,          # Wait 5 check-cycles before scaling down
+                interval="1s"          # Check every second if more resources are needed
+            )
         self.ip = socket.gethostbyname(socket.gethostname())
         self.dashboard_port_scheduler = self.client._scheduler_identity.get("services")[
             "dashboard"
@@ -96,7 +116,7 @@ class SwissFelCluster:
 
 
 @delayed
-def parse_bs_h5_file(fina, memlimit_MB=100):
+def parse_bs_h5_file(fina, memlimit_MB=500):
     """Data parser assuming the standard swissfel h5 format for raw data"""
     # if (type(files) is str) or (not np.iterable(files)):
     #     files = [files]
@@ -303,6 +323,7 @@ def parseScanEcoV01(
 
         
 
+        print("Parse result file found.")
         with open(parse_res_file, "r") as fp:
             dstores_flat = json.load(fp)
         
@@ -355,7 +376,7 @@ def parseScanEcoV01(
             elif file_path.resolve().exists():
                 # print(f'new_file {file_path}')
                 fls["toparse"].append(file_path)
-                dstores_step.append(parse_bs_h5_file(file_path))
+                dstores_step.append(parse_bs_h5_file(file_path, memlimit_MB=memlimit_MB))
                 complete_files_in_step+=1
             else:
                 non_existing_files.append(file_path)
@@ -375,8 +396,14 @@ def parseScanEcoV01(
         print(statstr)
     if verbose:
         print("Starting to parse data files ...")
-    with ProgressBar():
-        dstores = dask.compute(dstores, scheduler="processes")[0]
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Running on a single-machine scheduler",
+            category=UserWarning,
+        )
+        with ProgressBar():
+            dstores = dask.compute(dstores, scheduler="processes")[0]
     if verbose:
         print("... done parsing data files.")
     # flatten files in step
@@ -472,8 +499,14 @@ def parseScanEcoV01(
         if verbose:
             print("really Starting to create escape arrays ...")
 
-        with ProgressBar():
-            dstores = dask.compute(escArrays, scheduler="threads")[0]
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Running on a single-machine scheduler",
+                category=UserWarning,
+            )
+            with ProgressBar():
+                dstores = dask.compute(escArrays, scheduler="threads")[0]
 
         if verbose:
             print("... done creating escape arrays.")
