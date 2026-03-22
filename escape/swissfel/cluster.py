@@ -47,6 +47,13 @@ logger = logging.getLogger(__name__)
 
 # cluter helpers
 
+import hashlib
+
+def myhash(s,size=8):
+    h = hashlib.blake2b(s.encode(), digest_size=size)
+    return h.hexdigest()
+
+
 
 class SwissFelCluster:
     def __init__(self, local=True, cores=8, memory="24 GB", workers=5, processes=8, minimum_jobs=1, maximum_jobs=10, **kwags_cluster):
@@ -279,7 +286,7 @@ def parseScanEcoV01(
             parse_res_file = (
                 checknstore_parent
                 / Path(".escape_parse_result")
-                / Path(str(hash(scan_info_filepath.as_posix()))).with_suffix(".parse_result.json")
+                / Path(str(myhash(scan_info_filepath.as_posix()))).with_suffix(".parse_result.json")
             )
 
             if not parse_res_file.parent.exists():
@@ -287,10 +294,11 @@ def parseScanEcoV01(
                 os.chmod(parse_res_file.parent,0o777)
         else:
             checknstore_parent = Path(checknstore_parsing_result)
+            print(f"creating hash for {scan_info_filepath.as_posix()}.")
             parse_res_file = (
                 checknstore_parent
                 / Path(".escape_parse_result")
-                / Path(str(hash(scan_info_filepath.as_posix()))).with_suffix(".parse_result.json")
+                / Path(str(myhash(scan_info_filepath.as_posix()))).with_suffix(".parse_result.json")
             )
             if not parse_res_file.parent.exists():
                 parse_res_file.parent.mkdir(parents=True, exist_ok=True)
@@ -338,6 +346,7 @@ def parseScanEcoV01(
                     if dss["file_size"] == tfsize:  
                         files_parsed.add(tpath)
     else:
+        print(f"No parse result file {parse_res_file} found.")
         dstores_flat = []
 
     dstores = []
@@ -424,6 +433,7 @@ def parseScanEcoV01(
             print(f'writing new parsing result, parsed {len(fls["toparse"])} files.')
             with open(parse_res_file, "w") as fp:
                 json.dump(dstores_flat, fp)
+            print(f'wrote parsing result to {parse_res_file}')
             # if perm is not None:
             #     oschmod.set_mode(parse_res_file,perm)
                 

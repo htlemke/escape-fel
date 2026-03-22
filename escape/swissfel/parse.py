@@ -300,6 +300,7 @@ def load_dataset_from_scan(
                     td[nm + raw_data_suffix] = ar
 
             if load_dap_data:
+                print("Loading DAP data...")
                 pdata, fnames_parsed = parse_dap(
                     Path(metadata_file).parent / Path("../data")
                 )
@@ -325,6 +326,7 @@ def load_dataset_from_scan(
                             step_lengths=step_lengths,
                             parameter={"step_number": {"values": steps}},
                         )
+                print("Finished loading DAP data.")
 
             s_collection.append(s)
             file_alias_mappings = {}

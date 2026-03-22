@@ -1583,20 +1583,20 @@ class Scan:
     #         mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
     #     return med, mad
 
-    def weighted_avg_and_std(self, weights=None, norm_samples=False):
+    def weighted_avg_and_std(self, weights=None, norm_samples=False, axis=0):
         avg = []
         std = []
         for step in self:
             if weights:
                 (ta, tw) = match_arrays(step, weights)
-                (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data)
+                (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data, axis=axis)
             else:
-                (tavg, tstd) = utilities.weighted_avg_and_std(step.data, weights)
+                (tavg, tstd) = utilities.weighted_avg_and_std(step.data, weights, axis=axis)
             avg.append(tavg)
             std.append(tstd)
         if norm_samples:
             std = [tstd / da.sqrt(ct) for tstd, ct in zip(std, self.count())]
-        return np.asarray(avg), np.asarray(std)
+        return da.asarray(avg), da.asarray(std)
 
     def weighted_stat(self, weights=None):
         if weights is None:

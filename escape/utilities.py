@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 import dask
+import dask.array as da
 from distributed import get_client
 from matplotlib import colors
 import numpy as np
@@ -179,18 +180,18 @@ def unflatten_dictionary(dflat, sep="."):
     return d
 
 
-def weighted_avg_and_std(values, weights):
+def weighted_avg_and_std(values, weights, axis=0):
     """
     Return the weighted average and standard deviation.
     values, weights -- Numpy ndarrays with the same shape.
     """
-    if (np.asarray(weights) == 0).all():
-        return (np.nan, np.nan)
-    average = np.average(values, weights=weights)
-    variance = np.average(
-        (values - average) ** 2, weights=weights
+    if (da.asarray(weights) == 0).all():
+        return (da.nan, da.nan)
+    average = da.average(values, weights=weights, axis=axis)
+    variance = da.average(
+        (values - average) ** 2, weights=weights, axis=axis
     )  # Fast and numerically precise
-    return (average, np.sqrt(variance))
+    return (average, da.sqrt(variance))
 
 
 def corr_nonlin(data, polypar, data_0=0, correct_0=0):
@@ -977,6 +978,6 @@ def is_local_client_distributed():
         get_client()
         return True
     except ValueError:
-        return "Default Local (Synchronous)"
+        return False
     
     
