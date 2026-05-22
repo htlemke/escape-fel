@@ -325,6 +325,7 @@ class DataSet:
                 )
                 == "y"
             ):
+                mode="w"
                 pass
             else:
                 return
