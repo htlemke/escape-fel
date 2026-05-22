@@ -7,12 +7,9 @@ import dask
 import dask.array as da
 from dask.diagnostics import ProgressBar
 import h5py
-import hickle
 import escape
 import logging
 import pandas as pd
-
-from .storage import Grid
 
 logger = logging.getLogger(__name__)
 
@@ -25,48 +22,17 @@ def get_lock():
 
 
 class ArrayTimestamps:
-    """Time-stamped array wrapper with scan grouping and optional grid support.
-
-    ``ArrayTimestamps`` stores raw measurement data together with a
-    monotonically increasing timestamp array. It constructs a
-    ``ScanTimestamps`` instance for grouped interval-based selection and
-    optional grid metadata handling.
-
-    Args:
-        data: Numeric data array.
-        timestamps: Timestamp values aligned with ``data``.
-        timestamp_intervals: Optional list of interval boundaries defining scan steps.
-        parameter: Optional metadata for each timestamp interval.
-        grid_specs: Optional metadata used to build ``scan.grid``.
-        name: Optional array name.
-    """
     def __init__(
-        self,
-        data,
-        timestamps,
-        timestamp_intervals=None,
-        parameter=None,
-        grid_specs=None,
-        name="none",
+        self, data, timestamps, timestamp_intervals=None, parameter=None, name="none"
     ):
         self.data = np.asarray(data)
         self.timestamps = np.asarray(timestamps)
         self.name = name
         self.scan = ScanTimestamps(
-            parameter=parameter,
-            timestamp_intervals=timestamp_intervals,
-            array=self,
-            grid_specs=grid_specs,
+            parameter=parameter, timestamp_intervals=timestamp_intervals, array=self
         )
         self._append_methods()
 
-    @property
-    def grid(self):
-        if hasattr(self.scan,"grid"):
-            return self.scan.grid
-        else:
-            return None
-        
     @property
     def shape(self, *args, **kwargs):
         return self.data.shape
@@ -144,14 +110,13 @@ class ArrayTimestamps:
     def load_from_h5(cls, parent_h5py, name):
         h5 = ArrayH5Dataset(parent_h5py, name)
         try:
-            parameter, timestamp_intervals, grid_specs = ScanTimestamps._load_from_h5(
+            parameter, timestamp_intervals = ScanTimestamps._load_from_h5(
                 parent_h5py[name]
             )
         except:
             # print(f"could not read scan metadata of {name}")
             parameter = None
             timestamp_intervals = None
-            grid_specs = None
 
         data = h5.get_data_da()
         if data is None:
@@ -162,7 +127,6 @@ class ArrayTimestamps:
                 data=data,
                 parameter=parameter,
                 timestamp_intervals=timestamp_intervals,
-                grid_specs=grid_specs,
                 name=name,
             )
 
@@ -170,28 +134,7 @@ class ArrayTimestamps:
 
 
 class ScanTimestamps:
-    """Scan metadata layer for timestamp-indexed arrays.
-
-    ``ScanTimestamps`` partitions an ``ArrayTimestamps`` dataset into
-    steps defined by timestamp intervals. It exposes step-wise parameter
-    metadata and, when ``grid_specs`` is provided, constructs a ``Grid``
-    mapping scans onto an N-D grid layout.
-
-    Args:
-        parameter: Metadata describing step parameters and values.
-        timestamp_intervals: List of timestamp intervals for each scan step.
-        array: Underlying ``ArrayTimestamps`` instance.
-        data: Optional raw data used directly by the scan.
-        grid_specs: Optional grid metadata forwarded to ``Grid``.
-    """
-    def __init__(
-        self,
-        parameter={},
-        timestamp_intervals=None,
-        array=None,
-        data=None,
-        grid_specs=None,
-    ):
+    def __init__(self, parameter={}, timestamp_intervals=None, array=None, data=None):
         self.timestamp_intervals = timestamp_intervals
         if parameter:
             for par, pardict in parameter.items():
@@ -207,9 +150,6 @@ class ScanTimestamps:
 
         if data is not None:
             self._data = data
-
-        if grid_specs is not None:
-            self.grid = Grid(**grid_specs, scan=self)
 
     def append_parameter(self, parameter: {"par_name": {"values": list}}):
         for par, pardict in parameter.items():
@@ -238,20 +178,18 @@ class ScanTimestamps:
     def __len__(self):
         return len(self.timestamp_intervals)
 
-    def __getitem__(self, sel, grid_specs=None):
+    def __getitem__(self, sel):
         """array getter for scan"""
-        if grid_specs is None and hasattr(self, "grid"):
-            grid_specs = self.grid.get_grid_specs()
         if isinstance(sel, slice):
             sel = range(*sel.indices(len(self)))
         if isinstance(sel, Number):
             if sel < 0:
                 sel = len(self) + sel
-            return self.get_step_array(sel, grid_specs=grid_specs)
+            return self.get_step_array(sel)
         else:
-            return concatenate([self.get_step_array(n, grid_specs=grid_specs) for n in sel], grid_specs=grid_specs)
+            return concatenate([self.get_step_array(n) for n in sel])
 
-    def get_step_array(self, n, grid_specs=None):
+    def get_step_array(self, n):
         """array getter for scan"""
         assert n >= 0, "Step index needs to be positive"
         if n == 0 and self.timestamp_intervals is None:
@@ -286,7 +224,6 @@ class ScanTimestamps:
             timestamps=timestamps,
             parameter=parameter,
             timestamp_intervals=timestamp_intervals,
-            grid_specs=grid_specs,
         )
 
     # def get_step_indexes(self, ix_step):  # TODO
@@ -472,11 +409,11 @@ class ScanTimestamps:
     def _load_from_h5(group):
         if "scan" not in group.keys():
             raise Exception("Did not find group scan!")
-        timestamp_intervals = group["scan"]["timestamp_intervals"][()]
+        step_lengths = group["scan"]["timestamp_intervals"][()]
         parameter = {}
         for parname, pargroup in group["scan"]["parameter"].items():
             values = pargroup["values"]
-            if not len(values) == len(timestamp_intervals):
+            if not len(values) == len(step_lengths):
                 raise Exception(
                     f"The length of data array in {parname} parameter in scan does not fit!"
                 )
@@ -486,13 +423,7 @@ class ScanTimestamps:
                 parameter[parname]["attributes"] = {}
                 for att_name, att_data in pargroup["attributes"].items():
                     parameter[parname]["attributes"][att_name] = att_data[()]
-        grid_specs = None
-        if "grid_specs" in group["scan"].keys():
-            try:
-                grid_specs = hickle.load(group["scan"], path="grid_specs")
-            except Exception:
-                grid_specs = None
-        return parameter, timestamp_intervals, grid_specs
+        return parameter, step_lengths
 
     def __repr__(self):
         s = "Scan over {} steps".format(len(self))

@@ -496,6 +496,7 @@ def parseScanEcoV01(
                     dstores_flat,
                     parameter,
                     step_selection,
+                    grid_specs=grid_specs,
                 )
             )
 
@@ -504,7 +505,7 @@ def parseScanEcoV01(
         for ch in track(chs, description="Creating arrays ..."):
             # print(f"starting to create for {ch}")
             escArrays[ch] = create_arrays_from_dstores(
-                ch, s, dstores_flat, parameter, step_selection
+                ch, s, dstores_flat, parameter, step_selection, grid_specs=grid_specs
             )
         if verbose:
             print("really Starting to create escape arrays ...")
@@ -527,7 +528,7 @@ def parseScanEcoV01(
         return escArrays
 
 
-def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection):
+def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection, grid_specs=None):
     arrays = []
     s_sl = []
     scan = []
@@ -564,6 +565,7 @@ def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection):
             index=index_array,
             step_lengths=s_sl,
             parameter=tparameter,
+            grid_specs=grid_specs,
         )
         return tarr
 

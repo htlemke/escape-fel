@@ -19,6 +19,7 @@ from numbers import Number
 import re
 from .. import utilities
 import h5py
+import hickle
 from matplotlib import pyplot as plt
 import pandas as pd
 from pathlib import Path
@@ -82,24 +83,33 @@ def _apply_method(
 
 
 class Array:
+    """nd array data wrapper with optional scan metadata and grid support.
+
+    ``Array`` stores raw measurement data together with an event index and
+    optional scan grouping information. When ``step_lengths`` and
+    ``parameter`` are provided, a lazily constructed ``scan`` property
+    exposes grouped step selection and scan-level operations.
+
+    Args:
+        data: nd data array or callable returning data.
+        index: Event identifiers aligned with the first dimension of ``data``.
+        step_lengths: List of step sizes for each scan step.
+        parameter: Scan parameter metadata for each step.
+        name: Optional array name.
+        source: Optional source metadata object.
+        grid_specs: Optional metadata used to build ``scan.grid``.
+    """
     def __init__(
         self,
         data=None,
         index=None,
         step_lengths=None,
         parameter=None,
-        index_dim=None,
         name=None,
         source=None,
+        grid_specs=None,
     ):
-        if index_dim is None:
-            # logger.debug(
-            #     "No event dimension event_dim defined,\
-            #         assuming 0th Dimension."
-            # )
-            self.index_dim = 0
-        else:
-            self.index_dim = index_dim
+        self.index_dim = 0
         if not (callable(data) or callable(index)):
             assert data.shape[self.index_dim] == len(
                 index
@@ -126,12 +136,20 @@ class Array:
         self.source = source
         self._touched = False
         self._tools = None
+        self._grid_specs = grid_specs
 
     @property
     def scan(self):
         if self._scan is None:
-            self._scan = Scan(self._scan_parameter, self._scan_step_lengths, self)
+            self._scan = Scan(self._scan_parameter, self._scan_step_lengths, self, grid_specs=self._grid_specs if hasattr(self, "_grid_specs") else None)
         return self._scan
+
+    @property
+    def grid(self):
+        if hasattr(self.scan,"grid"):
+            return self.scan.grid
+        else:
+            return None
 
     @property
     def tools(self):
@@ -531,7 +549,6 @@ class Array:
             index=self.index.__getitem__(events),
             step_lengths=stepLengths,
             parameter=scan.parameter,
-            index_dim=self.index_dim,
         )
 
     def get_random_events(self, n, seed=None):
@@ -559,13 +576,11 @@ class Array:
             axes = args[0]
         else:
             axes = args
-        new_index_dim = axes.index(self.index_dim)
         return Array(
             data=self.data.transpose(*args),
             index=self.index,
             step_lengths=self.scan.step_lengths,
             parameter=self.scan.parameter,
-            index_dim=new_index_dim,
         )
 
     def ravel_event_data(self, *args):
@@ -575,13 +590,11 @@ class Array:
             axes = args[0]
         else:
             axes = args
-        new_index_dim = axes.index(self.index_dim)
         return Array(
             data=self.data.transpose(*args),
             index=self.index,
             step_lengths=self.scan.step_lengths,
             parameter=self.scan.parameter,
-            index_dim=new_index_dim,
         )
 
     @property
@@ -596,7 +609,6 @@ class Array:
                     index=self.index,
                     step_lengths=self.scan.step_lengths,
                     parameter=self.scan.parameter,
-                    index_dim=self.index_dim,
                 )
         else:
             if self.name:
@@ -700,7 +712,6 @@ class Array:
                 index=self.index,
                 step_lengths=self.step_lengths,
                 parameter=self.scan.parameter,
-                index_dim=event_dim,
             )
         else:
             return Array(
@@ -715,7 +726,6 @@ class Array:
                 index=self.index,
                 step_lengths=self.scan.step_lengths,
                 parameter=self.scan.parameter,
-                index_dim=event_dim,
             )
 
     def store(self, parent_h5py=None, name=None, unit=None, lock="auto", **kwargs):
@@ -766,11 +776,12 @@ class Array:
     def load_from_h5(cls, parent_h5py, name):
         h5 = ArrayH5Dataset(parent_h5py, name)
         try:
-            parameter, step_lengths = Scan._load_from_h5(parent_h5py[name])
+            parameter, step_lengths, grid_specs = Scan._load_from_h5(parent_h5py[name])
         except:
             # print(f"could not read scan metadata of {name}")
             parameter = None
             step_lengths = None
+            grid_specs = None
 
         data = h5.get_data_da()
         if data is None:
@@ -781,6 +792,7 @@ class Array:
                 data=data,
                 parameter=parameter,
                 step_lengths=step_lengths,
+                grid_specs=grid_specs,
                 name=name,
             )
 
@@ -1074,24 +1086,27 @@ def load_from_h5_file(file_name, name, parent_group_name=""):
     h5 = ArrayH5File(
         file_name=file_name, parent_group_name=parent_group_name, name=name
     )
-    parameter, step_lengths = Scan._load_from_h5(parent_h5py)
+    with h5py.File(file_name, "r") as f:
+        parameter, step_lengths, grid_specs = Scan._load_from_h5(f[h5.group_name])
     return Array(
         index=h5.index,
         data=h5.get_data_da(),
         parameter=parameter,
         step_lengths=step_lengths,
+        grid_specs=grid_specs,
         name=name,
     )
 
 
 def load_from_h5(parent_h5py, name):
     h5 = ArrayH5Dataset(parent_h5py, name)
-    parameter, step_lengths = Scan._load_from_h5(parent_h5py)
+    parameter, step_lengths, grid_specs = Scan._load_from_h5(parent_h5py)
     return Array(
         index=h5.index,
         data=h5.get_data_da(),
         parameter=parameter,
         step_lengths=step_lengths,
+        grid_specs=grid_specs,
         name=name,
     )
 
@@ -1163,7 +1178,7 @@ def escaped(func, convertOutput2EscData="auto"):
                         index=ids_res,
                         step_lengths=stepLengths,
                         parameter=scan.parameter,
-                        index_dim=0,
+                        grid_specs=scan.grid.get_grid_specs() if hasattr(scan, "grid") else None,
                     ),
                 )
 
@@ -1296,7 +1311,6 @@ def scan_escaped(func):
     # index=ids_res,
     # step_lengths=stepLengths,
     # parameter=scan.parameter,
-    # index_dim=0,
     # ),
     # )
 
@@ -1398,29 +1412,295 @@ def match_scans(a0, a1, parameters=[]):
 
 
 class Grid:
-    def __init__(self, shape, positions, scan=None ):
+    def __init__(self, shape, positions, scan=None, grid_dimension_names=None,**kwargs):
         self.scan = scan
         self.shape = shape
         self.positions = positions
+        self.dimension_names = grid_dimension_names
         
     def get_grid_indices(self):
         grid_indices = [
             tmp['grid_index'] for tmp in self.scan.parameter['scan_step_info']['values']
             ]
         return grid_indices
-    
+
+    def _normalize_selector(self, sel, dim_size):
+        if isinstance(sel, slice):
+            return set(range(*sel.indices(dim_size)))
+        if isinstance(sel, (list, tuple, np.ndarray)):
+            normalized = set()
+            for i in sel:
+                if not isinstance(i, (int, np.integer)):
+                    raise TypeError(f"Invalid index type in sequence: {type(i)}")
+                if i < 0:
+                    i += dim_size
+                if i < 0 or i >= dim_size:
+                    raise IndexError(
+                        f"index {i} is out of bounds for axis with size {dim_size}"
+                    )
+                normalized.add(int(i))
+            return normalized
+        if isinstance(sel, (int, np.integer)):
+            if sel < 0:
+                sel = dim_size + sel
+            if sel < 0 or sel >= dim_size:
+                raise IndexError(f"index {sel} is out of bounds for axis with size {dim_size}")
+            return {int(sel)}
+        raise TypeError(f"Invalid index type: {type(sel)}")
+
+    def _get_subgrid_specs(self, selectors):
+        new_shape = [len(sel) for sel in selectors]
+        if self.positions is None:
+            new_positions = None
+        else:
+            new_positions = []
+            for pos, selected in zip(self.positions, selectors):
+                if pos is None:
+                    new_positions.append(None)
+                    continue
+                pos_arr = np.asarray(pos)
+                indices = np.array(sorted(selected), dtype=int)
+                new_positions.append(pos_arr[indices])
+
+        new_dimension_names = None
+        if self.dimension_names is not None:
+            new_dimension_names = [
+                name for name, sel in zip(self.dimension_names, selectors)
+            ]
+
+        return {
+            "shape": new_shape,
+            "positions": new_positions,
+            "grid_dimension_names": new_dimension_names,
+        }
+
+    def __getitem__(self, sel):
+        if not hasattr(self, "scan") or self.scan is None:
+            raise AttributeError("Grid instance has no associated Scan")
+
+        ndim = len(self.shape)
+        if not isinstance(sel, tuple):
+            sel = (sel,)
+
+        if Ellipsis in sel:
+            if sel.count(Ellipsis) > 1:
+                raise IndexError("an index can only have a single ellipsis")
+            ellipsis_index = sel.index(Ellipsis)
+            sel = (
+                *sel[:ellipsis_index],
+                *[slice(None)] * (ndim - (len(sel) - 1)),
+                *sel[ellipsis_index + 1 :],
+            )
+
+        if len(sel) < ndim:
+            sel = tuple(list(sel) + [slice(None)] * (ndim - len(sel)))
+        if len(sel) > ndim:
+            raise IndexError("too many indices for Grid")
+
+        selectors = [self._normalize_selector(s, dim_size) for s, dim_size in zip(sel, self.shape)]
+        selected_steps = []
+        for step_idx, grid_index in enumerate(self.get_grid_indices()):
+            if all(grid_index[dim] in selectors[dim] for dim in range(ndim)):
+                selected_steps.append(step_idx)
+
+        if not selected_steps:
+            raise IndexError("Grid selection returned no matching steps")
+
+        grid_specs = self._get_subgrid_specs(selectors)
+        if len(selected_steps) == 1:
+            return self.scan.__getitem__(selected_steps[0], grid_specs=grid_specs)
+        return self.scan.__getitem__(selected_steps, grid_specs=grid_specs)
+
     def to_grid(self, data):
+        cdata = np.asanyarray(data)
         grid_shape = self.shape
-        grid_data = np.empty(grid_shape + data.shape[1:], dtype=data.dtype)
+        grid_data = np.empty(list(grid_shape) + list(np.shape(cdata)[1:]), dtype=cdata.dtype)
         grid_data[:] = np.nan  # or any other fill value
 
         for tdat,step_index in zip(data,self.get_grid_indices()):
             grid_data[tuple(step_index)] = tdat
         return grid_data
     
+    def get_grid_specs(self):
+        return {
+            "shape": self.shape,
+            "positions": self.positions,
+            "grid_dimension_names": self.dimension_names
+        }
+    
+    def fill_count(self):
+        """Return (filled_positions, total_positions, percent_filled).
+
+        filled_positions is the number of unique grid indices present in the
+        associated Scan. total_positions is the product of `self.shape`.
+        """
+        if not hasattr(self, "scan") or self.scan is None:
+            return 0, int(np.prod(self.shape)), 0.0
+
+        try:
+            grid_indices = self.get_grid_indices()
+        except Exception:
+            grid_indices = []
+
+        # Normalize to tuples and deduplicate
+        unique_indices = {tuple(idx) for idx in grid_indices}
+        filled = len(unique_indices)
+        total = int(np.prod(self.shape))
+        percent = (filled / total * 100.0) if total else 0.0
+        return filled, total, percent
+
+    def __repr__(self):
+        filled, total, percent = self.fill_count()
+        dims = self.dimension_names if self.dimension_names is not None else []
+        return f"<Grid shape={tuple(self.shape)} dims={dims} filled={filled}/{total} ({percent:0.1f}%)>"
+    
+    
+    
+SCAN_STEP_METHODS = [
+            "nansum",
+            "nanmean",
+            "nanstd",
+            "nanmedian",
+            "nanpercentile",
+            "nanquantile",
+            "nanmin",
+            "nanmax",
+            "sum",
+            "mean",
+            "average",
+            "std",
+            "median",
+            "min",
+            "max",
+            "count",
+            "nancount",
+            "median_and_mad",
+            # "weighted_median_and_mad",
+            "weighted_avg_and_std",
+            "weighted_stats",
+            "correlation_analysis_to",
+        ]
+
+
+# Dynamically attach wrappers for scan step methods that reformat
+# their per-step outputs into grid-shaped arrays using `to_grid`
+def _make_grid_scan_wrapper(method_name):
+    def _wrapper(self, *args, **kwargs):
+        # Extract plotting options from kwargs (do not pass them to scan)
+        plot_opt = kwargs.pop("plot", None)
+        plot_kws = kwargs.pop("plot_kws", {}) or {}
+
+        if not hasattr(self, "scan") or self.scan is None:
+            raise AttributeError("Grid instance has no associated Scan")
+        if not hasattr(self.scan, method_name):
+            raise AttributeError(f"Scan has no method '{method_name}'")
+        func = getattr(self.scan, method_name)
+        res = func(*args, **kwargs)
+
+        def _try_to_grid(val):
+            try:
+                arr = np.asarray(val)
+            except Exception:
+                return val
+            try:
+                return self.to_grid(arr)
+            except Exception:
+                return val
+
+        # Convert results into grid-shaped arrays where appropriate
+        if isinstance(res, tuple):
+            converted = tuple(_try_to_grid(r) for r in res)
+        elif isinstance(res, list):
+            converted = _try_to_grid(np.asarray(res))
+        else:
+            converted = _try_to_grid(res)
+
+        # Plotting: if requested and we have a 2D numpy array, call plot2D
+        if plot_opt:
+            try:
+                # choose candidate to plot (first element if tuple)
+                candidate = converted[0] if isinstance(converted, tuple) else converted
+                if isinstance(candidate, np.ndarray) and candidate.ndim == 2:
+                    # resolve axis/figure
+                    axis = None
+                    if plot_opt is True:
+                        axis = plt.gca()
+                    else:
+                        # Figure-like object
+                        try:
+                            if hasattr(plot_opt, "add_subplot"):
+                                axis = plot_opt.add_subplot(111)
+                            else:
+                                axis = plot_opt
+                        except Exception:
+                            axis = plt.gca()
+
+                    # prepare x/y from positions; assume positions order matches shape
+                    positions = getattr(self, "positions", None)
+                    if positions and len(positions) >= 2:
+                        # x corresponds to horizontal axis (cols), y to rows
+                        x_raw = positions[1]
+                        y_raw = positions[0]
+                        # helper to attach .name for labeling if available
+                        class _Named:
+                            def __init__(self, arr, name=None):
+                                self._arr = np.asarray(arr)
+                                self.name = name
+                            def __array__(self):
+                                return self._arr
+                            def __len__(self):
+                                return len(self._arr)
+
+                        x_named = _Named(x_raw, None)
+                        y_named = _Named(y_raw, None)
+                        # attach names if available
+                        try:
+                            if self.dimension_names and len(self.dimension_names) > 1:
+                                x_named.name = self.dimension_names[1]
+                                y_named.name = self.dimension_names[0]
+                        except Exception:
+                            pass
+                    else:
+                        x_named = "auto"
+                        y_named = "auto"
+
+                    # copy plot_kws so we can handle colorbar without mutating caller dict
+                    _pkw = dict(plot_kws)
+                    add_colorbar = _pkw.pop("colorbar", True)
+                    p = plot2D(x_named, y_named, candidate, axis=axis, **_pkw)
+                    if add_colorbar:
+                        try:
+                            plt.colorbar(p, ax=axis)
+                        except Exception:
+                            pass
+            except Exception:
+                # plotting must not break main functionality
+                pass
+
+        return converted
+    return _wrapper
+
+
+for _method in SCAN_STEP_METHODS:
+    setattr(Grid, _method, _make_grid_scan_wrapper(_method))
+    
 
 class Scan:
-    def __init__(self, parameter={}, step_lengths=None, array=None, data=None):
+    """Scan grouping of an Array across defined steps and optional grid metadata.
+
+    ``Scan`` partitions an ``Array`` into sequential steps defined by
+    ``step_lengths`` and exposes step-level metadata through ``parameter``.
+    When ``grid_specs`` is provided, ``Scan`` also constructs a ``Grid`` that
+    maps scan steps onto an N-D grid layout.
+
+    Args:
+        parameter: Metadata describing step parameters and values.
+        step_lengths: List of integer lengths for each scan step.
+        array: Underlying ``Array`` instance for this scan.
+        data: Optional raw data used directly by the scan.
+        grid_specs: Optional grid metadata forwarded to ``Grid``.
+    """
+    def __init__(self, parameter={}, step_lengths=None, array=None, data=None, grid_specs=None):
         self.step_lengths = step_lengths
         self._tools = None
         self.__step_index_ranges = None
@@ -1438,6 +1718,10 @@ class Scan:
 
         if data is not None:
             self._data = data
+
+        if grid_specs is not None:
+            self.grid = Grid(**grid_specs, scan=self)
+
 
     @property
     def _step_index_ranges(self):
@@ -1533,7 +1817,8 @@ class Scan:
     def count(self):
         return [len(step) for step in self]
 
-    def nancount(self): ...
+    def nancount(self):
+        return [step.nancount() for step in self]
 
     # TODO
 
@@ -1780,18 +2065,20 @@ class Scan:
     def __len__(self):
         return len(self.step_lengths)
 
-    def __getitem__(self, sel):
+    def __getitem__(self, sel, grid_specs=None):
         """array getter for scan"""
+        if grid_specs is None and hasattr(self, "grid"):
+            grid_specs = self.grid.get_grid_specs()
         if isinstance(sel, slice):
             sel = range(*sel.indices(len(self)))
         if isinstance(sel, Number):
             if sel < 0:
                 sel = len(self) + sel
-            return self.get_step_array(sel)
+            return self.get_step_array(sel, grid_specs=grid_specs)
         else:
-            return concatenate([self.get_step_array(n) for n in sel])
+            return concatenate([self.get_step_array(n, grid_specs=grid_specs) for n in sel], grid_specs=grid_specs)
 
-    def get_step_array(self, n):
+    def get_step_array(self, n, grid_specs=None):
         """array getter for scan"""
         assert n >= 0, "Step index needs to be positive"
         if n == 0 and self.step_lengths is None:
@@ -1823,7 +2110,7 @@ class Scan:
                 if "attributes" in par.keys():
                     parameter[par_name]["attributes"] = par["attributes"]
         return Array(
-            data=data, index=index, parameter=parameter, step_lengths=step_lengths
+            data=data, index=index, parameter=parameter, step_lengths=step_lengths, grid_specs=grid_specs
         )
 
     def get_step_data(self, n):
@@ -1965,6 +2252,11 @@ class Scan:
                         attvalue = str(attvalue)
                     tpg["attributes"][attname] = attvalue
 
+        if hasattr(self, "grid"):
+            gridspecs = self.grid.get_grid_specs()
+            hickle.dump(gridspecs, scan_group, path="grid_specs")
+         
+
     @staticmethod
     def _load_from_h5(group):
         if "scan" not in group.keys():
@@ -1983,7 +2275,13 @@ class Scan:
                 parameter[parname]["attributes"] = {}
                 for att_name, att_data in pargroup["attributes"].items():
                     parameter[parname]["attributes"][att_name] = att_data[()]
-        return parameter, step_lengths
+        grid_specs = None
+        if "grid_specs" in group["scan"].keys():
+            try:
+                grid_specs = hickle.load(group["scan"], path="grid_specs")
+            except Exception:
+                grid_specs = None
+        return parameter, step_lengths, grid_specs
 
     def __repr__(self):
         s = "Scan over {} steps".format(len(self))
@@ -2088,7 +2386,6 @@ def compute(*args):
                     index=ta.index,
                     step_lengths=ta.scan.step_lengths,
                     parameter=ta.scan.parameter,
-                    index_dim=ta.index_dim,
                 )
             )
             next_dask_index += 1
@@ -2263,7 +2560,7 @@ def get_lock():
         return True
 
 
-def concatenate(arraylist):
+def concatenate(arraylist, grid_specs=None):
     if all([ta.is_dask_array() for ta in arraylist]):
         data = da.concatenate([array.data for array in arraylist], axis=0)
     else:
@@ -2290,7 +2587,13 @@ def concatenate(arraylist):
                     )
         step_lengths.extend(list(array.scan.step_lengths))
 
-    return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
+    return Array(
+        data=data,
+        index=index,
+        parameter=parameter,
+        step_lengths=step_lengths,
+        grid_specs=grid_specs,
+    )
 
 
 def match_indexes(ids_master, ids_slaves, stepLengths_master=None):
@@ -2311,6 +2614,37 @@ def match_indexes(ids_master, ids_slaves, stepLengths_master=None):
     else:
         stepLensNew = None
     return inds_master, inds_slaves, stepLensNew
+
+
+def intersect_indexes(ids_all,stepLengths_all):
+    # main format checks of input
+    if not len(ids_all) == len(stepLengths_all):
+        raise Exception("Length of ids_all and stepLengths_all needs to fit!")
+    if not all(len(tid)==sum(tsl) for tid, tsl in zip(ids_all, stepLengths_all)):
+        raise Exception("Length of ids_all entries needs to fit stepLengths_all entries!")
+
+    ixgr = []
+    slgr = []
+
+    shape = [len(tsl) for tsl in stepLengths_all]
+    gixl = [np.ravel(t) for t in np.indices(shape)]
+
+    for n in range(len(gixl[0])):
+        sets = []
+        for ids, stepLengths,i in zip(ids_all,stepLengths_all, gixl):
+            sets.append(set(ids[sum(stepLengths[:i[n]]):sum(stepLengths[:(i[n]+1)])]))
+        tsec = set.intersection(*sets)
+        ixgr += list(tsec)
+        slgr.append(len(tsec))
+
+
+    return ixgr, slgr, shape
+
+
+
+    
+    
+
 
 
 def get_unique_indexes(index, array_data, stepLengths=None, delete_Ids=[0]):
@@ -2334,7 +2668,9 @@ def get_scan_step_selections(ix, stepLengths, scan=None):
     stepLengths = stepLengths[validsteps]
     if scan:
         scan = Scan(
-            parameter=scan.get_parameter_selection(validsteps), step_lengths=stepLengths
+            parameter=scan.get_parameter_selection(validsteps), 
+            step_lengths=stepLengths, 
+            grid_specs=scan.grid.get_grid_specs() if hasattr(scan, "grid") else None,
         )
     return stepLengths, scan
 
@@ -2448,15 +2784,32 @@ def digitize(
     )
 
 
-def unravel_arrays(*arrays):
-    """Unravel multiple escape arrays to 1D arrays, matching their indexes.
+def unravel_arrays(*arrays, categorize_target=None):
+    """Unravel multiple escape arrays to a sorter array spanning out the dimensions of the arrays.
 
     Args:
-        *arrays: arbitrary number of escape arrays."""
-    indexes = [array.index for array in arrays]
-    ixmaster, ixslaves, stepLengthsNew = match_indexes(
-        arrays[0].index, [t.index for t in arrays[1:]]
-    )
+        *arrays: arbitrary number of escape arrays.
+        categorize_target: optional argument to categorize the resulting array according to a target array, e.g. for coloring in plots.
+        Returns:
+            escape.Array: The unraveled array.
+    """
+    
+    ixs = []
+    sls = []
+    for array in arrays:
+        ixs.append(array.index)
+        sls.append(array.scan.step_lengths)
+    
+    ixgr, slgr, shape = intersect_indexes(ixs, sls)
+
+
+
+    index_sort_array = Array(index=ixgr, data=ixgr, step_lengths=slgr)
+
+    if categorize_target:
+        return index_sort_array.categorize(categorize_target)
+    else:
+        return index_sort_array
 
 
 def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):
@@ -2482,7 +2835,6 @@ def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):
         data=array.data[ix],
         index=array.index[ix],
         step_lengths=stepLengths,
-        index_dim=array.index_dim,
         parameter=scan.parameter,
     )
 
