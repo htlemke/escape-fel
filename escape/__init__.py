@@ -6,6 +6,12 @@ a high level, object oriented framework which abstracs event processing to high 
 
 """
 
+try:
+    from importlib.metadata import version, PackageNotFoundError
+    __version__ = version("escape-fel")
+except PackageNotFoundError:
+    __version__ = "unknown"
+
 import escape.storage as storage
 
 from escape.storage import (
@@ -18,6 +24,10 @@ from escape.storage import (
     compute,
     match_arrays,
     escaped,
+    unravel_scans,
+    unravel_arrays,  # backward-compat alias for unravel_scans
+    digitize,
+    filter,
 )
 
 from escape.storage.dataset import DataSet, merge_datasets, convert_resultsfile

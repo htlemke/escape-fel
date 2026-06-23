@@ -1,0 +1,812 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Module-Level Functions" href="functions.html"><link rel="prev" title="Array" href="array.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Scan - escape-fel 0.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0071bc;
+  --color-brand-content: #0071bc;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">escape-fel 0.0.1 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">escape-fel 0.0.1 documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concepts.html">Core Concepts</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/array_basics.html">The Array Object</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/array_operations.html">Array Sorting and Operations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/scan.html">Scan Steps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/grid.html">Grid — Multi-Dimensional Scans</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/dataset.html">DataSet — Managed Storage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/custom_processing.html">Custom Processing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../examples/quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/pump_probe.html">Pump-Probe Analysis Example</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="array.html">Array</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Scan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="functions.html">Module-Level Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="dataset.html">DataSet</a></li>
+<li class="toctree-l2"><a class="reference internal" href="example_data.html">Example Data Generators</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/api/scan.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="scan">
+<h1>Scan<a class="headerlink" href="#scan" title="Link to this heading">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="escape.Scan">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">escape.</span></span><span class="sig-name descname"><span class="pre">Scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_lengths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">array</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_specs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Scan grouping of an Array across defined steps and optional grid metadata.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Scan</span></code> partitions an <code class="docutils literal notranslate"><span class="pre">Array</span></code> into sequential steps defined by
+<code class="docutils literal notranslate"><span class="pre">step_lengths</span></code> and exposes step-level metadata through <code class="docutils literal notranslate"><span class="pre">parameter</span></code>.
+When <code class="docutils literal notranslate"><span class="pre">grid_specs</span></code> is provided, <code class="docutils literal notranslate"><span class="pre">Scan</span></code> also constructs a <code class="docutils literal notranslate"><span class="pre">Grid</span></code> that
+maps scan steps onto an N-D grid layout.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>parameter: Metadata describing step parameters and values.
+step_lengths: List of integer lengths for each scan step.
+array: Underlying <code class="docutils literal notranslate"><span class="pre">Array</span></code> instance for this scan.
+data: Optional raw data used directly by the scan.
+grid_specs: Optional grid metadata forwarded to <code class="docutils literal notranslate"><span class="pre">Grid</span></code>.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.__getitem__">
+<span class="sig-name descname"><span class="pre">__getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_specs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.__getitem__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.__getitem__" title="Link to this definition">¶</a></dt>
+<dd><p>array getter for scan</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_lengths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">array</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_specs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.__init__" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.__len__">
+<span class="sig-name descname"><span class="pre">__len__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.__len__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.__len__" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.all">
+<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.all" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.any">
+<span class="sig-name descname"><span class="pre">any</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.any"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.any" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.append_parameter">
+<span class="sig-name descname"><span class="pre">append_parameter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">{'par_name':</span> <span class="pre">{'values':</span> <span class="pre">&lt;class</span> <span class="pre">'list'&gt;}}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.append_parameter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.append_parameter" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.append_step">
+<span class="sig-name descname"><span class="pre">append_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_length</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.append_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.append_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.average">
+<span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.average"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.average" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.corr_ana_plot">
+<span class="sig-name descname"><span class="pre">corr_ana_plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">referece</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scanpar_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.corr_ana_plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.corr_ana_plot" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.correlation_analysis_to">
+<span class="sig-name descname"><span class="pre">correlation_analysis_to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ref</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.correlation_analysis_to"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.correlation_analysis_to" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.count">
+<span class="sig-name descname"><span class="pre">count</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.count" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.get_parameter_array">
+<span class="sig-name descname"><span class="pre">get_parameter_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.get_parameter_array"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.get_parameter_array" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.get_parameter_selection">
+<span class="sig-name descname"><span class="pre">get_parameter_selection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">selection</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.get_parameter_selection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.get_parameter_selection" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.get_step_array">
+<span class="sig-name descname"><span class="pre">get_step_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_specs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.get_step_array"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.get_step_array" title="Link to this definition">¶</a></dt>
+<dd><p>array getter for scan</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.get_step_data">
+<span class="sig-name descname"><span class="pre">get_step_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.get_step_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.get_step_data" title="Link to this definition">¶</a></dt>
+<dd><p>data getter for scan</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.get_step_indexes">
+<span class="sig-name descname"><span class="pre">get_step_indexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ix_step</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.get_step_indexes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.get_step_indexes" title="Link to this definition">¶</a></dt>
+<dd><p>“array getter for multiple steps, more efficient than get_step_array</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.hist">
+<span class="sig-name descname"><span class="pre">hist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cut_percentage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize_to</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scanpar_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_results</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.hist"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.hist" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.max">
+<span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.max"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.mean">
+<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.mean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.mean" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.median">
+<span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.median"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.median" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.median_and_mad">
+<span class="sig-name descname"><span class="pre">median_and_mad</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k_dist</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.4826</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.median_and_mad"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.median_and_mad" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate median and median absolute deviation for steps of a scan.</p>
+<dl>
+<dt>Args:</dt><dd><p>axis (int, sequence of int, None, optional): axis argument for median calls.
+k_dist (float, optional): distribution scale factor, should be</p>
+<blockquote>
+<div><p>1 for real MAD.
+Defaults to 1.4826 for gaussian distribution.</p>
+</div></blockquote>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.merge_scans">
+<span class="sig-name descname"><span class="pre">merge_scans</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">others</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roundto_interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">par_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.merge_scans"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.merge_scans" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.min">
+<span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.min"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.min" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nancount">
+<span class="sig-name descname"><span class="pre">nancount</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nancount"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nancount" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanmax">
+<span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmax"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmax" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanmean">
+<span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmean" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanmedian">
+<span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmedian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmedian" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanmin">
+<span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmin" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanpercentile">
+<span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanpercentile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanpercentile" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanquantile">
+<span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanquantile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanquantile" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nanstd">
+<span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanstd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanstd" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.nansum">
+<span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nansum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nansum" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="escape.Scan.par_steps">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">par_steps</span></span><a class="headerlink" href="#escape.Scan.par_steps" title="Link to this definition">¶</a></dt>
+<dd><p>pandas.DataFrame with one row per scan step.</p>
+<p>Columns are the scan parameter names (one column per parameter) plus a
+<code class="docutils literal notranslate"><span class="pre">step_length</span></code> column containing the number of events in each step.
+The integer row index corresponds to the step number.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scanpar_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_quantiles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.plot" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.std">
+<span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.std"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.std" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.steps_where">
+<span class="sig-name descname"><span class="pre">steps_where</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_condition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.steps_where"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.steps_where" title="Link to this definition">¶</a></dt>
+<dd><p>Get step indices where condition is true.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>data_condition (function, optional): function which gets data array as input and returns boolean array.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.sum">
+<span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.sum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.sum" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="escape.Scan.tools">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">tools</span></span><a class="headerlink" href="#escape.Scan.tools" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.weighted_avg_and_std">
+<span class="sig-name descname"><span class="pre">weighted_avg_and_std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.weighted_avg_and_std"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.weighted_avg_and_std" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.weighted_stat">
+<span class="sig-name descname"><span class="pre">weighted_stat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.weighted_stat"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.weighted_stat" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<section id="grid">
+<h2>Grid<a class="headerlink" href="#grid" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">escape.storage.storage.</span></span><span class="sig-name descname"><span class="pre">Grid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_dimension_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.__getitem__">
+<span class="sig-name descname"><span class="pre">__getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid.__getitem__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid.__getitem__" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_dimension_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid.__init__" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.average">
+<span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.average" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.correlation_analysis_to">
+<span class="sig-name descname"><span class="pre">correlation_analysis_to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.correlation_analysis_to" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.count">
+<span class="sig-name descname"><span class="pre">count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.count" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.fill_count">
+<span class="sig-name descname"><span class="pre">fill_count</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid.fill_count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid.fill_count" title="Link to this definition">¶</a></dt>
+<dd><p>Return (filled_positions, total_positions, percent_filled).</p>
+<p>filled_positions is the number of unique grid indices present in the
+associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.get_grid_indices">
+<span class="sig-name descname"><span class="pre">get_grid_indices</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid.get_grid_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid.get_grid_indices" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.get_grid_specs">
+<span class="sig-name descname"><span class="pre">get_grid_specs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid.get_grid_specs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid.get_grid_specs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.max">
+<span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.mean">
+<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.mean" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.median">
+<span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.median" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.median_and_mad">
+<span class="sig-name descname"><span class="pre">median_and_mad</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.median_and_mad" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.min">
+<span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.min" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nancount">
+<span class="sig-name descname"><span class="pre">nancount</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nancount" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmax">
+<span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmax" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmean">
+<span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmean" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmedian">
+<span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmedian" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmin">
+<span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmin" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanpercentile">
+<span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanpercentile" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanquantile">
+<span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanquantile" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nanstd">
+<span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanstd" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.nansum">
+<span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nansum" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.std">
+<span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.std" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.sum">
+<span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.sum" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.to_grid">
+<span class="sig-name descname"><span class="pre">to_grid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Grid.to_grid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.Grid.to_grid" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.weighted_avg_and_std">
+<span class="sig-name descname"><span class="pre">weighted_avg_and_std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.weighted_avg_and_std" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.weighted_stats">
+<span class="sig-name descname"><span class="pre">weighted_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.weighted_stats" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="functions.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Module-Level Functions</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="array.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Array</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Henrik Lemke
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Scan</a><ul>
+<li><a class="reference internal" href="#escape.Scan"><code class="docutils literal notranslate"><span class="pre">Scan</span></code></a><ul>
+<li><a class="reference internal" href="#escape.Scan.__getitem__"><code class="docutils literal notranslate"><span class="pre">Scan.__getitem__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.__init__"><code class="docutils literal notranslate"><span class="pre">Scan.__init__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.__len__"><code class="docutils literal notranslate"><span class="pre">Scan.__len__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.all"><code class="docutils literal notranslate"><span class="pre">Scan.all()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.any"><code class="docutils literal notranslate"><span class="pre">Scan.any()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.append_parameter"><code class="docutils literal notranslate"><span class="pre">Scan.append_parameter()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.append_step"><code class="docutils literal notranslate"><span class="pre">Scan.append_step()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.average"><code class="docutils literal notranslate"><span class="pre">Scan.average()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.corr_ana_plot"><code class="docutils literal notranslate"><span class="pre">Scan.corr_ana_plot()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.correlation_analysis_to"><code class="docutils literal notranslate"><span class="pre">Scan.correlation_analysis_to()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.count"><code class="docutils literal notranslate"><span class="pre">Scan.count()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.get_parameter_array"><code class="docutils literal notranslate"><span class="pre">Scan.get_parameter_array()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.get_parameter_selection"><code class="docutils literal notranslate"><span class="pre">Scan.get_parameter_selection()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.get_step_array"><code class="docutils literal notranslate"><span class="pre">Scan.get_step_array()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.get_step_data"><code class="docutils literal notranslate"><span class="pre">Scan.get_step_data()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.get_step_indexes"><code class="docutils literal notranslate"><span class="pre">Scan.get_step_indexes()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.hist"><code class="docutils literal notranslate"><span class="pre">Scan.hist()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.max"><code class="docutils literal notranslate"><span class="pre">Scan.max()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.mean"><code class="docutils literal notranslate"><span class="pre">Scan.mean()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.median"><code class="docutils literal notranslate"><span class="pre">Scan.median()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.median_and_mad"><code class="docutils literal notranslate"><span class="pre">Scan.median_and_mad()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.merge_scans"><code class="docutils literal notranslate"><span class="pre">Scan.merge_scans()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.min"><code class="docutils literal notranslate"><span class="pre">Scan.min()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nancount"><code class="docutils literal notranslate"><span class="pre">Scan.nancount()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanmax"><code class="docutils literal notranslate"><span class="pre">Scan.nanmax()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanmean"><code class="docutils literal notranslate"><span class="pre">Scan.nanmean()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanmedian"><code class="docutils literal notranslate"><span class="pre">Scan.nanmedian()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanmin"><code class="docutils literal notranslate"><span class="pre">Scan.nanmin()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanpercentile"><code class="docutils literal notranslate"><span class="pre">Scan.nanpercentile()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanquantile"><code class="docutils literal notranslate"><span class="pre">Scan.nanquantile()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nanstd"><code class="docutils literal notranslate"><span class="pre">Scan.nanstd()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.nansum"><code class="docutils literal notranslate"><span class="pre">Scan.nansum()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.par_steps"><code class="docutils literal notranslate"><span class="pre">Scan.par_steps</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.plot"><code class="docutils literal notranslate"><span class="pre">Scan.plot()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.std"><code class="docutils literal notranslate"><span class="pre">Scan.std()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.steps_where"><code class="docutils literal notranslate"><span class="pre">Scan.steps_where()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.sum"><code class="docutils literal notranslate"><span class="pre">Scan.sum()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.tools"><code class="docutils literal notranslate"><span class="pre">Scan.tools</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.weighted_avg_and_std"><code class="docutils literal notranslate"><span class="pre">Scan.weighted_avg_and_std()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.weighted_stat"><code class="docutils literal notranslate"><span class="pre">Scan.weighted_stat()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#grid">Grid</a><ul>
+<li><a class="reference internal" href="#escape.storage.storage.Grid"><code class="docutils literal notranslate"><span class="pre">Grid</span></code></a><ul>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.__getitem__"><code class="docutils literal notranslate"><span class="pre">Grid.__getitem__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.__init__"><code class="docutils literal notranslate"><span class="pre">Grid.__init__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.average"><code class="docutils literal notranslate"><span class="pre">Grid.average()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.correlation_analysis_to"><code class="docutils literal notranslate"><span class="pre">Grid.correlation_analysis_to()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.count"><code class="docutils literal notranslate"><span class="pre">Grid.count()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.fill_count"><code class="docutils literal notranslate"><span class="pre">Grid.fill_count()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.get_grid_indices"><code class="docutils literal notranslate"><span class="pre">Grid.get_grid_indices()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.get_grid_specs"><code class="docutils literal notranslate"><span class="pre">Grid.get_grid_specs()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.max"><code class="docutils literal notranslate"><span class="pre">Grid.max()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.mean"><code class="docutils literal notranslate"><span class="pre">Grid.mean()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.median"><code class="docutils literal notranslate"><span class="pre">Grid.median()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.median_and_mad"><code class="docutils literal notranslate"><span class="pre">Grid.median_and_mad()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.min"><code class="docutils literal notranslate"><span class="pre">Grid.min()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nancount"><code class="docutils literal notranslate"><span class="pre">Grid.nancount()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanmax"><code class="docutils literal notranslate"><span class="pre">Grid.nanmax()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanmean"><code class="docutils literal notranslate"><span class="pre">Grid.nanmean()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanmedian"><code class="docutils literal notranslate"><span class="pre">Grid.nanmedian()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanmin"><code class="docutils literal notranslate"><span class="pre">Grid.nanmin()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanpercentile"><code class="docutils literal notranslate"><span class="pre">Grid.nanpercentile()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanquantile"><code class="docutils literal notranslate"><span class="pre">Grid.nanquantile()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nanstd"><code class="docutils literal notranslate"><span class="pre">Grid.nanstd()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.nansum"><code class="docutils literal notranslate"><span class="pre">Grid.nansum()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.std"><code class="docutils literal notranslate"><span class="pre">Grid.std()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.sum"><code class="docutils literal notranslate"><span class="pre">Grid.sum()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.to_grid"><code class="docutils literal notranslate"><span class="pre">Grid.to_grid()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.weighted_avg_and_std"><code class="docutils literal notranslate"><span class="pre">Grid.weighted_avg_and_std()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.weighted_stats"><code class="docutils literal notranslate"><span class="pre">Grid.weighted_stats()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    </body>
+</html>

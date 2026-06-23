@@ -82,6 +82,72 @@ def _apply_method(
         )
 
 
+# ---------------------------------------------------------------------------
+# Programmatic numpy/dask method injection for Array
+# ---------------------------------------------------------------------------
+# Table: method_name -> (np_func, da_func_or_None, axis_kw, esc_out)
+#   axis_kw=True  → convertesc_axis_kw=True  (reduction: wrapping depends on axis)
+#   esc_out=[0]   → convertOutput2EscData=[0] (element-wise: always wrap output)
+_ARRAY_DELEGATE_METHODS = {
+    # Reductions — wrapping depends on whether event axis is collapsed
+    "nansum":        (np.nansum,        da.nansum,        True,  None),
+    "nanmean":       (np.nanmean,       da.nanmean,       True,  None),
+    "nanstd":        (np.nanstd,        da.nanstd,        True,  None),
+    "nanmedian":     (np.nanmedian,     None,             True,  None),
+    "nanmin":        (np.nanmin,        da.nanmin,        True,  None),
+    "nanmax":        (np.nanmax,        da.nanmax,        True,  None),
+    "nanpercentile": (np.nanpercentile, None,             True,  None),
+    "nanquantile":   (np.nanquantile,   None,             True,  None),
+    "sum":           (np.sum,           da.sum,           True,  None),
+    "mean":          (np.mean,          da.mean,          True,  None),
+    "average":       (np.average,       da.average,       True,  None),
+    "std":           (np.std,           da.std,           True,  None),
+    "median":        (np.median,        None,             True,  None),
+    "percentile":    (np.percentile,    None,             True,  None),
+    "quantile":      (np.quantile,      None,             True,  None),
+    "min":           (np.min,           da.min,           True,  None),
+    "max":           (np.max,           da.max,           True,  None),
+    "all":           (np.all,           da.all,           True,  None),
+    "any":           (np.any,           da.any,           True,  None),
+    "abs":           (np.abs,           da.abs,           True,  None),
+    # Element-wise — always returns an Array with the same shape
+    "isnan":         (np.isnan,         da.isnan,         False, [0]),
+    "isinf":         (np.isinf,         da.isinf,         False, [0]),
+    "isfinite":      (np.isfinite,      da.isfinite,      False, [0]),
+}
+
+
+def _make_array_method(name, np_func, da_func, axis_kw, esc_out):
+    """Factory: build an Array method that delegates to a numpy/dask function."""
+    np_summary = next(
+        (line.strip() for line in (np_func.__doc__ or "").split("\n") if line.strip()), ""
+    )
+    if esc_out:
+        doc = (
+            f"Apply :func:`numpy.{name}` element-wise to this Array's data.\n\n"
+            f"{np_summary}\n\n"
+            "Returns an :class:`Array` with the same index and scan structure."
+        )
+        kw = {"convertOutput2EscData": esc_out}
+    else:
+        doc = (
+            f"Apply :func:`numpy.{name}` to this Array's data.\n\n"
+            f"{np_summary}\n\n"
+            "Omitting ``axis`` or passing ``axis=0`` reduces over events and "
+            "returns a plain numpy/dask result. Pass ``axis=N`` (N > 0) to "
+            "reduce along a non-event axis and receive a new :class:`Array`."
+        )
+        kw = {"convertesc_axis_kw": True}
+
+    def method(self, *args, **kwargs):
+        return _apply_method(np_func, da_func, self, self.is_dask_array(), *args, **kw, **kwargs)
+
+    method.__name__ = name
+    method.__qualname__ = f"Array.{name}"
+    method.__doc__ = doc
+    return method
+
+
 class Array:
     """nd array data wrapper with optional scan metadata and grid support.
 
@@ -194,259 +260,12 @@ class Array:
     def is_dask_array(self):
         return isinstance(self.data, da.Array)
 
-    def nansum(self, *args, **kwargs):
-        return _apply_method(
-            np.nansum,
-            da.nansum,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
+    # numpy/dask reduction and element-wise methods are injected below the class
+    # definition via _ARRAY_DELEGATE_METHODS + _make_array_method.
 
-    def nanmean(self, *args, **kwargs):
-        return _apply_method(
-            np.nanmean,
-            da.nanmean,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            # convertOutput2EscData=[0],
-            **kwargs,
-        )
-
-    def nanstd(self, *args, **kwargs):
-        return _apply_method(
-            np.nanstd,
-            da.nanstd,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def nanmedian(self, *args, **kwargs):
-        return _apply_method(
-            np.nanmedian,
-            None,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def nanmin(self, *args, **kwargs):
-        return _apply_method(
-            np.nanmin,
-            da.nanmin,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def nanmax(self, *args, **kwargs):
-        return _apply_method(
-            np.nanmax,
-            da.nanmax,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def sum(self, *args, **kwargs):
-        return _apply_method(
-            np.sum,
-            da.sum,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def isnan(self, *args, **kwargs):
-        return _apply_method(
-            np.isnan,
-            da.isnan,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertOutput2EscData=[0],
-            **kwargs,
-        )
-
-    def isinf(self, *args, **kwargs):
-        return _apply_method(
-            np.isinf,
-            da.isinf,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertOutput2EscData=[0],
-            **kwargs,
-        )
-
-    def isfinite(self, *args, **kwargs):
-        return _apply_method(
-            np.isfinite,
-            da.isfinite,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertOutput2EscData=[0],
-            **kwargs,
-        )
-
-    def mean(self, *args, **kwargs):
-        return _apply_method(
-            np.mean,
-            da.mean,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def average(self, *args, **kwargs):
-        return _apply_method(
-            np.average,
-            da.average,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def std(self, *args, **kwargs):
-        return _apply_method(
-            np.std,
-            da.std,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def median(self, *args, **kwargs):
-        return _apply_method(
-            np.median,
-            None,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def min(self, *args, **kwargs):
-        return _apply_method(
-            np.min,
-            da.min,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def max(self, *args, **kwargs):
-        return _apply_method(
-            np.max,
-            da.max,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def all(self, *args, **kwargs):
-        return _apply_method(
-            np.all,
-            da.all,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def any(self, *args, **kwargs):
-        return _apply_method(
-            np.any,
-            da.any,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def abs(self, *args, **kwargs):
-        return _apply_method(
-            np.abs,
-            da.abs,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def percentile(self, *args, **kwargs):
-        return _apply_method(
-            np.percentile,
-            None,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def quantile(self, *args, **kwargs):
-        return _apply_method(
-            np.quantile,
-            None,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def nanpercentile(self, *args, **kwargs):
-        return _apply_method(
-            np.nanpercentile,
-            None,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
-
-    def nanquantile(self, *args, **kwargs):
-        return _apply_method(
-            np.nanquantile,
-            None,
-            self,
-            self.is_dask_array(),
-            *args,
-            convertesc_axis_kw=True,
-            **kwargs,
-        )
+    def nancount(self):
+        """Return the number of finite (non-NaN) events in this Array."""
+        return int(np.sum(~np.isnan(self.data.compute() if self.is_dask_array() else self.data)))
 
     def filter(self, *args, **kwargs):
         return filter(self, *args, **kwargs)
@@ -460,9 +279,40 @@ class Array:
         return self[out_bool]
 
     def update(self, array):
-        """Update one escape array from another. Only array elements not
-        existing  in the present array will be added to it."""
-        pass
+        """Merge *array* into this Array, adding only events with new pulse IDs.
+
+        Events already present in ``self`` (matched by pulse ID) are ignored;
+        new events are appended as additional scan steps so that the existing
+        scan structure is preserved and the new events keep their own step
+        grouping.  Intended for incremental accumulation during acquisition —
+        call repeatedly with newer snapshots to build up a complete dataset.
+
+        Parameters
+        ----------
+        array : escape.Array
+            Source Array whose new events will be added to this one.
+
+        Returns
+        -------
+        escape.Array
+            New Array containing all events from ``self`` plus any events in
+            *array* whose pulse ID was absent from ``self``.  Returns ``self``
+            unchanged (same object) if *array* contributes no new events.
+        """
+        new_mask = ~np.isin(array.index, self.index)
+        if not new_mask.any():
+            return self
+        new_positions = new_mask.nonzero()[0]
+        _, new_scan = get_scan_step_selections(
+            new_positions, array.scan.step_lengths, scan=array.scan
+        )
+        new_part = Array(
+            data=array.data[new_mask],
+            index=array.index[new_mask],
+            step_lengths=new_scan.step_lengths,
+            parameter=new_scan.parameter,
+        )
+        return concatenate([self, new_part])
 
     def correlation_analysis_to(self, ref, order=2):
         td, tr = match_arrays(self, ref)
@@ -474,6 +324,34 @@ class Array:
         return len(self.index)
 
     def categorize(self, other_array):
+        """Re-sort and re-group *other_array* to match this Array's index ordering
+        and scan-step boundaries.
+
+        The returned Array contains *other_array*'s data values at the pulse IDs
+        that are common to both arrays, ordered and grouped exactly as *self*.
+        This is the primary tool for applying a new grouping (obtained e.g. via
+        :meth:`digitize` or :meth:`get_index_array`) to another channel.
+
+        Parameters
+        ----------
+        other_array : escape.Array
+            The array to re-sort.
+
+        Returns
+        -------
+        escape.Array
+            *other_array* restricted to the common pulse IDs and re-grouped
+            according to *self*'s scan structure.
+
+        Notes
+        -----
+        Equivalent to ``escape.match_arrays(self, other_array)[1]``.
+
+        Examples
+        --------
+        >>> time_bins = sig.get_index_array(N_index_aggregation=1000)
+        >>> i0_rebinned = time_bins.categorize(i0)
+        """
         return match_arrays(self, other_array)[1]
 
     def __getitem__(self, *args, **kwargs):
@@ -583,15 +461,29 @@ class Array:
             parameter=self.scan.parameter,
         )
 
-    def ravel_event_data(self, *args):
-        if not args:
-            axes = tuple(range(self.ndim - 1, -1, -1))
-        elif len(args) == 1:
-            axes = args[0]
-        else:
-            axes = args
+    def ravel_event_data(self):
+        """Flatten all non-event axes into a single dimension per event.
+
+        Converts an Array of shape ``(N, d1, d2, ...)`` to
+        ``(N, d1*d2*...)``, preserving the event axis and scan structure.
+        Useful for feeding multi-dimensional detector data into functions
+        that expect a 1-D value per event.
+
+        Returns
+        -------
+        escape.Array
+            Array with shape ``(N, d1*d2*...)``.
+
+        Examples
+        --------
+        >>> imgs.shape                   # (500, 64, 64)
+        >>> flat = imgs.ravel_event_data()
+        >>> flat.shape                   # (500, 4096)
+        """
+        n_events = self.shape[self.index_dim]
+        new_data = self.data.reshape(n_events, -1)
         return Array(
-            data=self.data.transpose(*args),
+            data=new_data,
             index=self.index,
             step_lengths=self.scan.step_lengths,
             parameter=self.scan.parameter,
@@ -602,6 +494,25 @@ class Array:
         return self.transpose()
 
     def compute(self, **kwargs):
+        """Evaluate the dask graph and return a new Array backed by a NumPy array.
+
+        No-op when the data is already a NumPy array (returns *self* with a
+        message).  All index and scan metadata are preserved.
+
+        Parameters
+        ----------
+        **kwargs
+            Forwarded to :func:`dask.array.Array.compute`.
+
+        Returns
+        -------
+        escape.Array
+            Same Array with NumPy data instead of a dask graph.
+
+        See Also
+        --------
+        escape.compute : Compute several Arrays in one dask scheduler pass.
+        """
         if self.is_dask_array():
             with ProgressBar():
                 return Array(
@@ -633,8 +544,61 @@ class Array:
         event_dim="same",
         **kwargs,
     ):
-        """map a function which works for a chunk of the Array
-        (events along index_dim). This is only really relevant for dask array array data.
+        """Apply *foo* block-wise over the event axis using dask's ``map_blocks``.
+
+        The function ``foo`` receives a **raw NumPy array** (one dask chunk
+        along the event axis) and returns a NumPy array.  The result is
+        assembled back into a lazy dask-backed :class:`Array` with the same
+        index and scan metadata.
+
+        This is the preferred way to apply arbitrary NumPy or SciPy functions
+        (gain correction, thresholding, peak fitting, …) to large detector data
+        without loading everything into memory.
+
+        Parameters
+        ----------
+        foo : callable
+            ``f(block, *args, **kwargs) -> ndarray``.  *block* has shape
+            ``(n_events_in_chunk, *element_shape)``.
+        *args
+            Extra positional arguments forwarded to ``foo``.
+        drop_axis : int or list of int, optional
+            Axes to remove from the output (forwarded to ``dask.map_blocks``).
+        new_axis : int or list of int, optional
+            New axes to add to the output.
+        new_element_size : list of int, optional
+            Shape of each per-event element in the output (excluding the event
+            axis).  Required when ``foo`` changes the per-event shape.
+        **kwargs
+            Extra keyword arguments forwarded to ``foo``.
+
+        Returns
+        -------
+        escape.Array
+            Lazy Array with the transformed data.
+
+        Examples
+        --------
+        Threshold pixels below 4 keV to NaN::
+
+            def threshold(block, thr):
+                out = block.copy()
+                out[out < thr] = np.nan
+                return out
+
+            imgs_clean = imgs.map_index_blocks(threshold, 4.0)
+
+        Extract two scalars per event (change per-event shape)::
+
+            posamp = tt_proj.map_index_blocks(
+                lambda block: np.array([find_edge(row) for row in block]),
+                new_element_size=(2,),
+                dtype=float,
+            )
+
+        Notes
+        -----
+        Formerly called ``map_event_blocks`` in older versions of ``escape``.
         """
 
         # Test: creating Source instance for origin tracking
@@ -833,6 +797,36 @@ class Array:
             return ""
 
     def get_index_array(self, N_index_aggregation=None):
+        """Return an Array whose data equals its own index (pulse IDs), optionally
+        grouped into contiguous bins.
+
+        Without aggregation this is a simple 1-D Array where ``data == index``,
+        useful as an "identity" sorter.  With *N_index_aggregation* the pulse IDs
+        are binned into groups of width *N_index_aggregation* index units
+        (typically pulse IDs), creating a coarser time-ordered grouping.
+
+        Parameters
+        ----------
+        N_index_aggregation : int, optional
+            Width of each pulse-ID bin.  If *None* no binning is applied.
+
+        Returns
+        -------
+        escape.Array
+            1-D Array with ``data == index`` (before any binning).
+
+        Notes
+        -----
+        The resulting Array can be used with :meth:`categorize` to apply the new
+        grouping to any other channel:
+
+        Examples
+        --------
+        >>> # Group into bins of 1000 consecutive pulse IDs
+        >>> time_bins = sig.get_index_array(N_index_aggregation=1000)
+        >>> sig_rebinned = time_bins.categorize(sig)
+        >>> i0_rebinned  = time_bins.categorize(i0)
+        """
         if N_index_aggregation:
             tmp = Array(data=self.index, index=self.index)
             return tmp.digitize(
@@ -844,6 +838,7 @@ class Array:
     def correct_for_references(
         self, isref_bool, N_index_aggregation=None, operation=operator.truediv
     ):
+        # TODO: incomplete — `indsrt` and `ref` are undefined; implementation needed.
         refs = self[isref_bool]
         noref = self[~isref_bool]
         indxs = self.get_index_array(N_index_aggregation=N_index_aggregation)
@@ -1082,6 +1077,12 @@ class Array:
     #     return s
 
 
+# Inject numpy/dask delegate methods into Array
+for _name, (_np, _da, _ax, _esc) in _ARRAY_DELEGATE_METHODS.items():
+    setattr(Array, _name, _make_array_method(_name, _np, _da, _ax, _esc))
+del _name, _np, _da, _ax, _esc  # keep module namespace tidy
+
+
 def load_from_h5_file(file_name, name, parent_group_name=""):
     h5 = ArrayH5File(
         file_name=file_name, parent_group_name=parent_group_name, name=name
@@ -1112,6 +1113,50 @@ def load_from_h5(parent_h5py, name):
 
 
 def escaped(func, convertOutput2EscData="auto"):
+    """Decorator that lifts a NumPy/dask function to operate on escape Arrays.
+
+    When *any* positional or keyword argument is an :class:`Array`, the
+    decorator automatically:
+
+    1. Finds the intersection of all Array indices.
+    2. Aligns (re-indexes) every Array argument to the common pulse IDs,
+       using the **first** Array found as the ordering reference.
+    3. Passes the aligned *raw data* arrays to ``func``.
+    4. Wraps each output whose length matches the number of common events back
+       into a new :class:`Array` carrying the correct index and scan metadata.
+
+    Non-Array arguments are passed through unchanged.
+
+    Parameters
+    ----------
+    func : callable
+        Any function that accepts NumPy or dask arrays.
+    convertOutput2EscData : "auto" or list of int
+        Which output positions to wrap as Arrays.  ``"auto"`` (default) wraps
+        every output whose length equals the number of common events.  Pass a
+        list of integer indices (e.g. ``[0]``) to wrap only specific outputs.
+
+    Returns
+    -------
+    callable
+        Wrapped function with the same signature as ``func``, plus an optional
+        ``escSorter`` keyword to override the master Array (default: first Array
+        found in the argument list).
+
+    Examples
+    --------
+    Decorate a function at definition time::
+
+        @escape.escaped
+        def normalise(signal, reference):
+            return signal / reference
+
+        sig_norm = normalise(sig, i0)   # sig_norm is an escape.Array
+
+    Or apply to an existing NumPy function::
+
+        my_polyfit = escape.escaped(np.polyfit)
+    """
     def wrapped(
         *args, escSorter="first", convertOutput2EscData=convertOutput2EscData, **kwargs
     ):
@@ -1553,31 +1598,27 @@ class Grid:
         filled, total, percent = self.fill_count()
         dims = self.dimension_names if self.dimension_names is not None else []
         return f"<Grid shape={tuple(self.shape)} dims={dims} filled={filled}/{total} ({percent:0.1f}%)>"
-    
-    
-    
+
+
+# Names must match methods on Array (injected by _ARRAY_DELEGATE_METHODS) and Scan.
+_SCAN_STEP_DELEGATE = [
+    "nansum", "nanmean", "nanstd", "nanmedian", "nanmin", "nanmax",
+    "nanpercentile", "nanquantile",
+    "sum", "mean", "average", "std", "median",
+    "percentile", "quantile",
+    "min", "max", "all", "any",
+    "abs", "isnan", "isinf", "isfinite",
+]
+
 SCAN_STEP_METHODS = [
-            "nansum",
-            "nanmean",
-            "nanstd",
-            "nanmedian",
-            "nanpercentile",
-            "nanquantile",
-            "nanmin",
-            "nanmax",
-            "sum",
-            "mean",
-            "average",
-            "std",
-            "median",
-            "min",
-            "max",
+            *_SCAN_STEP_DELEGATE,
+            # escape-specific aggregators
             "count",
             "nancount",
             "median_and_mad",
             # "weighted_median_and_mad",
             "weighted_avg_and_std",
-            "weighted_stats",
+            "weighted_stat",
             "correlation_analysis_to",
         ]
 
@@ -1748,79 +1789,62 @@ class Scan:
 
     @property
     def par_steps(self):
+        """pandas.DataFrame with one row per scan step.
+
+        Columns are the scan parameter names (one column per parameter) plus a
+        ``step_length`` column containing the number of events in each step.
+        The integer row index corresponds to the step number.
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
         data = {name: value["values"] for name, value in self.parameter.items()}
         data.update({"step_length": self.step_lengths})
         return pd.DataFrame(data, index=list(range(len(self))))
 
-    def steps_where(self, data_condition=None):
-        """Get step indices where condition is true.
+    def steps_where(self, data_condition):
+        """Return an Array containing only the steps where *data_condition* is True.
 
-        Args:
-            data_condition (function, optional): function which gets data array as input and returns boolean array.
+        Similar to ``np.where`` but operating at the level of scan steps: each
+        step is tested and only the passing steps are kept, with their scan
+        metadata preserved.
+
+        Parameters
+        ----------
+        data_condition : callable
+            ``f(step: Array) -> bool``.  Called once per step with the step's
+            :class:`Array`; steps for which it returns a truthy value are
+            included in the result.
+
+        Returns
+        -------
+        escape.Array
+            Array whose scan contains only the steps that passed the condition.
+
+        Examples
+        --------
+        Keep only steps whose per-step median exceeds 0.5::
+
+            result = sig.scan.steps_where(lambda step: np.nanmedian(step.data) > 0.5)
+
+        Keep only steps that have at least 50 events::
+
+            result = sig.scan.steps_where(lambda step: len(step) >= 50)
         """
-        if data_condition is not None:
-            ix_data = [data_condition(tdata) for tdata in self.get_step_data()]
-
-        return self[ix_data]
-
-    def nansum(self, *args, **kwargs):
-        return [step.nansum(*args, **kwargs) for step in self]
-
-    def nanmean(self, *args, **kwargs):
-        return [step.nanmean(*args, **kwargs) for step in self]
-
-    def nanstd(self, *args, **kwargs):
-        return [step.nanstd(*args, **kwargs) for step in self]
-
-    def nanmedian(self, *args, **kwargs):
-        return [step.nanmedian(*args, **kwargs) for step in self]
-
-    def nanpercentile(self, *args, **kwargs):
-        return [step.nanpercentile(*args, **kwargs) for step in self]
-
-    def nanquantile(self, *args, **kwargs):
-        return [step.nanquantile(*args, **kwargs) for step in self]
-
-    def nanmin(self, *args, **kwargs):
-        return [step.nanmin(*args, **kwargs) for step in self]
-
-    def nanmax(self, *args, **kwargs):
-        return [step.nanmax(*args, **kwargs) for step in self]
-
-    def sum(self, *args, **kwargs):
-        return [step.sum(*args, **kwargs) for step in self]
-
-    def mean(self, *args, **kwargs):
-        return [step.mean(*args, **kwargs) for step in self]
-
-    def average(self, *args, **kwargs):
-        return [step.average(*args, **kwargs) for step in self]
-
-    def std(self, *args, **kwargs):
-        return [step.std(*args, **kwargs) for step in self]
-
-    def median(self, *args, **kwargs):
-        return [step.median(*args, **kwargs) for step in self]
-
-    def min(self, *args, **kwargs):
-        return [step.min(*args, **kwargs) for step in self]
-
-    def max(self, *args, **kwargs):
-        return [step.max(*args, **kwargs) for step in self]
-
-    def any(self, *args, **kwargs):
-        return [step.any(*args, **kwargs) for step in self]
-
-    def all(self, *args, **kwargs):
-        return [step.all(*args, **kwargs) for step in self]
+        step_indices = [n for n, step in enumerate(self) if data_condition(step)]
+        return self[step_indices]
 
     def count(self):
+        """Return the number of events in each scan step as a list."""
         return [len(step) for step in self]
 
     def nancount(self):
+        """Return the number of non-NaN events in each scan step as a list."""
         return [step.nancount() for step in self]
 
-    # TODO
+    # Remaining step-delegation methods (nansum, nanmean, …, all, any) are
+    # injected below the class definition via _SCAN_STEP_DELEGATE + _make_scan_step_method.
 
     def median_and_mad(self, axis=None, k_dist=1.4826, norm_samples=False):
         """Calculate median and median absolute deviation for steps of a scan.
@@ -2331,6 +2355,34 @@ for opSing, symbol in _operatorsSingle:
     setattr(Scan, "__%s__" % opSing.__name__.strip("_"), scan_escaped(opSing))
 
 
+# ---------------------------------------------------------------------------
+# Programmatic step-delegation method injection for Scan
+# ---------------------------------------------------------------------------
+def _make_scan_step_method(name):
+    """Factory: build a Scan method that applies Array.{name} per step."""
+    np_func = getattr(np, name, None)
+    np_summary = next(
+        (line.strip() for line in (np_func.__doc__ or "").split("\n") if line.strip()), ""
+    ) if np_func else ""
+    doc = f"Apply :meth:`Array.{name}` to each scan step.\n\n"
+    if np_summary:
+        doc += f"{np_summary}\n\n"
+    doc += "Returns a list with one result per scan step."
+
+    def method(self, *args, **kwargs):
+        return [getattr(step, name)(*args, **kwargs) for step in self]
+
+    method.__name__ = name
+    method.__qualname__ = f"Scan.{name}"
+    method.__doc__ = doc
+    return method
+
+
+for _name in _SCAN_STEP_DELEGATE:
+    setattr(Scan, _name, _make_scan_step_method(_name))
+del _name
+
+
 def to_dataframe(*args):
     """work in progress"""
     for arg in args:
@@ -2347,6 +2399,27 @@ def to_dataframe(*args):
 
 @escaped
 def match_arrays(*args):
+    """Return a tuple of Arrays restricted to their common pulse IDs.
+
+    All output Arrays share the same index and are ordered by the first
+    argument's pulse-ID sequence.  This is the building block of index-aligned
+    arithmetic in ``escape``.
+
+    Parameters
+    ----------
+    *args : escape.Array
+        Two or more Arrays to align.
+
+    Returns
+    -------
+    tuple of escape.Array
+        One Array per input, all restricted to the common event indices.
+
+    Examples
+    --------
+    >>> sig_m, i0_m = escape.match_arrays(sig, i0)
+    >>> assert (sig_m.index == i0_m.index).all()
+    """
     return args
 
 
@@ -2561,6 +2634,29 @@ def get_lock():
 
 
 def concatenate(arraylist, grid_specs=None):
+    """Concatenate a list of Arrays along the event axis.
+
+    Merges data, indices, and scan metadata (step lengths and parameter values)
+    from all input Arrays into a single Array.  All input Arrays must share the
+    same scan parameter names.
+
+    Parameters
+    ----------
+    arraylist : list of escape.Array
+        Arrays to concatenate.  They must have identical scan parameter keys.
+    grid_specs : dict, optional
+        Grid metadata to attach to the resulting Array.
+
+    Returns
+    -------
+    escape.Array
+        Combined Array whose scan has ``len(arraylist[0].scan) + …`` steps.
+
+    Examples
+    --------
+    >>> combined = escape.concatenate([run1, run2, run3])
+    >>> print(combined.scan.par_steps)
+    """
     if all([ta.is_dask_array() for ta in arraylist]):
         data = da.concatenate([array.data for array in arraylist], axis=0)
     else:
@@ -2784,14 +2880,46 @@ def digitize(
     )
 
 
-def unravel_arrays(*arrays, categorize_target=None):
-    """Unravel multiple escape arrays to a sorter array spanning out the dimensions of the arrays.
+def unravel_scans(*arrays, categorize_target=None):
+    """Create a grid-sorter Array spanning the Cartesian product of multiple scan structures.
 
-    Args:
-        *arrays: arbitrary number of escape arrays.
-        categorize_target: optional argument to categorize the resulting array according to a target array, e.g. for coloring in plots.
-        Returns:
-            escape.Array: The unraveled array.
+    Takes N Arrays that each carry a 1-D scan (one parameter axis each) and
+    produces a single sorter Array whose scan steps correspond to all
+    combinations of those parameter axes — effectively "unravelling" the
+    individual scans into an N-D grid.
+
+    The resulting sorter can be used with :meth:`~escape.Array.categorize` to
+    apply the grid grouping to any other channel.
+
+    Parameters
+    ----------
+    *arrays : escape.Array
+        Two or more Arrays whose scan structures define the grid axes.
+        The number of steps in each Array becomes the size of one grid dimension.
+    categorize_target : escape.Array, optional
+        If provided, immediately :meth:`~escape.Array.categorize` this Array
+        onto the resulting grid and return the categorized result instead of
+        the raw sorter.
+
+    Returns
+    -------
+    escape.Array
+        A sorter Array with ``product(n_steps_per_input)`` scan steps and a
+        :class:`~escape.storage.storage.Grid` attached, or — when
+        *categorize_target* is given — the categorized target Array.
+
+    Examples
+    --------
+    Build a 10 × 8 grid from two independent 1-D scans and compute per-cell
+    means::
+
+        sorter = escape.unravel_scans(scan_a, scan_b)
+        sig_grid = sorter.categorize(sig)
+        means = sig_grid.grid.nanmean()   # shape (10, 8)
+
+    Notes
+    -----
+    Previously named ``unravel_arrays``; that name is kept as a deprecated alias.
     """
     
     ixs = []
@@ -2834,6 +2962,10 @@ def unravel_arrays(*arrays, categorize_target=None):
         return index_sort_array.categorize(categorize_target)
     else:
         return index_sort_array
+
+
+# Backward-compatible alias
+unravel_arrays = unravel_scans
 
 
 def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):

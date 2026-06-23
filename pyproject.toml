@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "escape-fel"
+dynamic = ["version"]
+description = "Event Synchronous Categorisation And Processing Environment — event-based data framework for free-electron lasers"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Henrik Lemke", email = "h.t.lemke@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "dask[array]",
+    "h5py",
+    "zarr",
+    "hickle",
+    "tqdm",
+    "rich",
+    "matplotlib",
+    "pandas",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Homepage = "https://github.com/htlemke/escape-fel"
+Documentation = "https://escape-fel.readthedocs.io"
+Repository = "https://github.com/htlemke/escape-fel"
+Issues = "https://github.com/htlemke/escape-fel/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["escape*"]
+
+[tool.setuptools_scm]
+# version is derived automatically from git tags (v0.1.0 -> 0.1.0)
+# run: git tag v0.1.0 && git push --tags   to trigger a release

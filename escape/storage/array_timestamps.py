@@ -132,13 +132,42 @@ class ArrayTimestamps:
         return method(self.data, *args, **kwargs)
 
     def _append_methods(self):
-        for name in ["mean", "std", "min"]:
-            method = np.__dict__[name]
+        pass  # numpy methods are injected at class-definition time below
 
-            def tmet(self, *args, **kwargs):
-                return self._apply_method(method, *args, **kwargs)
+    def update(self, other):
+        """Merge *other* into this ArrayTimestamps, adding only new timestamped records.
 
-            setattr(type(self), name, tmet)
+        Records already present (matched by exact timestamp value) are ignored;
+        new records are appended and the combined result is sorted by timestamp.
+        Scan step intervals from ``self`` are preserved in the merged object.
+        Intended for incremental accumulation during acquisition — call
+        repeatedly as new data arrive.
+
+        Parameters
+        ----------
+        other : ArrayTimestamps
+            Source whose new records will be added.
+
+        Returns
+        -------
+        ArrayTimestamps
+            New ArrayTimestamps containing all records from ``self`` plus any
+            in *other* with timestamps absent from ``self``.  Returns ``self``
+            unchanged if *other* contributes nothing new.
+        """
+        new_mask = ~np.isin(other.timestamps, self.timestamps)
+        if not new_mask.any():
+            return self
+        combined_data = np.concatenate([self.data, other.data[new_mask]])
+        combined_ts = np.concatenate([self.timestamps, other.timestamps[new_mask]])
+        sort_order = np.argsort(combined_ts)
+        return ArrayTimestamps(
+            data=combined_data[sort_order],
+            timestamps=combined_ts[sort_order],
+            timestamp_intervals=self.scan.timestamp_intervals,
+            parameter=self.scan.parameter,
+            name=self.name,
+        )
 
     @classmethod
     def load_from_h5(cls, parent_h5py, name):
@@ -167,6 +196,34 @@ class ArrayTimestamps:
             )
 
     #    << storing
+
+
+# Inject numpy reduction methods into ArrayTimestamps.
+# These operate directly on self.data (a plain numpy array), not on Array objects.
+_ARRAY_TIMESTAMPS_NP_METHODS = [
+    "mean", "std", "min", "max", "sum", "median",
+    "nanmean", "nanstd", "nanmin", "nanmax", "nansum", "nanmedian",
+]
+
+
+def _make_ts_method(np_func):
+    np_summary = next(
+        (line.strip() for line in (np_func.__doc__ or "").split("\n") if line.strip()), ""
+    )
+    def method(self, *args, **kwargs):
+        return np_func(self.data, *args, **kwargs)
+    method.__name__ = np_func.__name__
+    method.__qualname__ = f"ArrayTimestamps.{np_func.__name__}"
+    method.__doc__ = (
+        f"Apply :func:`numpy.{np_func.__name__}` to this ArrayTimestamps data.\n\n"
+        f"{np_summary}"
+    )
+    return method
+
+
+for _name in _ARRAY_TIMESTAMPS_NP_METHODS:
+    setattr(ArrayTimestamps, _name, _make_ts_method(getattr(np, _name)))
+del _name
 
 
 class ScanTimestamps:
@@ -219,9 +276,6 @@ class ScanTimestamps:
                     f"Parameter array length of {par} ({lenthis}) does not fit the defined steps ({len(self)})."
                 )
         self.parameter.update(parameter)
-
-    def count(self):
-        return [len(step) for step in self]
 
     @property
     def par_steps(self):

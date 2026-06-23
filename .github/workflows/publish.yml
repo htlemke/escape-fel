@@ -1,0 +1,58 @@
+name: Publish to PyPI
+
+# Triggered when you push a version tag, e.g.:
+#   git tag v0.1.0
+#   git push --tags
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  # ── 1. Build source distribution and wheel ──────────────────────────────
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # setuptools-scm needs full git history to find tags
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build frontend
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Upload built packages as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── 2. Publish to PyPI via Trusted Publishing (no stored token needed) ──
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+
+    # "pypi" is the GitHub environment you create in repo Settings → Environments.
+    # PyPI Trusted Publishing is configured to allow this environment.
+    environment: pypi
+    permissions:
+      id-token: write           # required for OIDC Trusted Publishing
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
