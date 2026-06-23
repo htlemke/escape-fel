@@ -2638,7 +2638,7 @@ def intersect_indexes(ids_all,stepLengths_all):
         slgr.append(len(tsec))
 
 
-    return ixgr, slgr, shape
+    return np.asarray(ixgr), slgr, shape
 
 
 
@@ -2802,9 +2802,33 @@ def unravel_arrays(*arrays, categorize_target=None):
     
     ixgr, slgr, shape = intersect_indexes(ixs, sls)
 
+    # Create grid_index mappings for the intersection grid
+    grid_indices = []
+    grid_coords = list(np.ndindex(*shape))  # Generate all N-D coordinates
+    for coord in grid_coords:
+        grid_indices.append({'grid_index': list(coord)})
+    
+    # Build parameter dict with scan_step_info
+    parameter = {
+        'scan_step_info': {
+            'values': grid_indices
+        }
+    }
+    
+    # Create grid_specs
+    grid_specs = {
+        'shape': shape,
+        'positions': None,
+        'grid_dimension_names': None
+    }
 
-
-    index_sort_array = Array(index=ixgr, data=ixgr, step_lengths=slgr)
+    index_sort_array = Array(
+        index=ixgr, 
+        data=ixgr, 
+        step_lengths=slgr,
+        parameter=parameter,
+        grid_specs=grid_specs
+    )
 
     if categorize_target:
         return index_sort_array.categorize(categorize_target)
