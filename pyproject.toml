@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "escape-fel"
-dynamic = ["version"]
+version = "0.1.0"
 description = "Event Synchronous Categorisation And Processing Environment — event-based data framework for free-electron lasers"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -39,6 +39,3 @@ Issues = "https://github.com/htlemke/escape-fel/issues"
 where = ["."]
 include = ["escape*"]
 
-[tool.setuptools_scm]
-# version is derived automatically from git tags (v0.1.0 -> 0.1.0)
-# run: git tag v0.1.0 && git push --tags   to trigger a release
