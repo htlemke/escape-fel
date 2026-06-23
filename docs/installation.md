@@ -1,12 +1,31 @@
 # Installation
 
-## From GitHub
+## conda (recommended)
+
+The easiest install, reusing packages already present in your conda environment:
+
+```bash
+conda install -c conda-forge escape-fel
+```
+
+## pip
+
+```bash
+pip install escape-fel
+```
+
+> **Note for conda users:** use `pip install --no-deps escape-fel` to avoid
+> pip reinstalling packages that conda has already provided.
+
+## Latest development version (from GitHub)
+
+To get unreleased changes from the `main` branch:
 
 ```bash
 pip install git+https://github.com/htlemke/escape-fel
 ```
 
-## From a local clone
+Or clone and install in editable mode so local edits take effect immediately:
 
 ```bash
 git clone https://github.com/htlemke/escape-fel
@@ -16,7 +35,7 @@ pip install -e .
 
 ## Dependencies
 
-`escape` requires Python ≥ 3.8 and the following packages:
+`escape` requires Python ≥ 3.9 and the following packages:
 
 | Package | Purpose |
 |---------|---------|
@@ -28,9 +47,7 @@ pip install -e .
 | `pandas` | Tabular scan parameter display |
 | `matplotlib` | Built-in plotting helpers |
 | `rich` | Terminal output formatting |
-
-A complete environment specification is provided in
-[`environment.yml`](https://github.com/htlemke/escape-fel/blob/master/environment.yml).
+| `tqdm` | Progress bars |
 
 ## Building this documentation locally
 
