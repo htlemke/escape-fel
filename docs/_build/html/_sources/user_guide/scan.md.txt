@@ -80,6 +80,60 @@ Combined statistics:
 med, mad = sig.scan.median_and_mad()
 ```
 
+### Inline Plotting of Statistics
+
+Every per-step statistics method accepts a `plot` keyword that immediately
+visualises the result without a separate `.plot()` call.  Scalar-per-step
+results are drawn as a line; 1-D-array-per-step results (e.g. waveforms) are
+rendered as a 2-D heat-map.
+
+| `plot=` value | Effect |
+|---|---|
+| `True` | use the current Matplotlib axes (`plt.gca()`) |
+| a `Figure` | open a new subplot inside that figure |
+| an `Axes` | draw directly on that axes object |
+
+```python
+import matplotlib.pyplot as plt
+from escape.storage.example_data import make_scan
+
+sig = make_scan(n_steps=12, scan_par_name="delay_ps",
+                scan_par_values=list(range(-5, 7)), seed=0)
+
+# Quick plot on the current axes:
+sig.scan.nanmean(plot=True)
+
+# Plot on a specific axes and customise style:
+fig, axes = plt.subplots(1, 2, figsize=(9, 3))
+sig.scan.nanmean(plot=axes[0], plot_kws={"marker": "o", "color": "steelblue"})
+sig.scan.nanstd(plot=axes[1],  plot_kws={"color": "coral"})
+plt.tight_layout()
+```
+
+```{eval-rst}
+.. plot::
+
+   import matplotlib
+   matplotlib.use("Agg")
+   import matplotlib.pyplot as plt
+   from escape.storage.example_data import make_scan
+
+   sig = make_scan(n_steps=12, scan_par_name="delay_ps",
+                   scan_par_values=list(range(-5, 7)), seed=0)
+
+   fig, axes = plt.subplots(1, 2, figsize=(8, 3))
+   sig.scan.nanmean(plot=axes[0], plot_kws={"marker": "o", "color": "steelblue"})
+   axes[0].set_title("nanmean per step")
+   sig.scan.nanstd(plot=axes[1], plot_kws={"color": "coral"})
+   axes[1].set_title("nanstd per step")
+   plt.tight_layout()
+```
+
+The `plot_kws` dict is forwarded directly to the underlying Matplotlib call, so
+any valid `Axes.plot` keyword works.  For 2-D results, `plot_kws` is forwarded
+to {func}`~escape.utilities.plot2D`, and the special key `"colorbar"` (bool,
+default `True`) controls whether a colourbar is added.
+
 ## Plotting a Scan
 
 `scan.plot()` produces an errorbar plot with the scan parameter on the x-axis

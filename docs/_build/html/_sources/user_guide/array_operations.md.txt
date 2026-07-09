@@ -21,6 +21,14 @@ print(c.index)  # [0 1 4] — only the 3 common pulse IDs
 print(c.data)   # [6 2 5]
 ```
 
+```{figure} ../_static/index_alignment.png
+:alt: Index alignment diagram showing a - b keeping only common pulse IDs
+:width: 100%
+
+Events at pulse IDs present in only one array (ID 3 in **a**, ID 2 in **b**)
+are silently dropped; only the three common pulse IDs (0, 1, 4) produce output.
+```
+
 The first operand determines **index order and step grouping** of the result:
 
 ```python
@@ -149,6 +157,68 @@ preserving per-step metadata:
 combined = escape.concatenate([scan_run1, scan_run2])
 print(combined.scan.par_steps)  # steps from both runs
 ```
+
+## Notebook Display — Rich Repr
+
+When an Array is evaluated in a Jupyter cell, escape renders an informative
+plot automatically.
+
+### What is shown
+
+| Array type | Plot |
+|---|---|
+| 1-D scalar with 1-D scan | Per-step histogram heat-map + scan plot overlay |
+| 1-D waveform with 1-D scan | 2-D colour map (scan parameter vs waveform sample) |
+| 1-D scalar with 2-D grid | Grid heatmap of per-step means (uses attached Grid) |
+| N-D grid (dim > 2) or non-scalar with grid | Standard scan plot; grid shape shown in title |
+
+```{eval-rst}
+.. plot::
+
+   import matplotlib
+   matplotlib.use("Agg")
+   import matplotlib.pyplot as plt
+   from escape.storage.example_data import make_scan, make_grid_scan, make_waveform_scan
+
+   fig, axes = plt.subplots(1, 3, figsize=(12, 3.8))
+
+   # 1-D scalar scan: scan plot
+   sig = make_scan(n_steps=10, seed=0)
+   sig.scan.plot(axis=axes[0])
+   axes[0].set_title("1-D scalar scan", fontsize=9)
+
+   # 1-D waveform scan: mean waveform vs scan parameter
+   tof = make_waveform_scan(n_steps=8, seed=0)
+   tof.scan.nanmean(plot=axes[1])
+   axes[1].set_title("1-D waveform scan (mean)", fontsize=9)
+
+   # 2-D grid: heatmap of per-step means
+   gsig = make_grid_scan(shape=(5, 8), seed=0)
+   gsig.grid.nanmean(plot=axes[2], plot_kws={"cmap": "viridis"})
+   axes[2].set_title("2-D grid scan (mean)", fontsize=9)
+
+   plt.tight_layout()
+```
+
+### Async rendering and caching
+
+In a live Jupyter session the display is **asynchronous**:
+
+1. A *Computing plot…* placeholder appears immediately while the plot is
+   computed in a background thread.
+2. If computation exceeds **10 seconds**, the placeholder is replaced with
+   *Plot timed out* — the return value and all computation results are
+   unaffected.
+3. Successfully generated plots are **cached** in `~/.cache/escape/repr/`
+   keyed by a hash of the array content.  Subsequent evaluations of the same
+   Array in any session return the cached image instantly.
+
+### Discrete / few-valued data
+
+Arrays with only a small number of distinct values (photon counts, boolean
+flags, integer categories) are handled gracefully: the percentile-based range
+computation falls back to the full data range when the automatic range is
+degenerate (e.g. all values identical), so the repr never raises an error.
 
 ## HDF5 Storage and Loading
 

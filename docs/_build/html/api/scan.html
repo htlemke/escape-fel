@@ -9,6 +9,7 @@
         <title>Scan - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -296,14 +297,73 @@ grid_specs: Optional grid metadata forwarded to <code class="docutils literal no
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.abs">
+<span class="sig-name descname"><span class="pre">abs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.abs" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.abs" title="escape.Array.abs"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.abs()</span></code></a> to each scan step.</p>
+<p>absolute(x, /, out=None, <a href="#id1"><span class="problematic" id="id2">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.all">
-<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.all" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.all" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.all" title="escape.Array.all"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.all()</span></code></a> to each scan step.</p>
+<p>Test whether all array elements along a given axis evaluate to True.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.any">
-<span class="sig-name descname"><span class="pre">any</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.any"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.any" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">any</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.any" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.any" title="escape.Array.any"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.any()</span></code></a> to each scan step.</p>
+<p>Test whether any array element along a given axis evaluates to True.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.append_parameter">
@@ -317,8 +377,26 @@ grid_specs: Optional grid metadata forwarded to <code class="docutils literal no
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.average">
-<span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.average"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.average" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.average" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.average" title="escape.Array.average"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.average()</span></code></a> to each scan step.</p>
+<p>Compute the weighted average along the specified axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.corr_ana_plot">
@@ -333,7 +411,8 @@ grid_specs: Optional grid metadata forwarded to <code class="docutils literal no
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.count">
 <span class="sig-name descname"><span class="pre">count</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.count" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Return the number of events in each scan step as a list.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.get_parameter_array">
@@ -369,19 +448,142 @@ grid_specs: Optional grid metadata forwarded to <code class="docutils literal no
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.isfinite">
+<span class="sig-name descname"><span class="pre">isfinite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.isfinite" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.isfinite" title="escape.Array.isfinite"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.isfinite()</span></code></a> to each scan step.</p>
+<p>isfinite(x, /, out=None, <a href="#id3"><span class="problematic" id="id4">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.isinf">
+<span class="sig-name descname"><span class="pre">isinf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.isinf" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.isinf" title="escape.Array.isinf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.isinf()</span></code></a> to each scan step.</p>
+<p>isinf(x, /, out=None, <a href="#id5"><span class="problematic" id="id6">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.isnan">
+<span class="sig-name descname"><span class="pre">isnan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.isnan" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.isnan" title="escape.Array.isnan"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.isnan()</span></code></a> to each scan step.</p>
+<p>isnan(x, /, out=None, <a href="#id7"><span class="problematic" id="id8">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.max">
-<span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.max"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.max" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.max" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.max" title="escape.Array.max"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.max()</span></code></a> to each scan step.</p>
+<p>Return the maximum of an array or maximum along an axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.mean">
-<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.mean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.mean" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.mean" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.mean" title="escape.Array.mean"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.mean()</span></code></a> to each scan step.</p>
+<p>Compute the arithmetic mean along the specified axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.median">
-<span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.median"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.median" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.median" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.median" title="escape.Array.median"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.median()</span></code></a> to each scan step.</p>
+<p>Compute the median along the specified axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.median_and_mad">
@@ -405,53 +607,216 @@ Defaults to 1.4826 for gaussian distribution.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.min">
-<span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.min"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.min" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.min" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.min" title="escape.Array.min"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.min()</span></code></a> to each scan step.</p>
+<p>Return the minimum of an array or minimum along an axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nancount">
 <span class="sig-name descname"><span class="pre">nancount</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nancount"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nancount" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Return the number of non-NaN events in each scan step as a list.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanmax">
-<span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmax"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmax" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanmax" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanmax" title="escape.Array.nanmax"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanmax()</span></code></a> to each scan step.</p>
+<p>Return the maximum of an array or maximum along an axis, ignoring any</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanmean">
-<span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmean" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanmean" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanmean" title="escape.Array.nanmean"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanmean()</span></code></a> to each scan step.</p>
+<p>Compute the arithmetic mean along the specified axis, ignoring NaNs.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanmedian">
-<span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmedian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmedian" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanmedian" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanmedian" title="escape.Array.nanmedian"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanmedian()</span></code></a> to each scan step.</p>
+<p>Compute the median along the specified axis, while ignoring NaNs.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanmin">
-<span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanmin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanmin" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanmin" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanmin" title="escape.Array.nanmin"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanmin()</span></code></a> to each scan step.</p>
+<p>Return minimum of an array or minimum along an axis, ignoring any NaNs.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanpercentile">
-<span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanpercentile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanpercentile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanpercentile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanpercentile" title="escape.Array.nanpercentile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanpercentile()</span></code></a> to each scan step.</p>
+<p>Compute the qth percentile of the data along the specified axis,</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanquantile">
-<span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanquantile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanquantile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanquantile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanquantile" title="escape.Array.nanquantile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanquantile()</span></code></a> to each scan step.</p>
+<p>Compute the qth quantile of the data along the specified axis,</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nanstd">
-<span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nanstd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nanstd" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nanstd" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nanstd" title="escape.Array.nanstd"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nanstd()</span></code></a> to each scan step.</p>
+<p>Compute the standard deviation along the specified axis, while</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Scan.nansum">
-<span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.nansum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.nansum" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.nansum" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.nansum" title="escape.Array.nansum"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.nansum()</span></code></a> to each scan step.</p>
+<p>Return the sum of array elements over a given axis treating Not a</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="escape.Scan.par_steps">
@@ -468,29 +833,132 @@ The integer row index corresponds to the step number.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="escape.Scan.plot">
-<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scanpar_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_quantiles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.plot" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="escape.Scan.std">
-<span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.std"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.std" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="escape.Scan.steps_where">
-<span class="sig-name descname"><span class="pre">steps_where</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_condition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.steps_where"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.steps_where" title="Link to this definition">¶</a></dt>
-<dd><p>Get step indices where condition is true.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>data_condition (function, optional): function which gets data array as input and returns boolean array.</p>
+<dt class="sig sig-object py" id="escape.Scan.percentile">
+<span class="sig-name descname"><span class="pre">percentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.percentile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.percentile" title="escape.Array.percentile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.percentile()</span></code></a> to each scan step.</p>
+<p>Compute the q-th percentile of the data along the specified axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="escape.Scan.sum">
-<span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.sum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.sum" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="escape.Scan.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scanpar_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_quantiles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.plot" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.quantile">
+<span class="sig-name descname"><span class="pre">quantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.quantile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.quantile" title="escape.Array.quantile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.quantile()</span></code></a> to each scan step.</p>
+<p>Compute the q-th quantile of the data along the specified axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.std">
+<span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.std" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.std" title="escape.Array.std"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.std()</span></code></a> to each scan step.</p>
+<p>Compute the standard deviation along the specified axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.steps_where">
+<span class="sig-name descname"><span class="pre">steps_where</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_condition</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Scan.steps_where"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Scan.steps_where" title="Link to this definition">¶</a></dt>
+<dd><p>Return an Array containing only the steps where <em>data_condition</em> is True.</p>
+<p>Similar to <code class="docutils literal notranslate"><span class="pre">np.where</span></code> but operating at the level of scan steps: each
+step is tested and only the passing steps are kept, with their scan
+metadata preserved.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data_condition</strong> (<em>callable</em>) – <code class="docutils literal notranslate"><span class="pre">f(step:</span> <span class="pre">Array)</span> <span class="pre">-&gt;</span> <span class="pre">bool</span></code>.  Called once per step with the step’s
+<a class="reference internal" href="array.html#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>; steps for which it returns a truthy value are
+included in the result.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Array whose scan contains only the steps that passed the condition.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="array.html#escape.Array" title="escape.Array">escape.Array</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Keep only steps whose per-step median exceeds 0.5:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">sig</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">steps_where</span><span class="p">(</span><span class="k">lambda</span> <span class="n">step</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">step</span><span class="o">.</span><span class="n">data</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Keep only steps that have at least 50 events:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">sig</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">steps_where</span><span class="p">(</span><span class="k">lambda</span> <span class="n">step</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">step</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">50</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Scan.sum">
+<span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Scan.sum" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference internal" href="array.html#escape.Array.sum" title="escape.Array.sum"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Array.sum()</span></code></a> to each scan step.</p>
+<p>Sum of array elements over a given axis.</p>
+<p>Returns a list with one result per scan step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the per-step results against the scan parameter using
+the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a specific
+axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.  No plot
+is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments forwarded to the plot call.  Scalar-per-step
+results are drawn with <code class="docutils literal notranslate"><span class="pre">Axes.plot</span></code>; array-per-step results are
+rendered as a 2-D heat-map via <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special key
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) toggles the colourbar for 2-D
+plots.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="escape.Scan.tools">
@@ -526,19 +994,124 @@ The integer row index corresponds to the step number.</p>
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.abs">
+<span class="sig-name descname"><span class="pre">abs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.abs" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.abs with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.all">
+<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.all" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.all with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.any">
+<span class="sig-name descname"><span class="pre">any</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.any" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.any with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.average">
 <span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.average" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.average with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.correlation_analysis_to">
 <span class="sig-name descname"><span class="pre">correlation_analysis_to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.correlation_analysis_to" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.correlation_analysis_to with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.count">
 <span class="sig-name descname"><span class="pre">count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.count" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.count with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.fill_count">
@@ -559,84 +1132,424 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.isfinite">
+<span class="sig-name descname"><span class="pre">isfinite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.isfinite" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.isfinite with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.isinf">
+<span class="sig-name descname"><span class="pre">isinf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.isinf" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.isinf with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.isnan">
+<span class="sig-name descname"><span class="pre">isnan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.isnan" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.isnan with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.max">
 <span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.max" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.max with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.mean">
 <span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.mean" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.mean with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.median">
 <span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.median" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.median with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.median_and_mad">
 <span class="sig-name descname"><span class="pre">median_and_mad</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.median_and_mad" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.median_and_mad with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.min">
 <span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.min" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.min with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nancount">
 <span class="sig-name descname"><span class="pre">nancount</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nancount" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nancount with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmax">
 <span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmax" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanmax with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmean">
 <span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmean" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanmean with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmedian">
 <span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmedian" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanmedian with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanmin">
 <span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanmin" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanmin with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanpercentile">
 <span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanpercentile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanpercentile with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanquantile">
 <span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanquantile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanquantile with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nanstd">
 <span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nanstd" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nanstd with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.nansum">
 <span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.nansum" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.nansum with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.percentile">
+<span class="sig-name descname"><span class="pre">percentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.percentile" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.percentile with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.quantile">
+<span class="sig-name descname"><span class="pre">quantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.quantile" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.quantile with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.std">
 <span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.std" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.std with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.sum">
 <span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.sum" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.sum with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.to_grid">
@@ -646,12 +1559,42 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.storage.storage.Grid.weighted_avg_and_std">
 <span class="sig-name descname"><span class="pre">weighted_avg_and_std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.weighted_avg_and_std" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Wraps Scan.weighted_avg_and_std with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="escape.storage.storage.Grid.weighted_stats">
-<span class="sig-name descname"><span class="pre">weighted_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.weighted_stats" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dt class="sig sig-object py" id="escape.storage.storage.Grid.weighted_stat">
+<span class="sig-name descname"><span class="pre">weighted_stat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.Grid.weighted_stat" title="Link to this definition">¶</a></dt>
+<dd><p>Wraps Scan.weighted_stat with grid reshaping and optional 2-D plotting.</p>
+<p>Additional keyword arguments (consumed here, not forwarded to the scan):</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> or </em><em>matplotlib.axes.Axes</em><em> or </em><em>matplotlib.figure.Figure</em><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, plot the grid-shaped result with <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>
+using the current axes.  Pass a <code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code> to target a
+specific axes, or a <code class="docutils literal notranslate"><span class="pre">matplotlib.figure.Figure</span></code> to open a new subplot.
+No plot is created by default.</p></li>
+<li><p><strong>plot_kws</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Extra keyword arguments for <code class="xref py py-func docutils literal notranslate"><span class="pre">escape.plot2D()</span></code>.  The special keys
+<code class="docutils literal notranslate"><span class="pre">'colorbar'</span></code> (bool, default <code class="docutils literal notranslate"><span class="pre">True</span></code>) and <code class="docutils literal notranslate"><span class="pre">'axis'</span></code>
+(<code class="docutils literal notranslate"><span class="pre">matplotlib.axes.Axes</span></code>) are handled here and not forwarded.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -718,6 +1661,7 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <li><a class="reference internal" href="#escape.Scan.__getitem__"><code class="docutils literal notranslate"><span class="pre">Scan.__getitem__()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.__init__"><code class="docutils literal notranslate"><span class="pre">Scan.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.__len__"><code class="docutils literal notranslate"><span class="pre">Scan.__len__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.abs"><code class="docutils literal notranslate"><span class="pre">Scan.abs()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.all"><code class="docutils literal notranslate"><span class="pre">Scan.all()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.any"><code class="docutils literal notranslate"><span class="pre">Scan.any()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.append_parameter"><code class="docutils literal notranslate"><span class="pre">Scan.append_parameter()</span></code></a></li>
@@ -732,6 +1676,9 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <li><a class="reference internal" href="#escape.Scan.get_step_data"><code class="docutils literal notranslate"><span class="pre">Scan.get_step_data()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.get_step_indexes"><code class="docutils literal notranslate"><span class="pre">Scan.get_step_indexes()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.hist"><code class="docutils literal notranslate"><span class="pre">Scan.hist()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.isfinite"><code class="docutils literal notranslate"><span class="pre">Scan.isfinite()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.isinf"><code class="docutils literal notranslate"><span class="pre">Scan.isinf()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.isnan"><code class="docutils literal notranslate"><span class="pre">Scan.isnan()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.max"><code class="docutils literal notranslate"><span class="pre">Scan.max()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.mean"><code class="docutils literal notranslate"><span class="pre">Scan.mean()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.median"><code class="docutils literal notranslate"><span class="pre">Scan.median()</span></code></a></li>
@@ -748,7 +1695,9 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <li><a class="reference internal" href="#escape.Scan.nanstd"><code class="docutils literal notranslate"><span class="pre">Scan.nanstd()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.nansum"><code class="docutils literal notranslate"><span class="pre">Scan.nansum()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.par_steps"><code class="docutils literal notranslate"><span class="pre">Scan.par_steps</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.percentile"><code class="docutils literal notranslate"><span class="pre">Scan.percentile()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.plot"><code class="docutils literal notranslate"><span class="pre">Scan.plot()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Scan.quantile"><code class="docutils literal notranslate"><span class="pre">Scan.quantile()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.std"><code class="docutils literal notranslate"><span class="pre">Scan.std()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.steps_where"><code class="docutils literal notranslate"><span class="pre">Scan.steps_where()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Scan.sum"><code class="docutils literal notranslate"><span class="pre">Scan.sum()</span></code></a></li>
@@ -761,12 +1710,18 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <li><a class="reference internal" href="#escape.storage.storage.Grid"><code class="docutils literal notranslate"><span class="pre">Grid</span></code></a><ul>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.__getitem__"><code class="docutils literal notranslate"><span class="pre">Grid.__getitem__()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.__init__"><code class="docutils literal notranslate"><span class="pre">Grid.__init__()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.abs"><code class="docutils literal notranslate"><span class="pre">Grid.abs()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.all"><code class="docutils literal notranslate"><span class="pre">Grid.all()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.any"><code class="docutils literal notranslate"><span class="pre">Grid.any()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.average"><code class="docutils literal notranslate"><span class="pre">Grid.average()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.correlation_analysis_to"><code class="docutils literal notranslate"><span class="pre">Grid.correlation_analysis_to()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.count"><code class="docutils literal notranslate"><span class="pre">Grid.count()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.fill_count"><code class="docutils literal notranslate"><span class="pre">Grid.fill_count()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.get_grid_indices"><code class="docutils literal notranslate"><span class="pre">Grid.get_grid_indices()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.get_grid_specs"><code class="docutils literal notranslate"><span class="pre">Grid.get_grid_specs()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.isfinite"><code class="docutils literal notranslate"><span class="pre">Grid.isfinite()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.isinf"><code class="docutils literal notranslate"><span class="pre">Grid.isinf()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.isnan"><code class="docutils literal notranslate"><span class="pre">Grid.isnan()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.max"><code class="docutils literal notranslate"><span class="pre">Grid.max()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.mean"><code class="docutils literal notranslate"><span class="pre">Grid.mean()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.median"><code class="docutils literal notranslate"><span class="pre">Grid.median()</span></code></a></li>
@@ -781,11 +1736,13 @@ associated Scan. total_positions is the product of <cite>self.shape</cite>.</p>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.nanquantile"><code class="docutils literal notranslate"><span class="pre">Grid.nanquantile()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.nanstd"><code class="docutils literal notranslate"><span class="pre">Grid.nanstd()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.nansum"><code class="docutils literal notranslate"><span class="pre">Grid.nansum()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.percentile"><code class="docutils literal notranslate"><span class="pre">Grid.percentile()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.quantile"><code class="docutils literal notranslate"><span class="pre">Grid.quantile()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.std"><code class="docutils literal notranslate"><span class="pre">Grid.std()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.sum"><code class="docutils literal notranslate"><span class="pre">Grid.sum()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.to_grid"><code class="docutils literal notranslate"><span class="pre">Grid.to_grid()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.storage.Grid.weighted_avg_and_std"><code class="docutils literal notranslate"><span class="pre">Grid.weighted_avg_and_std()</span></code></a></li>
-<li><a class="reference internal" href="#escape.storage.storage.Grid.weighted_stats"><code class="docutils literal notranslate"><span class="pre">Grid.weighted_stats()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.storage.Grid.weighted_stat"><code class="docutils literal notranslate"><span class="pre">Grid.weighted_stat()</span></code></a></li>
 </ul>
 </li>
 </ul>

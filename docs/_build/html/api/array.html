@@ -9,6 +9,7 @@
         <title>Array - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -303,18 +304,27 @@ grid_specs: Optional metadata used to build <code class="docutils literal notran
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.abs">
-<span class="sig-name descname"><span class="pre">abs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.abs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.abs" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">abs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.abs" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.abs()</span></code> to this Array’s data.</p>
+<p>absolute(x, /, out=None, <a href="#id1"><span class="problematic" id="id2">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.all">
-<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.all" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.all" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.all.html#numpy.all" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.all()</span></code></a> to this Array’s data.</p>
+<p>Test whether all array elements along a given axis evaluate to True.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.any">
-<span class="sig-name descname"><span class="pre">any</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.any"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.any" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">any</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.any" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.any.html#numpy.any" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.any()</span></code></a> to this Array’s data.</p>
+<p>Test whether any array element along a given axis evaluates to True.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.astype">
@@ -323,8 +333,11 @@ grid_specs: Optional metadata used to build <code class="docutils literal notran
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.average">
-<span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.average"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.average" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">average</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.average" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.average.html#numpy.average" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.average()</span></code></a> to this Array’s data.</p>
+<p>Compute the weighted average along the specified axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.categorize">
@@ -476,18 +489,27 @@ grouping to any other channel:</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.isfinite">
-<span class="sig-name descname"><span class="pre">isfinite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.isfinite"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.isfinite" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">isfinite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.isfinite" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.isfinite()</span></code> element-wise to this Array’s data.</p>
+<p>isfinite(x, /, out=None, <a href="#id3"><span class="problematic" id="id4">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns an <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a> with the same index and scan structure.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.isinf">
-<span class="sig-name descname"><span class="pre">isinf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.isinf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.isinf" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">isinf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.isinf" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.isinf()</span></code> element-wise to this Array’s data.</p>
+<p>isinf(x, /, out=None, <a href="#id5"><span class="problematic" id="id6">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns an <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a> with the same index and scan structure.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.isnan">
-<span class="sig-name descname"><span class="pre">isnan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.isnan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.isnan" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">isnan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.isnan" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.isnan()</span></code> element-wise to this Array’s data.</p>
+<p>isnan(x, /, out=None, <a href="#id7"><span class="problematic" id="id8">*</span></a>, where=True, casting=’same_kind’, order=’K’, dtype=None, subok=True[, signature])</p>
+<p>Returns an <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a> with the same index and scan structure.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.load_from_h5">
@@ -549,63 +571,105 @@ axis).  Required when <code class="docutils literal notranslate"><span class="pr
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.max">
-<span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.max"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.max" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">max</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.max" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.max.html#numpy.max" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.max()</span></code></a> to this Array’s data.</p>
+<p>Return the maximum of an array or maximum along an axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.mean">
-<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.mean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.mean" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.mean" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.mean.html#numpy.mean" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.mean()</span></code></a> to this Array’s data.</p>
+<p>Compute the arithmetic mean along the specified axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.median">
-<span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.median"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.median" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.median" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.median.html#numpy.median" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.median()</span></code></a> to this Array’s data.</p>
+<p>Compute the median along the specified axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.min">
-<span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.min"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.min" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.min" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.min.html#numpy.min" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.min()</span></code></a> to this Array’s data.</p>
+<p>Return the minimum of an array or minimum along an axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="escape.Array.nancount">
+<span class="sig-name descname"><span class="pre">nancount</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nancount"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nancount" title="Link to this definition">¶</a></dt>
+<dd><p>Return the number of finite (non-NaN) events in this Array.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanmax">
-<span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanmax"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanmax" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanmax" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanmax.html#numpy.nanmax" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanmax()</span></code></a> to this Array’s data.</p>
+<p>Return the maximum of an array or maximum along an axis, ignoring any</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanmean">
-<span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanmean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanmean" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanmean" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanmean.html#numpy.nanmean" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanmean()</span></code></a> to this Array’s data.</p>
+<p>Compute the arithmetic mean along the specified axis, ignoring NaNs.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanmedian">
-<span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanmedian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanmedian" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmedian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanmedian" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanmedian.html#numpy.nanmedian" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanmedian()</span></code></a> to this Array’s data.</p>
+<p>Compute the median along the specified axis, while ignoring NaNs.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanmin">
-<span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanmin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanmin" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanmin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanmin" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanmin.html#numpy.nanmin" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanmin()</span></code></a> to this Array’s data.</p>
+<p>Return minimum of an array or minimum along an axis, ignoring any NaNs.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanpercentile">
-<span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanpercentile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanpercentile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanpercentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanpercentile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanpercentile.html#numpy.nanpercentile" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanpercentile()</span></code></a> to this Array’s data.</p>
+<p>Compute the qth percentile of the data along the specified axis,</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanquantile">
-<span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanquantile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanquantile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanquantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanquantile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanquantile.html#numpy.nanquantile" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanquantile()</span></code></a> to this Array’s data.</p>
+<p>Compute the qth quantile of the data along the specified axis,</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nanstd">
-<span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nanstd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nanstd" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nanstd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nanstd" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nanstd.html#numpy.nanstd" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nanstd()</span></code></a> to this Array’s data.</p>
+<p>Compute the standard deviation along the specified axis, while</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.nansum">
-<span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.nansum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.nansum" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">nansum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.nansum" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.nansum.html#numpy.nansum" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.nansum()</span></code></a> to this Array’s data.</p>
+<p>Return the sum of array elements over a given axis treating Not a</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="escape.Array.ndim">
@@ -624,8 +688,11 @@ axis).  Required when <code class="docutils literal notranslate"><span class="pr
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.percentile">
-<span class="sig-name descname"><span class="pre">percentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.percentile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.percentile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">percentile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.percentile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.percentile.html#numpy.percentile" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.percentile()</span></code></a> to this Array’s data.</p>
+<p>Compute the q-th percentile of the data along the specified axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.persist">
@@ -644,13 +711,35 @@ axis).  Required when <code class="docutils literal notranslate"><span class="pr
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.quantile">
-<span class="sig-name descname"><span class="pre">quantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.quantile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.quantile" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">quantile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.quantile" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.quantile.html#numpy.quantile" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.quantile()</span></code></a> to this Array’s data.</p>
+<p>Compute the q-th quantile of the data along the specified axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.ravel_event_data">
-<span class="sig-name descname"><span class="pre">ravel_event_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.ravel_event_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.ravel_event_data" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">ravel_event_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.ravel_event_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.ravel_event_data" title="Link to this definition">¶</a></dt>
+<dd><p>Flatten all non-event axes into a single dimension per event.</p>
+<p>Converts an Array of shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">d1,</span> <span class="pre">d2,</span> <span class="pre">...)</span></code> to
+<code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">d1*d2*...)</span></code>, preserving the event axis and scan structure.
+Useful for feeding multi-dimensional detector data into functions
+that expect a 1-D value per event.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Array with shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">d1*d2*...)</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#escape.Array" title="escape.Array">escape.Array</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">imgs</span><span class="o">.</span><span class="n">shape</span>                   <span class="c1"># (500, 64, 64)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">flat</span> <span class="o">=</span> <span class="n">imgs</span><span class="o">.</span><span class="n">ravel_event_data</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">flat</span><span class="o">.</span><span class="n">shape</span>                   <span class="c1"># (500, 4096)</span>
+</pre></div>
+</div>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="escape.Array.scan">
@@ -674,8 +763,11 @@ axis).  Required when <code class="docutils literal notranslate"><span class="pr
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.std">
-<span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.std"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.std" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">std</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.std" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.std.html#numpy.std" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.std()</span></code></a> to this Array’s data.</p>
+<p>Compute the standard deviation along the specified axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.store">
@@ -691,8 +783,11 @@ axis).  Required when <code class="docutils literal notranslate"><span class="pr
 
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.sum">
-<span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.sum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.sum" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">sum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.Array.sum" title="Link to this definition">¶</a></dt>
+<dd><p>Apply <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.sum.html#numpy.sum" title="(in NumPy v2.4)"><code class="xref py py-func docutils literal notranslate"><span class="pre">numpy.sum()</span></code></a> to this Array’s data.</p>
+<p>Sum of array elements over a given axis.</p>
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">axis</span></code> or passing <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> reduces over events and returns a plain numpy/dask result. Pass <code class="docutils literal notranslate"><span class="pre">axis=N</span></code> (N &gt; 0) to reduce along a non-event axis and receive a new <a class="reference internal" href="#escape.Array" title="escape.Array"><code class="xref py py-class docutils literal notranslate"><span class="pre">Array</span></code></a>.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="escape.Array.tools">
@@ -707,8 +802,25 @@ axis).  Required when <code class="docutils literal notranslate"><span class="pr
 <dl class="py method">
 <dt class="sig sig-object py" id="escape.Array.update">
 <span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">array</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#Array.update"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.Array.update" title="Link to this definition">¶</a></dt>
-<dd><p>Update one escape array from another. Only array elements not
-existing  in the present array will be added to it.</p>
+<dd><p>Merge <em>array</em> into this Array, adding only events with new pulse IDs.</p>
+<p>Events already present in <code class="docutils literal notranslate"><span class="pre">self</span></code> (matched by pulse ID) are ignored;
+new events are appended as additional scan steps so that the existing
+scan structure is preserved and the new events keep their own step
+grouping.  Intended for incremental accumulation during acquisition —
+call repeatedly with newer snapshots to build up a complete dataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>array</strong> (<a class="reference internal" href="#escape.Array" title="escape.Array"><em>escape.Array</em></a>) – Source Array whose new events will be added to this one.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New Array containing all events from <code class="docutils literal notranslate"><span class="pre">self</span></code> plus any events in
+<em>array</em> whose pulse ID was absent from <code class="docutils literal notranslate"><span class="pre">self</span></code>.  Returns <code class="docutils literal notranslate"><span class="pre">self</span></code>
+unchanged (same object) if <em>array</em> contributes no new events.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#escape.Array" title="escape.Array">escape.Array</a></p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
@@ -805,6 +917,7 @@ existing  in the present array will be added to it.</p>
 <li><a class="reference internal" href="#escape.Array.mean"><code class="docutils literal notranslate"><span class="pre">Array.mean()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Array.median"><code class="docutils literal notranslate"><span class="pre">Array.median()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Array.min"><code class="docutils literal notranslate"><span class="pre">Array.min()</span></code></a></li>
+<li><a class="reference internal" href="#escape.Array.nancount"><code class="docutils literal notranslate"><span class="pre">Array.nancount()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Array.nanmax"><code class="docutils literal notranslate"><span class="pre">Array.nanmax()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Array.nanmean"><code class="docutils literal notranslate"><span class="pre">Array.nanmean()</span></code></a></li>
 <li><a class="reference internal" href="#escape.Array.nanmedian"><code class="docutils literal notranslate"><span class="pre">Array.nanmedian()</span></code></a></li>

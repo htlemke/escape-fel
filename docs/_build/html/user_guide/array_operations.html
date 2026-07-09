@@ -9,6 +9,7 @@
         <title>Array Sorting and Operations - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/plot_directive.css?v=7f9a90b1" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -280,6 +281,14 @@ on the intersection of the two index arrays:</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>   <span class="c1"># [6 2 5]</span>
 </pre></div>
 </div>
+<figure class="align-default" id="id1">
+<a class="reference internal image-reference" href="../_images/index_alignment.png"><img alt="Index alignment diagram showing a - b keeping only common pulse IDs" src="../_images/index_alignment.png" style="width: 100%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Events at pulse IDs present in only one array (ID 3 in <strong>a</strong>, ID 2 in <strong>b</strong>)
+are silently dropped; only the three common pulse IDs (0, 1, 4) produce output.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 <p>The first operand determines <strong>index order and step grouping</strong> of the result:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">d</span> <span class="o">=</span> <span class="n">escape</span><span class="o">.</span><span class="n">Array</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">8</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">]),</span> <span class="n">index</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]))</span>
 <span class="n">e</span> <span class="o">=</span> <span class="n">escape</span><span class="o">.</span><span class="n">Array</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]),</span> <span class="n">index</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]))</span>
@@ -397,6 +406,62 @@ preserving per-step metadata:</p>
 </pre></div>
 </div>
 </section>
+<section id="notebook-display-rich-repr">
+<h2>Notebook Display — Rich Repr<a class="headerlink" href="#notebook-display-rich-repr" title="Link to this heading">¶</a></h2>
+<p>When an Array is evaluated in a Jupyter cell, escape renders an informative
+plot automatically.</p>
+<section id="what-is-shown">
+<h3>What is shown<a class="headerlink" href="#what-is-shown" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Array type</p></th>
+<th class="head"><p>Plot</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1-D scalar with 1-D scan</p></td>
+<td><p>Per-step histogram heat-map + scan plot overlay</p></td>
+</tr>
+<tr class="row-odd"><td><p>1-D waveform with 1-D scan</p></td>
+<td><p>2-D colour map (scan parameter vs waveform sample)</p></td>
+</tr>
+<tr class="row-even"><td><p>1-D scalar with 2-D grid</p></td>
+<td><p>Grid heatmap of per-step means (uses attached Grid)</p></td>
+</tr>
+<tr class="row-odd"><td><p>N-D grid (dim &gt; 2) or non-scalar with grid</p></td>
+<td><p>Standard scan plot; grid shape shown in title</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>(<a class="reference download internal" download="" href="../_downloads/fa3fcfaa2908aabd575df9cc9290d5bd/array_operations-1.png"><code class="xref download docutils literal notranslate"><span class="pre">png</span></code></a>)</p>
+<figure class="align-default">
+<img alt="../_images/array_operations-1.png" class="plot-directive" src="../_images/array_operations-1.png" />
+</figure>
+</section>
+<section id="async-rendering-and-caching">
+<h3>Async rendering and caching<a class="headerlink" href="#async-rendering-and-caching" title="Link to this heading">¶</a></h3>
+<p>In a live Jupyter session the display is <strong>asynchronous</strong>:</p>
+<ol class="arabic simple">
+<li><p>A <em>Computing plot…</em> placeholder appears immediately while the plot is
+computed in a background thread.</p></li>
+<li><p>If computation exceeds <strong>10 seconds</strong>, the placeholder is replaced with
+<em>Plot timed out</em> — the return value and all computation results are
+unaffected.</p></li>
+<li><p>Successfully generated plots are <strong>cached</strong> in <code class="docutils literal notranslate"><span class="pre">~/.cache/escape/repr/</span></code>
+keyed by a hash of the array content.  Subsequent evaluations of the same
+Array in any session return the cached image instantly.</p></li>
+</ol>
+</section>
+<section id="discrete-few-valued-data">
+<h3>Discrete / few-valued data<a class="headerlink" href="#discrete-few-valued-data" title="Link to this heading">¶</a></h3>
+<p>Arrays with only a small number of distinct values (photon counts, boolean
+flags, integer categories) are handled gracefully: the percentile-based range
+computation falls back to the full data range when the automatic range is
+degenerate (e.g. all values identical), so the repr never raises an error.</p>
+</section>
+</section>
 <section id="hdf5-storage-and-loading">
 <h2>HDF5 Storage and Loading<a class="headerlink" href="#hdf5-storage-and-loading" title="Link to this heading">¶</a></h2>
 <p>For computationally expensive derived quantities, store the result to an HDF5
@@ -482,6 +547,12 @@ file so you can reload it without recomputing:</p>
 <li><a class="reference internal" href="#digitize-sorting-by-value">Digitize — Sorting by Value</a></li>
 <li><a class="reference internal" href="#re-sorting-with-another-array">Re-Sorting with Another Array</a></li>
 <li><a class="reference internal" href="#concatenating-arrays">Concatenating Arrays</a></li>
+<li><a class="reference internal" href="#notebook-display-rich-repr">Notebook Display — Rich Repr</a><ul>
+<li><a class="reference internal" href="#what-is-shown">What is shown</a></li>
+<li><a class="reference internal" href="#async-rendering-and-caching">Async rendering and caching</a></li>
+<li><a class="reference internal" href="#discrete-few-valued-data">Discrete / few-valued data</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#hdf5-storage-and-loading">HDF5 Storage and Loading</a></li>
 </ul>
 </li>

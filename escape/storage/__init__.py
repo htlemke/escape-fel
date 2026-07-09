@@ -13,6 +13,7 @@
 from .storage import *
 from .test_data import get_test_data
 from .dataset import DataSet
-from .array_timestamps import ArrayTimestamps, ScanTimestamps
+from .storage_timestamps import ArrayTimestamps as ArrayTimestamps, ScanTimestamps as ScanTimestamps
+from . import array_timestamps as array_timestamps  # backward-compat alias for the old module name
 from . import example_data
 

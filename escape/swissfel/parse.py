@@ -1,12 +1,13 @@
 from asyncio import run
 import pickle
+import re
 import shutil
 from unicodedata import name
 
 import numpy as np
 from escape.storage.storage import concatenate, Array, Scan
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
-from .cluster import parseScanEcoV01
+from .cluster import parseScanEcoV01, parseScanEcoV02, parseScanEcoV03
 from pathlib import Path
 import json
 import pathlib
@@ -40,6 +41,21 @@ import zarr
 from rich.tree import Tree
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_run_number(metadata_file):
+    """Return the run number embedded in a metadata file path, or None.
+
+    Searches each path component from right to left for the pattern
+    ``run{NNNN}`` (4 or more digits), e.g. ``run0042`` in either the
+    filename stem or a parent directory such as ``raw/run0042/aux/``.
+    """
+    for part in reversed(Path(metadata_file).parts):
+        m = re.search(r'run(\d{4,})', part)
+        if m:
+            return int(m.group(1))
+    return None
+
 
 read_scan_json = readScanEcoJson_v01
 parse_scan = parseScanEcoV01
@@ -115,6 +131,8 @@ def interpret_raw_data_definition(
     # format search paths
     if isinstance(search_path, str):
         search_path = [search_path]
+    if isinstance(run_numbers, int):
+        run_numbers = [run_numbers]
 
     if metadata_file:
         return [metadata_file]
@@ -155,6 +173,7 @@ def interpret_raw_data_definition(
 
 def load_dataset_from_scan(
     metadata_file=None,
+    run_number=None,
     run_numbers=None,
     pgroup=None,
     exp_name=None,
@@ -174,7 +193,7 @@ def load_dataset_from_scan(
     search_paths=["./", "./scan_data/", "../scan_data"],
     memlimit_MB=100,
     createEscArrays=True,
-    lazyEscArrays=False,
+    lazyEscArrays=True,
     exclude_from_files=[],
     checknstore_parsing_result=False,
     clear_parsing_result=False,
@@ -187,7 +206,173 @@ def load_dataset_from_scan(
     append_scan_parameter: {"par_name": {"values": list}} = None,
     verbose=0,
     perm_result_file='g+rw',
+    parse_version=3,
 ):
+    """Load detector and scan-parameter data from one or more SwissFEL scan runs.
+
+    Locates the scan metadata JSON file(s) for the requested run(s), parses all
+    recorded detector channels into escape :class:`~escape.Array` objects, and
+    returns them collected in a :class:`~escape.storage.DataSet`.  When multiple
+    runs are loaded they are concatenated along the event axis so the resulting
+    arrays span all runs seamlessly, with a ``run_number`` scan parameter added
+    automatically to identify which step originated from which run.
+
+    Parameters
+    ----------
+    metadata_file : str or Path, optional
+        Direct path to a scan-info JSON file.  Takes precedence over
+        ``run_number``/``run_numbers`` when provided.
+    run_number : int, optional
+        Single run number.  Convenience alias for ``run_numbers=[run_number]``
+        that avoids wrapping a scalar in a list and aids tab-completion.
+        Ignored when ``run_numbers`` is also given.
+    run_numbers : int or list of int, optional
+        One or more run numbers to load.  The corresponding metadata files are
+        located automatically using ``search_path``.  A single integer is
+        accepted as well as a list.
+    pgroup : str, optional
+        SwissFEL pgroup identifier, e.g. ``"p12345"``.  Required together with
+        ``run_numbers`` unless ``exp_name`` is supplied instead.
+    exp_name : str, optional
+        Experiment name used to look up the pgroup automatically via
+        :func:`~escape.utilities.name2pgroups`.  Alternative to ``pgroup``.
+    instrument : str, optional
+        Beamline name, e.g. ``"bernina"`` (default) or ``"alvra"``.
+    results_directory : str or Path, optional
+        Directory where the result file is written when ``result_filename`` is
+        set.  Defaults to the current working directory.
+    result_filename : str or None, optional
+        Base name for the result file.  Pass ``"auto"`` to derive the name from
+        the first metadata file.  ``None`` (default) skips result-file creation.
+    result_type : {"zarr", "h5"}, optional
+        Storage backend for the result file.  Defaults to ``"zarr"``.
+    result_file : h5py.File or zarr.Group, optional
+        An already-open result file to use directly, bypassing
+        ``result_filename``/``results_directory``.
+    load_result_only : bool, optional
+        If ``True``, skip parsing and load directly from an existing result
+        file at the path derived from ``results_directory`` and
+        ``result_filename``.  Defaults to ``False``.
+    clear_result_file : bool, optional
+        Delete an existing result file before writing.  Defaults to ``False``.
+    store_status : bool, optional
+        Persist the run-status JSON as pickled objects inside the DataSet.
+        Defaults to ``True``.
+    search_path : list of str, optional
+        Glob patterns (relative to ``/sf/``) used to find the metadata file for
+        each run number.  The tokens ``{instrument}``, ``{pgroup}``, and
+        ``{run_number}`` are substituted at runtime.  The first pattern that
+        yields a match is used.
+    search_paths : list of str, optional
+        Local directories searched for raw HDF5 data files referenced by the
+        metadata JSON.  Defaults to ``["./", "./scan_data/", "../scan_data"]``.
+    memlimit_MB : int, optional
+        Approximate per-step memory limit in MB for lazy loading.  Defaults to
+        ``100``.
+    createEscArrays : bool, optional
+        Build escape :class:`~escape.Array` objects from the parsed data.
+        Defaults to ``True``.
+    lazyEscArrays : bool, optional
+        Use dask-backed lazy arrays instead of loading data into memory
+        immediately.  Defaults to ``True``: eager array construction is
+        unchanged from the older parsers and does not benefit from the
+        scanning speedup, so building lazily avoids paying that cost up
+        front.  Pass ``False`` to compute arrays eagerly as before.
+    exclude_from_files : list of str, optional
+        Channel names or file patterns to skip during parsing.
+    checknstore_parsing_result : bool, optional
+        Cache the intermediate parsing result on disk and reuse it on
+        subsequent calls with the same inputs.  Defaults to ``False``.
+    clear_parsing_result : bool, optional
+        Clear a cached parsing result before re-parsing.  Defaults to
+        ``False``.
+    name : str, optional
+        Human-readable label attached to the returned DataSet.
+    alias_mappings : dict, optional
+        Mapping from raw channel names to short alias names, e.g.
+        ``{"SARES11-SPEC125-M1.roi1_background_subtracted": "spec"}``.
+        Aliases from the scan metadata are applied first; this dict takes
+        precedence.
+    step_selection : slice or list of int, optional
+        Subset of scan steps to load.  Defaults to ``slice(None)`` (all steps).
+    load_dap_data : bool, optional
+        Additionally load DAP (data-analysis pipeline) result files from the
+        run directory.  Defaults to ``False``.
+    raw_data_suffix : str or None, optional
+        When non-empty, a second parsing pass loads the corresponding raw-data
+        files and attaches them as separate channels with this suffix appended
+        to their names, e.g. ``"_rawdata"``.  Pass ``None`` or ``""`` to
+        disable.  Defaults to ``"_rawdata"``.
+    append_scan_parameter : dict, optional
+        Extra scan parameter to append to every array after loading, in the
+        form ``{"par_name": {"values": [v0, v1, ...]}}``.  The list must have
+        one entry per scan step.
+    verbose : int, optional
+        Verbosity level.  ``0`` is silent; higher values print progress
+        information.  Defaults to ``0``.
+    perm_result_file : str or None, optional
+        Permission string applied recursively to the result file after
+        creation, e.g. ``"g+rw"`` (default).  ``None`` skips the chmod step.
+    parse_version : {1, 2, 3}, optional
+        Parser version to use.  ``1`` selects the original SwissFEL eco-scan
+        parser; ``2`` selects the v2 rewrite (thread-based metadata scan);
+        ``3`` (default) additionally prunes the per-file HDF5 discovery walk
+        using dead-end knowledge shared between the scanning workers, which
+        speeds up parsing scans with many files of the same instrument
+        configuration.  Pass ``1`` or ``2`` to fall back to the older
+        parsers if ``3`` ever misbehaves for a given beamline's file layout.
+
+    Returns
+    -------
+    escape.storage.DataSet
+        DataSet whose attributes are the parsed detector channels as escape
+        :class:`~escape.Array` objects.  Every array carries a ``run_number``
+        scan parameter (one value per step) that identifies the originating run,
+        making steps from different runs distinguishable in
+        :attr:`~escape.Scan.par_steps` even when their scan parameters are
+        identical.
+
+    Notes
+    -----
+    **Run-number tracking:** Each loaded array gains a ``run_number`` scan
+    parameter automatically.  The value is extracted from the ``run{NNNN}``
+    token found in the metadata file path (filename or parent directory).  When
+    no such token is present the zero-based file index is used as a fallback.
+
+    **Multi-run concatenation:** Arrays from successive runs are concatenated
+    along the event axis using :func:`~escape.concatenate`.  All arrays across
+    runs must share the same set of channel names; channels absent from one run
+    but present in another will cause a concatenation error.
+
+    Examples
+    --------
+    Load a single run by number (pgroup required):
+
+    >>> ds = load_dataset_from_scan(run_number=42, pgroup="p12345")
+    >>> ds.SARES11_SPEC125.scan.par_steps
+    #    delay_ps  run_number  step_length
+    # 0      -1.0          42          500
+    # 1       0.0          42          500
+    # ...
+
+    Load multiple runs and distinguish them by ``run_number``:
+
+    >>> ds = load_dataset_from_scan(run_numbers=[42, 43], pgroup="p12345")
+    >>> ds.SARES11_SPEC125.scan.par_steps["run_number"].unique()
+    array([42, 43])
+
+    Load a specific metadata file directly:
+
+    >>> ds = load_dataset_from_scan(
+    ...     metadata_file="/sf/bernina/data/p12345/res/scan_info/run0042.json"
+    ... )
+    """
+    # Normalise run_number / run_numbers: accept int or list, singular wins
+    if run_number is not None and run_numbers is None:
+        run_numbers = run_number if isinstance(run_number, (list, tuple)) else [run_number]
+    elif isinstance(run_numbers, int):
+        run_numbers = [run_numbers]
+
     metadata_files = interpret_raw_data_definition(
         metadata_file=metadata_file,
         run_numbers=run_numbers,
@@ -231,14 +416,16 @@ def load_dataset_from_scan(
             except:
                 print(f'Warning: could not set permissions {perm_result_file:s}!')
 
+    _parser = {1: parseScanEcoV01, 2: parseScanEcoV02, 3: parseScanEcoV03}[parse_version]
+
     if load_result_only:
         ds = DataSet.load_from_result_file(result_filepath)
     else:
         d = {}
         s_collection = []
 
-        for metadata_file in metadata_files:
-            td, s = parse_scan(
+        for file_idx, metadata_file in enumerate(metadata_files):
+            td, s = _parser(
                 metadata_file,
                 search_paths=search_paths,
                 memlimit_MB=memlimit_MB,
@@ -281,7 +468,7 @@ def load_dataset_from_scan(
                     scan_info_filepath.stem + "_raw_data" + scan_info_filepath.suffix
                 )
                 # print(scan_info_filepath)
-                trd, sr = parse_scan(
+                trd, sr = _parser(
                     scan_info=sr,
                     scan_info_filepath=scan_info_filepath,
                     search_paths=search_paths,
@@ -358,6 +545,14 @@ def load_dataset_from_scan(
             if verbose:
                 for tmpkey, tmpval in alias_mappings.items():
                     print(tmpval, "      ", tmpkey)
+
+            run_no = _extract_run_number(metadata_file)
+            if run_no is None:
+                run_no = file_idx
+            for ar in td.values():
+                ar.scan.append_parameter(
+                    {"run_number": {"values": [run_no] * len(ar.scan)}}
+                )
 
             for nm, ar in td.items():
                 if not (nm in d.keys()):

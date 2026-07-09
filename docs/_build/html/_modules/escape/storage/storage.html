@@ -8,6 +8,7 @@
         <title>escape.storage.storage - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -255,7 +256,9 @@
         <article role="main" id="furo-main-content">
           <h1>Source code for escape.storage.storage</h1><div class="highlight"><pre>
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">traceback</span><span class="w"> </span><span class="kn">import</span> <span class="n">format_exc</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -286,6 +289,11 @@
 
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Serialise matplotlib pyplot calls that happen inside background repr threads.</span>
+<span class="c1"># pyplot&#39;s global state (current figure, interactive mode) is not thread-safe;</span>
+<span class="c1"># this lock ensures only one repr computation touches it at a time.</span>
+<span class="n">_mpl_repr_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">escape</span>
 
@@ -336,6 +344,72 @@
         <span class="k">return</span> <span class="n">escaped</span><span class="p">(</span><span class="n">foo_np</span><span class="p">,</span> <span class="n">convertOutput2EscData</span><span class="o">=</span><span class="n">convertOutput2EscData</span><span class="p">)(</span>
             <span class="n">data</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
         <span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Programmatic numpy/dask method injection for Array</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Table: method_name -&gt; (np_func, da_func_or_None, axis_kw, esc_out)</span>
+<span class="c1">#   axis_kw=True  → convertesc_axis_kw=True  (reduction: wrapping depends on axis)</span>
+<span class="c1">#   esc_out=[0]   → convertOutput2EscData=[0] (element-wise: always wrap output)</span>
+<span class="n">_ARRAY_DELEGATE_METHODS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># Reductions — wrapping depends on whether event axis is collapsed</span>
+    <span class="s2">&quot;nansum&quot;</span><span class="p">:</span>        <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">,</span>        <span class="n">da</span><span class="o">.</span><span class="n">nansum</span><span class="p">,</span>        <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanmean&quot;</span><span class="p">:</span>       <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">,</span>       <span class="n">da</span><span class="o">.</span><span class="n">nanmean</span><span class="p">,</span>       <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanstd&quot;</span><span class="p">:</span>        <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanstd</span><span class="p">,</span>        <span class="n">da</span><span class="o">.</span><span class="n">nanstd</span><span class="p">,</span>        <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanmedian&quot;</span><span class="p">:</span>     <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">,</span>     <span class="kc">None</span><span class="p">,</span>             <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanmin&quot;</span><span class="p">:</span>        <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">,</span>        <span class="n">da</span><span class="o">.</span><span class="n">nanmin</span><span class="p">,</span>        <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanmax&quot;</span><span class="p">:</span>        <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">,</span>        <span class="n">da</span><span class="o">.</span><span class="n">nanmax</span><span class="p">,</span>        <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanpercentile&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>             <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;nanquantile&quot;</span><span class="p">:</span>   <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanquantile</span><span class="p">,</span>   <span class="kc">None</span><span class="p">,</span>             <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;sum&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">sum</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;mean&quot;</span><span class="p">:</span>          <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>          <span class="n">da</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>          <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;average&quot;</span><span class="p">:</span>       <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">average</span><span class="p">,</span>       <span class="n">da</span><span class="o">.</span><span class="n">average</span><span class="p">,</span>       <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;std&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">std</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;median&quot;</span><span class="p">:</span>        <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">,</span>        <span class="kc">None</span><span class="p">,</span>             <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;percentile&quot;</span><span class="p">:</span>    <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">,</span>    <span class="kc">None</span><span class="p">,</span>             <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;quantile&quot;</span><span class="p">:</span>      <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">quantile</span><span class="p">,</span>      <span class="kc">None</span><span class="p">,</span>             <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;min&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">min</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;max&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">max</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;all&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">all</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;any&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">any</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;abs&quot;</span><span class="p">:</span>           <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">,</span>           <span class="n">da</span><span class="o">.</span><span class="n">abs</span><span class="p">,</span>           <span class="kc">True</span><span class="p">,</span>  <span class="kc">None</span><span class="p">),</span>
+    <span class="c1"># Element-wise — always returns an Array with the same shape</span>
+    <span class="s2">&quot;isnan&quot;</span><span class="p">:</span>         <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">,</span>         <span class="n">da</span><span class="o">.</span><span class="n">isnan</span><span class="p">,</span>         <span class="kc">False</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+    <span class="s2">&quot;isinf&quot;</span><span class="p">:</span>         <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">,</span>         <span class="n">da</span><span class="o">.</span><span class="n">isinf</span><span class="p">,</span>         <span class="kc">False</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+    <span class="s2">&quot;isfinite&quot;</span><span class="p">:</span>      <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">,</span>      <span class="n">da</span><span class="o">.</span><span class="n">isfinite</span><span class="p">,</span>      <span class="kc">False</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_make_array_method</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">np_func</span><span class="p">,</span> <span class="n">da_func</span><span class="p">,</span> <span class="n">axis_kw</span><span class="p">,</span> <span class="n">esc_out</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Factory: build an Array method that delegates to a numpy/dask function.&quot;&quot;&quot;</span>
+    <span class="n">np_summary</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="p">(</span><span class="n">np_func</span><span class="o">.</span><span class="vm">__doc__</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()),</span> <span class="s2">&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">esc_out</span><span class="p">:</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Apply :func:`numpy.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">` element-wise to this Array&#39;s data.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">np_summary</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;Returns an :class:`Array` with the same index and scan structure.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">kw</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;convertOutput2EscData&quot;</span><span class="p">:</span> <span class="n">esc_out</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Apply :func:`numpy.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">` to this Array&#39;s data.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">np_summary</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;Omitting ``axis`` or passing ``axis=0`` reduces over events and &quot;</span>
+            <span class="s2">&quot;returns a plain numpy/dask result. Pass ``axis=N`` (N &gt; 0) to &quot;</span>
+            <span class="s2">&quot;reduce along a non-event axis and receive a new :class:`Array`.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">kw</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;convertesc_axis_kw&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span><span class="n">np_func</span><span class="p">,</span> <span class="n">da_func</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="n">method</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="n">method</span><span class="o">.</span><span class="vm">__qualname__</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Array.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">method</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">doc</span>
+    <span class="k">return</span> <span class="n">method</span>
 
 
 <div class="viewcode-block" id="Array">
@@ -458,327 +532,14 @@
         <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">da</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Array.nansum">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nansum">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nansum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">nansum</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
+    <span class="c1"># numpy/dask reduction and element-wise methods are injected below the class</span>
+    <span class="c1"># definition via _ARRAY_DELEGATE_METHODS + _make_array_method.</span>
 
-
-<div class="viewcode-block" id="Array.nanmean">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanmean">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">nanmean</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="c1"># convertOutput2EscData=[0],</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.nanstd">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanstd">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanstd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanstd</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">nanstd</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.nanmedian">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanmedian">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmedian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">,</span>
-            <span class="kc">None</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.nanmin">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanmin">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">nanmin</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.nanmax">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanmax">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmax</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">nanmax</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.sum">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.sum">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">sum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">sum</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.isnan">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.isnan">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">isnan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">isnan</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertOutput2EscData</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.isinf">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.isinf">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">isinf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">isinf</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertOutput2EscData</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.isfinite">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.isfinite">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">isfinite</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertOutput2EscData</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.mean">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.mean">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">mean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.average">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.average">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">average</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">average</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">average</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.std">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.std">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">std</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">std</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.median">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.median">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">median</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">,</span>
-            <span class="kc">None</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.min">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.min">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">min</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">min</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.max">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.max">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">max</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">max</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.all">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.all">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">all</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.any">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.any">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">any</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">any</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.abs">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.abs">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">abs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">,</span>
-            <span class="n">da</span><span class="o">.</span><span class="n">abs</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.percentile">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.percentile">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">percentile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">,</span>
-            <span class="kc">None</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.quantile">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.quantile">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">quantile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">quantile</span><span class="p">,</span>
-            <span class="kc">None</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.nanpercentile">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanpercentile">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanpercentile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">,</span>
-            <span class="kc">None</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="Array.nanquantile">
-<a class="viewcode-back" href="../../../api/array.html#escape.Array.nanquantile">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanquantile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_apply_method</span><span class="p">(</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">nanquantile</span><span class="p">,</span>
-            <span class="kc">None</span><span class="p">,</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">(),</span>
-            <span class="o">*</span><span class="n">args</span><span class="p">,</span>
-            <span class="n">convertesc_axis_kw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-        <span class="p">)</span></div>
+<div class="viewcode-block" id="Array.nancount">
+<a class="viewcode-back" href="../../../api/array.html#escape.Array.nancount">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">nancount</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of finite (non-NaN) events in this Array.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">()</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)))</span></div>
 
 
 <div class="viewcode-block" id="Array.filter">
@@ -804,9 +565,40 @@
 <div class="viewcode-block" id="Array.update">
 <a class="viewcode-back" href="../../../api/array.html#escape.Array.update">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">array</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update one escape array from another. Only array elements not</span>
-<span class="sd">        existing  in the present array will be added to it.&quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Merge *array* into this Array, adding only events with new pulse IDs.</span>
+
+<span class="sd">        Events already present in ``self`` (matched by pulse ID) are ignored;</span>
+<span class="sd">        new events are appended as additional scan steps so that the existing</span>
+<span class="sd">        scan structure is preserved and the new events keep their own step</span>
+<span class="sd">        grouping.  Intended for incremental accumulation during acquisition —</span>
+<span class="sd">        call repeatedly with newer snapshots to build up a complete dataset.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        array : escape.Array</span>
+<span class="sd">            Source Array whose new events will be added to this one.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        escape.Array</span>
+<span class="sd">            New Array containing all events from ``self`` plus any events in</span>
+<span class="sd">            *array* whose pulse ID was absent from ``self``.  Returns ``self``</span>
+<span class="sd">            unchanged (same object) if *array* contributes no new events.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">new_mask</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">new_mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">self</span>
+        <span class="n">new_positions</span> <span class="o">=</span> <span class="n">new_mask</span><span class="o">.</span><span class="n">nonzero</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">new_scan</span> <span class="o">=</span> <span class="n">get_scan_step_selections</span><span class="p">(</span>
+            <span class="n">new_positions</span><span class="p">,</span> <span class="n">array</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">step_lengths</span><span class="p">,</span> <span class="n">scan</span><span class="o">=</span><span class="n">array</span><span class="o">.</span><span class="n">scan</span>
+        <span class="p">)</span>
+        <span class="n">new_part</span> <span class="o">=</span> <span class="n">Array</span><span class="p">(</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">array</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">new_mask</span><span class="p">],</span>
+            <span class="n">index</span><span class="o">=</span><span class="n">array</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="n">new_mask</span><span class="p">],</span>
+            <span class="n">step_lengths</span><span class="o">=</span><span class="n">new_scan</span><span class="o">.</span><span class="n">step_lengths</span><span class="p">,</span>
+            <span class="n">parameter</span><span class="o">=</span><span class="n">new_scan</span><span class="o">.</span><span class="n">parameter</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">concatenate</span><span class="p">([</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_part</span><span class="p">])</span></div>
 
 
 <div class="viewcode-block" id="Array.correlation_analysis_to">
@@ -976,15 +768,29 @@
 
 <div class="viewcode-block" id="Array.ravel_event_data">
 <a class="viewcode-back" href="../../../api/array.html#escape.Array.ravel_event_data">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">ravel_event_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="p">:</span>
-            <span class="n">axes</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ndim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">axes</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">axes</span> <span class="o">=</span> <span class="n">args</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ravel_event_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Flatten all non-event axes into a single dimension per event.</span>
+
+<span class="sd">        Converts an Array of shape ``(N, d1, d2, ...)`` to</span>
+<span class="sd">        ``(N, d1*d2*...)``, preserving the event axis and scan structure.</span>
+<span class="sd">        Useful for feeding multi-dimensional detector data into functions</span>
+<span class="sd">        that expect a 1-D value per event.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        escape.Array</span>
+<span class="sd">            Array with shape ``(N, d1*d2*...)``.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; imgs.shape                   # (500, 64, 64)</span>
+<span class="sd">        &gt;&gt;&gt; flat = imgs.ravel_event_data()</span>
+<span class="sd">        &gt;&gt;&gt; flat.shape                   # (500, 4096)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_events</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">index_dim</span><span class="p">]</span>
+        <span class="n">new_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_events</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">Array</span><span class="p">(</span>
-            <span class="n">data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">),</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">new_data</span><span class="p">,</span>
             <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">,</span>
             <span class="n">step_lengths</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">step_lengths</span><span class="p">,</span>
             <span class="n">parameter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">parameter</span><span class="p">,</span>
@@ -1372,6 +1178,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">correct_for_references</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">isref_bool</span><span class="p">,</span> <span class="n">N_index_aggregation</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">operation</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">truediv</span>
     <span class="p">):</span>
+        <span class="c1"># TODO: incomplete — `indsrt` and `ref` are undefined; implementation needed.</span>
         <span class="n">refs</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="n">isref_bool</span><span class="p">]</span>
         <span class="n">noref</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="o">~</span><span class="n">isref_bool</span><span class="p">]</span>
         <span class="n">indxs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_index_array</span><span class="p">(</span><span class="n">N_index_aggregation</span><span class="o">=</span><span class="n">N_index_aggregation</span><span class="p">)</span>
@@ -1455,11 +1262,14 @@
             <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
                 <span class="s2">&quot;escape array needs to be numpy type for histogramming, compute first.&quot;</span>
             <span class="p">)</span>
-        <span class="p">[</span><span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="p">[</span><span class="n">cut_percentage</span><span class="p">,</span> <span class="mi">100</span> <span class="o">-</span> <span class="n">cut_percentage</span><span class="p">]</span>
-        <span class="p">)</span>
+        <span class="n">flat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="p">[</span><span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">(</span><span class="n">flat</span><span class="p">,</span> <span class="p">[</span><span class="n">cut_percentage</span><span class="p">,</span> <span class="mi">100</span> <span class="o">-</span> <span class="n">cut_percentage</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">hmin</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">hmax</span><span class="p">)</span> <span class="ow">and</span> <span class="n">hmin</span> <span class="o">&lt;</span> <span class="n">hmax</span><span class="p">):</span>
+            <span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">flat</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">flat</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">hmin</span> <span class="o">==</span> <span class="n">hmax</span><span class="p">:</span>
+                <span class="n">hmin</span> <span class="o">-=</span> <span class="mf">0.5</span>
+                <span class="n">hmax</span> <span class="o">+=</span> <span class="mf">0.5</span>
         <span class="n">hbins</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram_bin_edges</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">bins</span><span class="p">,</span> <span class="nb">range</span><span class="o">=</span><span class="p">[</span><span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span><span class="p">])</span>
-        <span class="c1"># hbins = np.linspace(hmin, hmax, N_intervals + 1)</span>
         <span class="n">hdat</span><span class="p">,</span> <span class="n">bin_edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">bins</span><span class="o">=</span><span class="n">hbins</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">normalize_to</span> <span class="o">==</span> <span class="s2">&quot;max&quot;</span><span class="p">:</span>
             <span class="n">hdat</span> <span class="o">=</span> <span class="n">hdat</span> <span class="o">/</span> <span class="n">hdat</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
@@ -1508,21 +1318,27 @@
         <span class="n">plt</span><span class="o">.</span><span class="n">ioff</span><span class="p">()</span>
         <span class="n">f</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="n">figsize</span><span class="p">)</span>
         <span class="n">ax</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
-        <span class="c1"># ax_steps = ax.twiny()</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">bool</span><span class="p">:</span>
             <span class="n">flims</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">stepmns</span><span class="p">,</span> <span class="n">stepmxs</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span>
-                <span class="o">*</span><span class="p">[</span>
-                    <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">tmp</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">tmp</span><span class="p">)]</span>
-                    <span class="k">for</span> <span class="n">tmp</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">95</span><span class="p">])</span>
-                <span class="p">]</span>
-            <span class="p">)</span>
-            <span class="n">flims</span> <span class="o">=</span> <span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="n">stepmns</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">stepmxs</span><span class="p">)]</span>
+            <span class="c1"># Compute a robust filter range from per-step 5–95 percentiles.</span>
+            <span class="c1"># Falls back to None (no filtering) when the range is degenerate</span>
+            <span class="c1"># (constant data, all-NaN steps, or only a few discrete values).</span>
+            <span class="n">flims</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">per_step</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">95</span><span class="p">])</span>
+                <span class="n">lows</span>  <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">s</span><span class="p">))</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">per_step</span><span class="p">]</span>
+                <span class="n">highs</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">s</span><span class="p">))</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">per_step</span><span class="p">]</span>
+                <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">lows</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">highs</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lo</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">hi</span><span class="p">)</span> <span class="ow">and</span> <span class="n">lo</span> <span class="o">&lt;</span> <span class="n">hi</span><span class="p">:</span>
+                    <span class="n">flims</span> <span class="o">=</span> <span class="p">[</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
 
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">*</span><span class="n">flims</span><span class="p">)</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span>
+            <span class="n">arr_to_hist</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">*</span><span class="n">flims</span><span class="p">)</span> <span class="k">if</span> <span class="n">flims</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span>
+            <span class="n">arr_to_hist</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span>
                 <span class="n">plot_axis</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span>
                 <span class="n">cmap</span><span class="o">=</span><span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">Reds</span><span class="p">,</span>
                 <span class="n">cut_percentage</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
@@ -1582,46 +1398,224 @@
         <span class="n">plt</span><span class="o">.</span><span class="n">ion</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">imgobj</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_repr_html_</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">():</span>
-            <span class="k">return</span> <span class="p">(</span>
-                <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="fm">__repr__</span><span class="p">(</span><span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-                <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">_repr_html_</span><span class="p">()</span>
-            <span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">all</span><span class="p">([</span><span class="n">ts</span> <span class="o">&lt;=</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]):</span>
-                <span class="k">return</span> <span class="p">(</span>
-                    <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="fm">__repr__</span><span class="p">(</span><span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-                    <span class="o">+</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
-                    <span class="o">+</span> <span class="s2">&quot;&lt;img src=&#39;data:image/png;base64,</span><span class="si">{}</span><span class="s2">&#39;&gt;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_hist_plot</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>
-                    <span class="p">)</span>
-                <span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_repr_grid_plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmt</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mf">3.5</span><span class="p">)):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Repr plot for Arrays with an associated multi-dimensional Grid.</span>
 
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">ndim_nonzero</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="k">return</span> <span class="p">(</span>
-                    <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="fm">__repr__</span><span class="p">(</span><span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-                    <span class="o">+</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
-                    <span class="o">+</span> <span class="s2">&quot;&lt;img src=&#39;data:image/png;base64,</span><span class="si">{}</span><span class="s2">&#39;&gt;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_map_plot</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>
-                    <span class="p">)</span>
-                <span class="p">)</span>
+<span class="sd">        * 1-D array, 2-D grid → 2-D heatmap of per-step means, labelled with</span>
+<span class="sd">          the grid positions and dimension names.</span>
+<span class="sd">        * All other combinations → the standard scan plot with a title that</span>
+<span class="sd">          notes the full grid shape, so high dimensionality is visible.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span>
+        <span class="n">is_scalar_array</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">all</span><span class="p">(</span><span class="n">ts</span> <span class="o">&lt;=</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="n">grid_ndim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">dim_str</span> <span class="o">=</span> <span class="s2">&quot;×&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">grid</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># e.g. &quot;10×8&quot;</span>
+
+        <span class="n">plt</span><span class="o">.</span><span class="n">ioff</span><span class="p">()</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="n">figsize</span><span class="p">)</span>
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">is_scalar_array</span> <span class="ow">and</span> <span class="n">grid_ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">step_means</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">nanmean</span><span class="p">())</span>
+            <span class="n">grid_data</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">to_grid</span><span class="p">(</span><span class="n">step_means</span><span class="p">)</span>           <span class="c1"># shape (nrows, ncols)</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">positions</span>
+            <span class="k">if</span> <span class="n">positions</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">positions</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">x_raw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">positions</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">y_raw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">positions</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="k">return</span> <span class="kc">None</span></div>
+                <span class="n">x_raw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">y_raw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="n">plot2D</span><span class="p">(</span><span class="n">x_raw</span><span class="p">,</span> <span class="n">y_raw</span><span class="p">,</span> <span class="n">grid_data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="ow">or</span> <span class="s2">&quot;mean&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">grid</span><span class="o">.</span><span class="n">dimension_names</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">dimension_names</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">dimension_names</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">dimension_names</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid mean  [</span><span class="si">{</span><span class="n">dim_str</span><span class="si">}</span><span class="s2">]&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># higher-D grid or per-event arrays: fall back to scan plot</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Scan plot  (grid: </span><span class="si">{</span><span class="n">dim_str</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_scalar_array</span><span class="p">:</span>
+                <span class="n">title</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;  |  array shape: </span><span class="si">{</span><span class="s1">&#39;×&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">9</span><span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">fmt</span> <span class="o">==</span> <span class="s2">&quot;svg&quot;</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">()</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;svg&quot;</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+            <span class="n">imgobj</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tmpfile</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">()</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">tmpfile</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+            <span class="n">imgobj</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">tmpfile</span><span class="o">.</span><span class="n">getvalue</span><span class="p">())</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">ion</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">imgobj</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Repr helpers: plot dispatch, caching, async display</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_repr_plot_png_b64</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a base-64 PNG string for the repr plot, or raise on failure.</span>
+
+<span class="sd">        This is the single entry-point for repr plot creation.  Change this</span>
+<span class="sd">        method (or the private helpers it calls) to alter how the plot looks.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_grid_plot</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">all</span><span class="p">(</span><span class="n">ts</span> <span class="o">&lt;=</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_hist_plot</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">ndim_nonzero</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_map_plot</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;No repr plot for this array shape.&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_repr_cache_key</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Cheap content hash used as a cache key for the repr PNG.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">()</span>
+            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;dtype&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;ravel&quot;</span><span class="p">):</span>
+                <span class="n">flat</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">flat</span><span class="p">))</span>
+                <span class="n">sample</span> <span class="o">=</span> <span class="n">flat</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">sample</span><span class="p">,</span> <span class="s2">&quot;compute&quot;</span><span class="p">):</span>
+                    <span class="n">sample</span> <span class="o">=</span> <span class="n">sample</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+                <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span><span class="o">.</span><span class="n">tobytes</span><span class="p">())</span>
+            <span class="k">return</span> <span class="n">h</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">24</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_repr_cache_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">cache_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="o">.</span><span class="n">home</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;.cache&quot;</span> <span class="o">/</span> <span class="s2">&quot;escape&quot;</span> <span class="o">/</span> <span class="s2">&quot;repr&quot;</span>
+        <span class="n">cache_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cache_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">.b64&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ipython_display_</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Async Jupyter display: show &#39;Computing…&#39; immediately, then update.</span>
+
+<span class="sd">        * Checks a disk cache keyed by a content hash of the array data before</span>
+<span class="sd">          starting any computation — cached results appear instantly.</span>
+<span class="sd">        * Runs plot creation in a background thread; if it takes more than 10 s</span>
+<span class="sd">          the display is updated with a &#39;Timed out&#39; notice instead.</span>
+<span class="sd">        * Any exception inside the plot thread produces a styled error message</span>
+<span class="sd">          rather than propagating to the notebook.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">IPython</span><span class="w"> </span><span class="kn">import</span> <span class="n">display</span> <span class="k">as</span> <span class="n">_idisplay</span>
+        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="fm">__repr__</span><span class="p">())</span>
+            <span class="k">return</span>
+
+        <span class="n">header</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="fm">__repr__</span><span class="p">(</span><span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;br/&gt;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># dask arrays: delegate to dask&#39;s own repr, no plot needed</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">():</span>
+            <span class="n">_idisplay</span><span class="o">.</span><span class="n">display</span><span class="p">(</span>
+                <span class="n">_idisplay</span><span class="o">.</span><span class="n">HTML</span><span class="p">(</span><span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br/&gt;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">_repr_html_</span><span class="p">())</span>
+            <span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="c1"># cache look-up</span>
+        <span class="n">cache_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repr_cache_key</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">cache_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">cache_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repr_cache_path</span><span class="p">(</span><span class="n">cache_key</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">cache_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">b64</span> <span class="o">=</span> <span class="n">cache_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span>
+                    <span class="n">_idisplay</span><span class="o">.</span><span class="n">display</span><span class="p">(</span><span class="n">_idisplay</span><span class="o">.</span><span class="n">HTML</span><span class="p">(</span>
+                        <span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br/&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+                        <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;&lt;img src=&#39;data:image/png;base64,</span><span class="si">{</span><span class="n">b64</span><span class="si">}</span><span class="s2">&#39;&gt;&quot;</span>
+                    <span class="p">))</span>
+                    <span class="k">return</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">pass</span>  <span class="c1"># corrupted cache entry — fall through to recompute</span>
+
+        <span class="c1"># show placeholder immediately so the user sees something right away</span>
+        <span class="n">handle</span> <span class="o">=</span> <span class="n">_idisplay</span><span class="o">.</span><span class="n">display</span><span class="p">(</span>
+            <span class="n">_idisplay</span><span class="o">.</span><span class="n">HTML</span><span class="p">(</span><span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br/&gt;</span><span class="se">\n</span><span class="s2">&lt;em&gt;Computing plot…&lt;/em&gt;&quot;</span><span class="p">),</span>
+            <span class="n">display_id</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">png_b64</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span>
+        <span class="n">err_msg</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_compute</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">_mpl_repr_lock</span><span class="p">:</span>
+                    <span class="n">png_b64</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_plot_png_b64</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c1"># shape has no plot — leave png_b64 as None</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="n">err_msg</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span>
+
+        <span class="n">t</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">_compute</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">is_alive</span><span class="p">():</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="s2">&quot;&lt;em&gt;Plot timed out (computation exceeded 10 s).&lt;/em&gt;&quot;</span>
+        <span class="k">elif</span> <span class="n">err_msg</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s1">&#39;&lt;span style=&quot;color:#c0392b&quot;&gt;Could not create plot: &#39;</span>
+                <span class="o">+</span> <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">err_msg</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="o">+</span> <span class="s2">&quot;&lt;/span&gt;&quot;</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">png_b64</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># persist to cache</span>
+            <span class="k">if</span> <span class="n">cache_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_repr_cache_path</span><span class="p">(</span><span class="n">cache_key</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">png_b64</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">pass</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&lt;img src=&#39;data:image/png;base64,</span><span class="si">{</span><span class="n">png_b64</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39;&gt;&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="s2">&quot;&lt;em&gt;No plot available for this array shape.&lt;/em&gt;&quot;</span>
+
+        <span class="n">handle</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">_idisplay</span><span class="o">.</span><span class="n">HTML</span><span class="p">(</span><span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br/&gt;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">body</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_repr_html_</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;HTML repr for static notebook export and non-IPython environments.</span>
+
+<span class="sd">        In a live Jupyter session :meth:`_ipython_display_` is called instead,</span>
+<span class="sd">        which provides the async &#39;Computing…&#39; placeholder and caching.  This</span>
+<span class="sd">        method is the synchronous fallback used by nbconvert and similar tools.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">header</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="fm">__repr__</span><span class="p">(</span><span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_dask_array</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">_repr_html_</span><span class="p">()</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">b64</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_repr_plot_png_b64</span><span class="p">()</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;&lt;img src=&#39;data:image/png;base64,</span><span class="si">{</span><span class="n">b64</span><span class="si">}</span><span class="s2">&#39;&gt;&quot;</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">header</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="n">header</span> <span class="o">+</span> <span class="s2">&quot;&lt;br /&gt;</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="o">+</span> <span class="s1">&#39;&lt;span style=&quot;color:#c0392b&quot;&gt;Could not create plot: &#39;</span>
+                <span class="o">+</span> <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span>
+                <span class="o">+</span> <span class="s2">&quot;&lt;/span&gt;&quot;</span>
+            <span class="p">)</span></div>
 
 
-    <span class="c1">#     s = &quot;&lt;%s.%s object at %s&gt;&quot; % (</span>
-    <span class="c1">#         self.__class__.__module__,</span>
-    <span class="c1">#         self.__class__.__name__,</span>
-    <span class="c1">#         hex(id(self)),</span>
-    <span class="c1">#     )</span>
-    <span class="c1">#     s += &quot; {}; shape {}&quot;.format(self.name, self.shape)</span>
-    <span class="c1">#     s += &quot;\n&quot;</span>
-    <span class="c1">#     if isinstance(self.data, np.ndarray):</span>
-    <span class="c1">#         s += self._get_ana_str()</span>
-    <span class="c1">#     if self.scan:</span>
-    <span class="c1">#         s += self.scan.__repr__()</span>
-    <span class="c1">#     return s</span>
+
+<span class="c1"># Inject numpy/dask delegate methods into Array</span>
+<span class="k">for</span> <span class="n">_name</span><span class="p">,</span> <span class="p">(</span><span class="n">_np</span><span class="p">,</span> <span class="n">_da</span><span class="p">,</span> <span class="n">_ax</span><span class="p">,</span> <span class="n">_esc</span><span class="p">)</span> <span class="ow">in</span> <span class="n">_ARRAY_DELEGATE_METHODS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">setattr</span><span class="p">(</span><span class="n">Array</span><span class="p">,</span> <span class="n">_name</span><span class="p">,</span> <span class="n">_make_array_method</span><span class="p">(</span><span class="n">_name</span><span class="p">,</span> <span class="n">_np</span><span class="p">,</span> <span class="n">_da</span><span class="p">,</span> <span class="n">_ax</span><span class="p">,</span> <span class="n">_esc</span><span class="p">))</span>
+<span class="k">del</span> <span class="n">_name</span><span class="p">,</span> <span class="n">_np</span><span class="p">,</span> <span class="n">_da</span><span class="p">,</span> <span class="n">_ax</span><span class="p">,</span> <span class="n">_esc</span>  <span class="c1"># keep module namespace tidy</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">load_from_h5_file</span><span class="p">(</span><span class="n">file_name</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">parent_group_name</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
@@ -2163,31 +2157,27 @@
         <span class="n">dims</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimension_names</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimension_names</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;Grid shape=</span><span class="si">{</span><span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s2"> dims=</span><span class="si">{</span><span class="n">dims</span><span class="si">}</span><span class="s2"> filled=</span><span class="si">{</span><span class="n">filled</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">total</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">percent</span><span class="si">:</span><span class="s2">0.1f</span><span class="si">}</span><span class="s2">%)&gt;&quot;</span></div>
 
-    
-    
-    
+
+
+<span class="c1"># Names must match methods on Array (injected by _ARRAY_DELEGATE_METHODS) and Scan.</span>
+<span class="n">_SCAN_STEP_DELEGATE</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;nansum&quot;</span><span class="p">,</span> <span class="s2">&quot;nanmean&quot;</span><span class="p">,</span> <span class="s2">&quot;nanstd&quot;</span><span class="p">,</span> <span class="s2">&quot;nanmedian&quot;</span><span class="p">,</span> <span class="s2">&quot;nanmin&quot;</span><span class="p">,</span> <span class="s2">&quot;nanmax&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nanpercentile&quot;</span><span class="p">,</span> <span class="s2">&quot;nanquantile&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;sum&quot;</span><span class="p">,</span> <span class="s2">&quot;mean&quot;</span><span class="p">,</span> <span class="s2">&quot;average&quot;</span><span class="p">,</span> <span class="s2">&quot;std&quot;</span><span class="p">,</span> <span class="s2">&quot;median&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;percentile&quot;</span><span class="p">,</span> <span class="s2">&quot;quantile&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="s2">&quot;all&quot;</span><span class="p">,</span> <span class="s2">&quot;any&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;abs&quot;</span><span class="p">,</span> <span class="s2">&quot;isnan&quot;</span><span class="p">,</span> <span class="s2">&quot;isinf&quot;</span><span class="p">,</span> <span class="s2">&quot;isfinite&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
 <span class="n">SCAN_STEP_METHODS</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="s2">&quot;nansum&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanmean&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanstd&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanmedian&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanpercentile&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanquantile&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanmin&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nanmax&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;sum&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;mean&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;average&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;std&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;median&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;min&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;max&quot;</span><span class="p">,</span>
+            <span class="o">*</span><span class="n">_SCAN_STEP_DELEGATE</span><span class="p">,</span>
+            <span class="c1"># escape-specific aggregators</span>
             <span class="s2">&quot;count&quot;</span><span class="p">,</span>
             <span class="s2">&quot;nancount&quot;</span><span class="p">,</span>
             <span class="s2">&quot;median_and_mad&quot;</span><span class="p">,</span>
             <span class="c1"># &quot;weighted_median_and_mad&quot;,</span>
             <span class="s2">&quot;weighted_avg_and_std&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;weighted_stats&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;weighted_stat&quot;</span><span class="p">,</span>
             <span class="s2">&quot;correlation_analysis_to&quot;</span><span class="p">,</span>
         <span class="p">]</span>
 
@@ -2196,7 +2186,25 @@
 <span class="c1"># their per-step outputs into grid-shaped arrays using `to_grid`</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">_make_grid_scan_wrapper</span><span class="p">(</span><span class="n">method_name</span><span class="p">):</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="c1"># Extract plotting options from kwargs (do not pass them to scan)</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Wraps Scan.{method} with grid reshaping and optional 2-D plotting.</span>
+
+<span class="sd">        Additional keyword arguments (consumed here, not forwarded to the scan):</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        plot : bool or matplotlib.axes.Axes or matplotlib.figure.Figure, optional</span>
+<span class="sd">            If ``True``, plot the grid-shaped result with :func:`escape.plot2D`</span>
+<span class="sd">            using the current axes.  Pass a ``matplotlib.axes.Axes`` to target a</span>
+<span class="sd">            specific axes, or a ``matplotlib.figure.Figure`` to open a new subplot.</span>
+<span class="sd">            No plot is created by default.</span>
+<span class="sd">        plot_kws : dict, optional</span>
+<span class="sd">            Extra keyword arguments for :func:`escape.plot2D`.  The special keys</span>
+<span class="sd">            ``&#39;colorbar&#39;`` (bool, default ``True``) and ``&#39;axis&#39;``</span>
+<span class="sd">            (``matplotlib.axes.Axes``) are handled here and not forwarded.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.axes</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_mplaxes</span>
+
+        <span class="c1"># Extract plotting options before forwarding to the underlying scan method</span>
         <span class="n">plot_opt</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;plot&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="n">plot_kws</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;plot_kws&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
 
@@ -2228,42 +2236,42 @@
         <span class="c1"># Plotting: if requested and we have a 2D numpy array, call plot2D</span>
         <span class="k">if</span> <span class="n">plot_opt</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="c1"># choose candidate to plot (first element if tuple)</span>
                 <span class="n">candidate</span> <span class="o">=</span> <span class="n">converted</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">converted</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="k">else</span> <span class="n">converted</span>
                 <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">candidate</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
-                    <span class="c1"># resolve axis/figure</span>
-                    <span class="n">axis</span> <span class="o">=</span> <span class="kc">None</span>
-                    <span class="k">if</span> <span class="n">plot_opt</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                    <span class="c1"># copy plot_kws early so we can pop special keys</span>
+                    <span class="n">_pkw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">plot_kws</span><span class="p">)</span>
+                    <span class="n">add_colorbar</span> <span class="o">=</span> <span class="n">_pkw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;colorbar&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+                    <span class="n">axis_from_kws</span> <span class="o">=</span> <span class="n">_pkw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;axis&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+                    <span class="c1"># resolve target axes, in priority order</span>
+                    <span class="k">if</span> <span class="n">axis_from_kws</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">axis</span> <span class="o">=</span> <span class="n">axis_from_kws</span>
+                    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">plot_opt</span><span class="p">,</span> <span class="n">_mplaxes</span><span class="o">.</span><span class="n">Axes</span><span class="p">):</span>
+                        <span class="n">axis</span> <span class="o">=</span> <span class="n">plot_opt</span>
+                    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">plot_opt</span><span class="p">,</span> <span class="s2">&quot;add_subplot&quot;</span><span class="p">):</span>
+                        <span class="n">axis</span> <span class="o">=</span> <span class="n">plot_opt</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">plot_opt</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
                         <span class="n">axis</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
                     <span class="k">else</span><span class="p">:</span>
-                        <span class="c1"># Figure-like object</span>
-                        <span class="k">try</span><span class="p">:</span>
-                            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">plot_opt</span><span class="p">,</span> <span class="s2">&quot;add_subplot&quot;</span><span class="p">):</span>
-                                <span class="n">axis</span> <span class="o">=</span> <span class="n">plot_opt</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
-                            <span class="k">else</span><span class="p">:</span>
-                                <span class="n">axis</span> <span class="o">=</span> <span class="n">plot_opt</span>
-                        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-                            <span class="n">axis</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
+                        <span class="n">axis</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
 
-                    <span class="c1"># prepare x/y from positions; assume positions order matches shape</span>
+                    <span class="c1"># prepare x/y coordinate arrays from grid positions</span>
                     <span class="n">positions</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;positions&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
                     <span class="k">if</span> <span class="n">positions</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">positions</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
-                        <span class="c1"># x corresponds to horizontal axis (cols), y to rows</span>
                         <span class="n">x_raw</span> <span class="o">=</span> <span class="n">positions</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
                         <span class="n">y_raw</span> <span class="o">=</span> <span class="n">positions</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                        <span class="c1"># helper to attach .name for labeling if available</span>
+
                         <span class="k">class</span><span class="w"> </span><span class="nc">_Named</span><span class="p">:</span>
                             <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arr</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
                                 <span class="bp">self</span><span class="o">.</span><span class="n">_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
                                 <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
-                            <span class="k">def</span><span class="w"> </span><span class="nf">__array__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+                            <span class="k">def</span><span class="w"> </span><span class="nf">__array__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
                                 <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_arr</span>
                             <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
                                 <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_arr</span><span class="p">)</span>
 
-                        <span class="n">x_named</span> <span class="o">=</span> <span class="n">_Named</span><span class="p">(</span><span class="n">x_raw</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-                        <span class="n">y_named</span> <span class="o">=</span> <span class="n">_Named</span><span class="p">(</span><span class="n">y_raw</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-                        <span class="c1"># attach names if available</span>
+                        <span class="n">x_named</span> <span class="o">=</span> <span class="n">_Named</span><span class="p">(</span><span class="n">x_raw</span><span class="p">)</span>
+                        <span class="n">y_named</span> <span class="o">=</span> <span class="n">_Named</span><span class="p">(</span><span class="n">y_raw</span><span class="p">)</span>
                         <span class="k">try</span><span class="p">:</span>
                             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimension_names</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dimension_names</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
                                 <span class="n">x_named</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimension_names</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
@@ -2274,9 +2282,6 @@
                         <span class="n">x_named</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span>
                         <span class="n">y_named</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span>
 
-                    <span class="c1"># copy plot_kws so we can handle colorbar without mutating caller dict</span>
-                    <span class="n">_pkw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">plot_kws</span><span class="p">)</span>
-                    <span class="n">add_colorbar</span> <span class="o">=</span> <span class="n">_pkw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;colorbar&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
                     <span class="n">p</span> <span class="o">=</span> <span class="n">plot2D</span><span class="p">(</span><span class="n">x_named</span><span class="p">,</span> <span class="n">y_named</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="o">**</span><span class="n">_pkw</span><span class="p">)</span>
                     <span class="k">if</span> <span class="n">add_colorbar</span><span class="p">:</span>
                         <span class="k">try</span><span class="p">:</span>
@@ -2288,6 +2293,8 @@
                 <span class="k">pass</span>
 
         <span class="k">return</span> <span class="n">converted</span>
+
+    <span class="n">_wrapper</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="p">(</span><span class="n">_wrapper</span><span class="o">.</span><span class="vm">__doc__</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{method}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">method_name</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_wrapper</span>
 
 
@@ -2382,133 +2389,55 @@
 
 <div class="viewcode-block" id="Scan.steps_where">
 <a class="viewcode-back" href="../../../api/scan.html#escape.Scan.steps_where">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">steps_where</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_condition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get step indices where condition is true.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">steps_where</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_condition</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return an Array containing only the steps where *data_condition* is True.</span>
 
-<span class="sd">        Args:</span>
-<span class="sd">            data_condition (function, optional): function which gets data array as input and returns boolean array.</span>
+<span class="sd">        Similar to ``np.where`` but operating at the level of scan steps: each</span>
+<span class="sd">        step is tested and only the passing steps are kept, with their scan</span>
+<span class="sd">        metadata preserved.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data_condition : callable</span>
+<span class="sd">            ``f(step: Array) -&gt; bool``.  Called once per step with the step&#39;s</span>
+<span class="sd">            :class:`Array`; steps for which it returns a truthy value are</span>
+<span class="sd">            included in the result.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        escape.Array</span>
+<span class="sd">            Array whose scan contains only the steps that passed the condition.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        Keep only steps whose per-step median exceeds 0.5::</span>
+
+<span class="sd">            result = sig.scan.steps_where(lambda step: np.nanmedian(step.data) &gt; 0.5)</span>
+
+<span class="sd">        Keep only steps that have at least 50 events::</span>
+
+<span class="sd">            result = sig.scan.steps_where(lambda step: len(step) &gt;= 50)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">data_condition</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">ix_data</span> <span class="o">=</span> <span class="p">[</span><span class="n">data_condition</span><span class="p">(</span><span class="n">tdata</span><span class="p">)</span> <span class="k">for</span> <span class="n">tdata</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_step_data</span><span class="p">()]</span>
-
-        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">ix_data</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nansum">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nansum">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nansum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanmean">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanmean">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanstd">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanstd">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanstd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanmedian">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanmedian">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmedian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanpercentile">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanpercentile">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanpercentile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanquantile">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanquantile">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanquantile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanquantile</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanmin">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanmin">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.nanmax">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nanmax">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nanmax</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.sum">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.sum">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">sum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.mean">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.mean">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">mean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.average">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.average">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">average</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">average</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.std">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.std">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">std</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.median">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.median">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">median</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.min">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.min">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">min</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.max">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.max">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">max</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.any">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.any">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">any</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="Scan.all">
-<a class="viewcode-back" href="../../../api/scan.html#escape.Scan.all">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
+        <span class="n">step_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="k">if</span> <span class="n">data_condition</span><span class="p">(</span><span class="n">step</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">step_indices</span><span class="p">]</span></div>
 
 
 <div class="viewcode-block" id="Scan.count">
 <a class="viewcode-back" href="../../../api/scan.html#escape.Scan.count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of events in each scan step as a list.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">step</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
 
 
 <div class="viewcode-block" id="Scan.nancount">
 <a class="viewcode-back" href="../../../api/scan.html#escape.Scan.nancount">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">nancount</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of non-NaN events in each scan step as a list.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span><span class="n">step</span><span class="o">.</span><span class="n">nancount</span><span class="p">()</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span></div>
 
 
-    <span class="c1"># TODO</span>
+    <span class="c1"># Remaining step-delegation methods (nansum, nanmean, …, all, any) are</span>
+    <span class="c1"># injected below the class definition via _SCAN_STEP_DELEGATE + _make_scan_step_method.</span>
 
 <div class="viewcode-block" id="Scan.median_and_mad">
 <a class="viewcode-back" href="../../../api/scan.html#escape.Scan.median_and_mad">[docs]</a>
@@ -2742,11 +2671,13 @@
                     <span class="k">break</span>
         <span class="n">x_scan</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter</span><span class="p">[</span><span class="n">scanpar_name</span><span class="p">][</span><span class="s2">&quot;values&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
 
-        <span class="p">[</span><span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
-            <span class="p">[</span><span class="n">cut_percentage</span><span class="p">,</span> <span class="mi">100</span> <span class="o">-</span> <span class="n">cut_percentage</span><span class="p">],</span>
-        <span class="p">)</span>
-        <span class="c1"># hbins = np.linspace(hmin, hmax, N_intervals + 1)</span>
+        <span class="n">flat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="p">[</span><span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanpercentile</span><span class="p">(</span><span class="n">flat</span><span class="p">,</span> <span class="p">[</span><span class="n">cut_percentage</span><span class="p">,</span> <span class="mi">100</span> <span class="o">-</span> <span class="n">cut_percentage</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">hmin</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">hmax</span><span class="p">)</span> <span class="ow">and</span> <span class="n">hmin</span> <span class="o">&lt;</span> <span class="n">hmax</span><span class="p">):</span>
+            <span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">flat</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">flat</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">hmin</span> <span class="o">==</span> <span class="n">hmax</span><span class="p">:</span>
+                <span class="n">hmin</span> <span class="o">-=</span> <span class="mf">0.5</span>
+                <span class="n">hmax</span> <span class="o">+=</span> <span class="mf">0.5</span>
         <span class="n">hbins</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram_bin_edges</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">bins</span><span class="p">,</span> <span class="nb">range</span><span class="o">=</span><span class="p">[</span><span class="n">hmin</span><span class="p">,</span> <span class="n">hmax</span><span class="p">]</span>
         <span class="p">)</span>
@@ -3066,6 +2997,99 @@
 
 <span class="k">for</span> <span class="n">opSing</span><span class="p">,</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">_operatorsSingle</span><span class="p">:</span>
     <span class="nb">setattr</span><span class="p">(</span><span class="n">Scan</span><span class="p">,</span> <span class="s2">&quot;__</span><span class="si">%s</span><span class="s2">__&quot;</span> <span class="o">%</span> <span class="n">opSing</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">),</span> <span class="n">scan_escaped</span><span class="p">(</span><span class="n">opSing</span><span class="p">))</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Programmatic step-delegation method injection for Scan</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_make_scan_step_method</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Factory: build a Scan method that applies Array.{name} per step.&quot;&quot;&quot;</span>
+    <span class="n">np_func</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">np_summary</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="p">(</span><span class="n">np_func</span><span class="o">.</span><span class="vm">__doc__</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()),</span> <span class="s2">&quot;&quot;</span>
+    <span class="p">)</span> <span class="k">if</span> <span class="n">np_func</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">doc</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Apply :meth:`Array.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">` to each scan step.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+        <span class="o">+</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">np_summary</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">np_summary</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="o">+</span> <span class="s2">&quot;Returns a list with one result per scan step.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Parameters</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;----------</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;plot : bool or matplotlib.axes.Axes or matplotlib.figure.Figure, optional</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    If ``True``, plot the per-step results against the scan parameter using</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    the current axes.  Pass a ``matplotlib.axes.Axes`` to target a specific</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    axes, or a ``matplotlib.figure.Figure`` to open a new subplot.  No plot</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    is created by default.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;plot_kws : dict, optional</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    Extra keyword arguments forwarded to the plot call.  Scalar-per-step</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    results are drawn with ``Axes.plot``; array-per-step results are</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    rendered as a 2-D heat-map via :func:`escape.plot2D`.  The special key</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    ``&#39;colorbar&#39;`` (bool, default ``True``) toggles the colourbar for 2-D</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;    plots.</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">plot_opt</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;plot&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">plot_kws</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;plot_kws&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[</span><span class="nb">getattr</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">name</span><span class="p">)(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">plot_opt</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.axes</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_mplaxes</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">plot_opt</span><span class="p">,</span> <span class="n">_mplaxes</span><span class="o">.</span><span class="n">Axes</span><span class="p">):</span>
+                    <span class="n">axis</span> <span class="o">=</span> <span class="n">plot_opt</span>
+                <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">plot_opt</span><span class="p">,</span> <span class="s2">&quot;add_subplot&quot;</span><span class="p">):</span>
+                    <span class="n">axis</span> <span class="o">=</span> <span class="n">plot_opt</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">plot_opt</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                    <span class="n">axis</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">axis</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
+
+                <span class="n">par_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="n">scanpar_name</span> <span class="o">=</span> <span class="n">par_names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">par_names</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter</span><span class="p">[</span><span class="n">scanpar_name</span><span class="p">][</span><span class="s2">&quot;values&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">scanpar_name</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">))</span>
+                <span class="p">)</span>
+
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="n">arr</span> <span class="o">=</span> <span class="kc">None</span>
+
+                <span class="k">if</span> <span class="n">arr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">_pkw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">plot_kws</span><span class="p">)</span>
+                    <span class="n">add_colorbar</span> <span class="o">=</span> <span class="n">_pkw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;colorbar&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="n">axis</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">arr</span><span class="p">,</span> <span class="o">**</span><span class="n">_pkw</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">scanpar_name</span><span class="p">:</span>
+                            <span class="n">axis</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">scanpar_name</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+                            <span class="n">axis</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                        <span class="n">p</span> <span class="o">=</span> <span class="n">plot2D</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="o">**</span><span class="n">_pkw</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">scanpar_name</span><span class="p">:</span>
+                            <span class="n">axis</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">scanpar_name</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">add_colorbar</span><span class="p">:</span>
+                            <span class="k">try</span><span class="p">:</span>
+                                <span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span>
+                                    <span class="n">p</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span>
+                                    <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">)&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_array</span><span class="o">.</span><span class="n">name</span> <span class="k">else</span> <span class="n">name</span><span class="p">,</span>
+                                <span class="p">)</span>
+                            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                                <span class="k">pass</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c1"># plotting must not break computation</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="n">method</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="n">method</span><span class="o">.</span><span class="vm">__qualname__</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Scan.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">method</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">doc</span>
+    <span class="k">return</span> <span class="n">method</span>
+
+
+<span class="k">for</span> <span class="n">_name</span> <span class="ow">in</span> <span class="n">_SCAN_STEP_DELEGATE</span><span class="p">:</span>
+    <span class="nb">setattr</span><span class="p">(</span><span class="n">Scan</span><span class="p">,</span> <span class="n">_name</span><span class="p">,</span> <span class="n">_make_scan_step_method</span><span class="p">(</span><span class="n">_name</span><span class="p">))</span>
+<span class="k">del</span> <span class="n">_name</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">to_dataframe</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">):</span>
@@ -3580,16 +3604,46 @@
 
 
 
-<div class="viewcode-block" id="unravel_arrays">
-<a class="viewcode-back" href="../../../api/functions.html#escape.unravel_arrays">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">unravel_arrays</span><span class="p">(</span><span class="o">*</span><span class="n">arrays</span><span class="p">,</span> <span class="n">categorize_target</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Unravel multiple escape arrays to a sorter array spanning out the dimensions of the arrays.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">unravel_scans</span><span class="p">(</span><span class="o">*</span><span class="n">arrays</span><span class="p">,</span> <span class="n">categorize_target</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a grid-sorter Array spanning the Cartesian product of multiple scan structures.</span>
 
-<span class="sd">    Args:</span>
-<span class="sd">        *arrays: arbitrary number of escape arrays.</span>
-<span class="sd">        categorize_target: optional argument to categorize the resulting array according to a target array, e.g. for coloring in plots.</span>
-<span class="sd">        Returns:</span>
-<span class="sd">            escape.Array: The unraveled array.</span>
+<span class="sd">    Takes N Arrays that each carry a 1-D scan (one parameter axis each) and</span>
+<span class="sd">    produces a single sorter Array whose scan steps correspond to all</span>
+<span class="sd">    combinations of those parameter axes — effectively &quot;unravelling&quot; the</span>
+<span class="sd">    individual scans into an N-D grid.</span>
+
+<span class="sd">    The resulting sorter can be used with :meth:`~escape.Array.categorize` to</span>
+<span class="sd">    apply the grid grouping to any other channel.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    *arrays : escape.Array</span>
+<span class="sd">        Two or more Arrays whose scan structures define the grid axes.</span>
+<span class="sd">        The number of steps in each Array becomes the size of one grid dimension.</span>
+<span class="sd">    categorize_target : escape.Array, optional</span>
+<span class="sd">        If provided, immediately :meth:`~escape.Array.categorize` this Array</span>
+<span class="sd">        onto the resulting grid and return the categorized result instead of</span>
+<span class="sd">        the raw sorter.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    escape.Array</span>
+<span class="sd">        A sorter Array with ``product(n_steps_per_input)`` scan steps and a</span>
+<span class="sd">        :class:`~escape.storage.storage.Grid` attached, or — when</span>
+<span class="sd">        *categorize_target* is given — the categorized target Array.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Build a 10 × 8 grid from two independent 1-D scans and compute per-cell</span>
+<span class="sd">    means::</span>
+
+<span class="sd">        sorter = escape.unravel_scans(scan_a, scan_b)</span>
+<span class="sd">        sig_grid = sorter.categorize(sig)</span>
+<span class="sd">        means = sig_grid.grid.nanmean()   # shape (10, 8)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Previously named ``unravel_arrays``; that name is kept as a deprecated alias.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     
     <span class="n">ixs</span> <span class="o">=</span> <span class="p">[]</span>
@@ -3631,8 +3685,11 @@
     <span class="k">if</span> <span class="n">categorize_target</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">index_sort_array</span><span class="o">.</span><span class="n">categorize</span><span class="p">(</span><span class="n">categorize_target</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">index_sort_array</span></div>
+        <span class="k">return</span> <span class="n">index_sort_array</span>
 
+
+<span class="c1"># Backward-compatible alias</span>
+<span class="n">unravel_arrays</span> <span class="o">=</span> <span class="n">unravel_scans</span>
 
 
 <div class="viewcode-block" id="filter">

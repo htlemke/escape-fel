@@ -9,6 +9,7 @@
         <title>Installation - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -262,14 +263,30 @@
         <article role="main" id="furo-main-content">
           <section id="installation">
 <h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h1>
-<section id="from-github">
-<h2>From GitHub<a class="headerlink" href="#from-github" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/htlemke/escape-fel
+<section id="conda-recommended">
+<h2>conda (recommended)<a class="headerlink" href="#conda-recommended" title="Link to this heading">¶</a></h2>
+<p>The easiest install, reusing packages already present in your conda environment:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>install<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span>escape-fel
 </pre></div>
 </div>
 </section>
-<section id="from-a-local-clone">
-<h2>From a local clone<a class="headerlink" href="#from-a-local-clone" title="Link to this heading">¶</a></h2>
+<section id="pip">
+<h2>pip<a class="headerlink" href="#pip" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>escape-fel
+</pre></div>
+</div>
+<blockquote>
+<div><p><strong>Note for conda users:</strong> use <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--no-deps</span> <span class="pre">escape-fel</span></code> to avoid
+pip reinstalling packages that conda has already provided.</p>
+</div></blockquote>
+</section>
+<section id="latest-development-version-from-github">
+<h2>Latest development version (from GitHub)<a class="headerlink" href="#latest-development-version-from-github" title="Link to this heading">¶</a></h2>
+<p>To get unreleased changes from the <code class="docutils literal notranslate"><span class="pre">main</span></code> branch:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/htlemke/escape-fel
+</pre></div>
+</div>
+<p>Or clone and install in editable mode so local edits take effect immediately:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/htlemke/escape-fel
 <span class="nb">cd</span><span class="w"> </span>escape-fel
 pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
@@ -278,7 +295,7 @@ pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </s
 </section>
 <section id="dependencies">
 <h2>Dependencies<a class="headerlink" href="#dependencies" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">escape</span></code> requires Python ≥ 3.8 and the following packages:</p>
+<p><code class="docutils literal notranslate"><span class="pre">escape</span></code> requires Python ≥ 3.9 and the following packages:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -311,11 +328,12 @@ pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </s
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rich</span></code></p></td>
 <td><p>Terminal output formatting</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tqdm</span></code></p></td>
+<td><p>Progress bars</p></td>
+</tr>
 </tbody>
 </table>
 </div>
-<p>A complete environment specification is provided in
-<a class="reference external" href="https://github.com/htlemke/escape-fel/blob/master/environment.yml"><code class="docutils literal notranslate"><span class="pre">environment.yml</span></code></a>.</p>
 </section>
 <section id="building-this-documentation-locally">
 <h2>Building this documentation locally<a class="headerlink" href="#building-this-documentation-locally" title="Link to this heading">¶</a></h2>
@@ -382,8 +400,9 @@ sphinx-build<span class="w"> </span>docs<span class="w"> </span>docs/_build/html
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Installation</a><ul>
-<li><a class="reference internal" href="#from-github">From GitHub</a></li>
-<li><a class="reference internal" href="#from-a-local-clone">From a local clone</a></li>
+<li><a class="reference internal" href="#conda-recommended">conda (recommended)</a></li>
+<li><a class="reference internal" href="#pip">pip</a></li>
+<li><a class="reference internal" href="#latest-development-version-from-github">Latest development version (from GitHub)</a></li>
 <li><a class="reference internal" href="#dependencies">Dependencies</a></li>
 <li><a class="reference internal" href="#building-this-documentation-locally">Building this documentation locally</a></li>
 </ul>

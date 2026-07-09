@@ -1,6 +1,9 @@
 from copy import deepcopy
+import hashlib
 import io
+import threading
 import time
+import warnings
 from traceback import format_exc
 import numpy as np
 import dask
@@ -12,7 +15,7 @@ from dask.typing import DaskCollection
 import operator
 
 from escape.storage.source import Source
-from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, is_local_client_distributed, plot2D, roundto
+from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, is_local_client_distributed, plot2D, roundto, add_step_secondary_axis
 import logging
 from itertools import chain
 from numbers import Number
@@ -30,6 +33,37 @@ from .storage_tools import ArrayTools, ScanTools
 
 
 logger = logging.getLogger(__name__)
+
+# Serialise matplotlib pyplot calls that happen inside background repr threads.
+# pyplot's global state (current figure, interactive mode) is not thread-safe;
+# this lock ensures only one repr computation touches it at a time.
+_mpl_repr_lock = threading.Lock()
+
+# Whether Array/Scan repr plots (_get_repr_hist_plot, _get_repr_map_plot,
+# _get_repr_grid_plot's scan-plot fallback -- i.e. everything that feeds
+# _get_repr_plot_png_b64, and so _repr_html_ / _ipython_display_) add a
+# secondary step-index axis on top, via Scan.plot(..., add_step_axis=...).
+# Set to False (e.g. ``escape.storage.storage.SHOW_STEP_AXIS_IN_REPR = False``)
+# to turn this off globally, for a cleaner or slightly cheaper-to-render plot.
+SHOW_STEP_AXIS_IN_REPR = True
+
+# Above this size, Array.hist / Scan.hist warn before computing a dask array
+# (histogramming always needs the full array, unlike most lazy operations).
+HIST_DASK_WARN_BYTES = 500 * 1024**2
+
+def _annotate_empty_axis(ax, message):
+    """Blank an axis and center a short status message on it.
+
+    Used by the repr plot builders as a graceful fallback -- for empty
+    arrays or once a plotting step has failed -- so a broken/degenerate
+    repr always still returns a valid (if uninformative) image instead of
+    raising.
+    """
+    ax.clear()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.text(0.5, 0.5, message, ha="center", va="center", transform=ax.transAxes, color="0.5")
+
 
 import escape
 
@@ -146,6 +180,7 @@ def _make_array_method(name, np_func, da_func, axis_kw, esc_out):
     method.__qualname__ = f"Array.{name}"
     method.__doc__ = doc
     return method
+
 
 
 class Array:
@@ -909,16 +944,25 @@ class Array:
         plot_results=True,
         plot_axis=None,
     ):
+        flat = self.data.ravel().astype(float)
         if self.is_dask_array():
-            raise Exception(
-                "escape array needs to be numpy type for histogramming, compute first."
-            )
-        [hmin, hmax] = np.nanpercentile(
-            self.data.ravel(), [cut_percentage, 100 - cut_percentage]
-        )
-        hbins = np.histogram_bin_edges(self.data.ravel(), bins, range=[hmin, hmax])
-        # hbins = np.linspace(hmin, hmax, N_intervals + 1)
-        hdat, bin_edges = np.histogram(self.data.ravel(), bins=hbins)
+            if flat.nbytes > HIST_DASK_WARN_BYTES:
+                warnings.warn(
+                    f"{self.name!r}: histogramming this dask array triggers "
+                    f"computation of {flat.nbytes / 1024**3:.2f} GB of data, "
+                    "which may take a while.",
+                    stacklevel=2,
+                )
+            with ProgressBar():
+                flat = flat.compute()
+        [hmin, hmax] = np.nanpercentile(flat, [cut_percentage, 100 - cut_percentage])
+        if not (np.isfinite(hmin) and np.isfinite(hmax) and hmin < hmax):
+            hmin, hmax = float(np.nanmin(flat)), float(np.nanmax(flat))
+            if hmin == hmax:
+                hmin -= 0.5
+                hmax += 0.5
+        hbins = np.histogram_bin_edges(flat, bins, range=[hmin, hmax])
+        hdat, bin_edges = np.histogram(flat, bins=hbins)
         if normalize_to == "max":
             hdat = hdat / hdat.max()
         elif normalize_to == "sum":
@@ -958,47 +1002,66 @@ class Array:
             parameter=self.scan.parameter,
         )
 
-    def _get_repr_hist_plot(self, fmt="png", figsize=[5, 3]):
-        plt.ioff()
+    def _get_repr_hist_plot(self, fmt="png", figsize=[5, 3], return_fig=False, add_step_axis=None):
+        show_steps = SHOW_STEP_AXIS_IN_REPR if add_step_axis is None else add_step_axis
+        if not return_fig:
+            plt.ioff()
         f = plt.figure(figsize=figsize)
         ax = f.add_subplot(111)
-        # ax_steps = ax.twiny()
 
-        if self.dtype == bool:
-            flims = [0, 1]
+        if len(self) == 0:
+            warnings.warn(f"{self.name!r}: repr plot skipped -- array is empty.", stacklevel=2)
+            _annotate_empty_axis(ax, "empty array")
         else:
-            stepmns, stepmxs = zip(
-                *[
-                    [np.min(tmp), np.max(tmp)]
-                    for tmp in self.scan.nanpercentile([5, 95])
-                ]
-            )
-            flims = [min(stepmns), max(stepmxs)]
+            try:
+                if self.dtype == bool:
+                    flims = [0, 1]
+                else:
+                    # Compute a robust filter range from per-step 5–95 percentiles.
+                    # Falls back to None (no filtering) when the range is degenerate
+                    # (constant data, all-NaN steps, or only a few discrete values).
+                    flims = None
+                    try:
+                        per_step = self.scan.nanpercentile([5, 95])
+                        lows  = [float(np.nanmin(s)) for s in per_step]
+                        highs = [float(np.nanmax(s)) for s in per_step]
+                        lo, hi = float(np.nanmin(lows)), float(np.nanmax(highs))
+                        if np.isfinite(lo) and np.isfinite(hi) and lo < hi:
+                            flims = [lo, hi]
+                    except Exception:
+                        pass  # keep flims=None -- fall back to the full (0-100%) range below
 
-        if len(self.scan) > 1:
-            self.filter(*flims).scan.hist(
-                plot_axis=ax,
-                cmap=plt.cm.Reds,
-                cut_percentage=0,
-            )
-            if self.dtype == bool:
-                self.scan.plot(axis=ax, fmt="k.-", use_quantiles=False, label="mean")
-            else:
-                self.scan.plot(axis=ax, fmt="k.-", use_quantiles=False, label="median")
+                if len(self.scan) > 1:
+                    arr_to_hist = self.filter(*flims) if flims is not None else self
+                    arr_to_hist.scan.hist(
+                        plot_axis=ax,
+                        cmap=plt.cm.Reds,
+                        cut_percentage=0,
+                    )
+                    if self.dtype == bool:
+                        self.scan.plot(axis=ax, fmt="k.-", use_quantiles=False, label="mean", add_step_axis=show_steps)
+                    else:
+                        self.scan.plot(axis=ax, fmt="k.-", use_quantiles=False, label="median", add_step_axis=show_steps)
 
-            plt.ylabel(self.name)
-            ax.legend(fancybox=True, framealpha=0.3, loc="best")
-        else:
-            to_hist = self.data
-            if self.dtype == bool:
-                to_hist = to_hist.astype(int)
-            plt.hist(to_hist, "auto")
-            plt.xlabel(self.name)
+                    plt.ylabel(self.name)
+                    ax.legend(fancybox=True, framealpha=0.3, loc="best")
+                else:
+                    to_hist = self.data
+                    if self.dtype == bool:
+                        to_hist = to_hist.astype(int)
+                    plt.hist(to_hist, "auto")
+                    plt.xlabel(self.name)
+            except Exception as exc:
+                # Known recurring causes: empty/degenerate per-step data, too few
+                # distinct values for percentile-based bin edges, etc. Whatever the
+                # cause, a broken repr plot shouldn't be able to break the repr.
+                warnings.warn(f"{self.name!r}: repr plot failed ({exc}).", stacklevel=2)
+                _annotate_empty_axis(ax, "plot unavailable")
 
         ax.grid("on")
-        # ax_steps.set_xlim(0, len(self.scan) - 1)
-        # ax_steps.set_xlabel("Step number")
         f.tight_layout()
+        if return_fig:
+            return f
         if fmt == "svg":
             s = io.StringIO()
             f.savefig(s, format="svg", bbox_inches="tight")
@@ -1010,21 +1073,29 @@ class Array:
         plt.ion()
         return imgobj
 
-    def _get_repr_map_plot(self, fmt="png", figsize=[5, 3]):
-        plt.ioff()
+    def _get_repr_map_plot(self, fmt="png", figsize=[5, 3], return_fig=False, add_step_axis=None):
+        show_steps = SHOW_STEP_AXIS_IN_REPR if add_step_axis is None else add_step_axis
+        if not return_fig:
+            plt.ioff()
         f = plt.figure(figsize=figsize)
         ax = f.add_subplot(111)
-        # ax_steps = ax.twiny()
 
-        if len(self.scan) > 1:
-            self.scan.plot(axis=ax, cmap=plt.cm.Greens)
+        if len(self) == 0:
+            warnings.warn(f"{self.name!r}: repr plot skipped -- array is empty.", stacklevel=2)
+            _annotate_empty_axis(ax, "empty array")
+        elif len(self.scan) > 1:
+            try:
+                self.scan.plot(axis=ax, cmap=plt.cm.Greens, add_step_axis=show_steps)
+            except Exception as exc:
+                warnings.warn(f"{self.name!r}: repr plot failed ({exc}).", stacklevel=2)
+                _annotate_empty_axis(ax, "plot unavailable")
         else:
-            print("non scan repr not implemented yet for maps/waveforms or images!")
+            _annotate_empty_axis(ax, "no repr for a single-step map/waveform array yet")
 
         ax.grid("on")
-        # ax_steps.set_xlim(0, len(self.scan) - 1)
-        # ax_steps.set_xlabel("Step number")
         f.tight_layout()
+        if return_fig:
+            return f
         if fmt == "svg":
             s = io.StringIO()
             f.savefig(s, format="svg", bbox_inches="tight")
@@ -1035,46 +1106,357 @@ class Array:
             imgobj = base64.b64encode(tmpfile.getvalue()).decode("utf-8")
         plt.ion()
         return imgobj
+
+    def _get_repr_grid_plot(self, fmt="png", figsize=(5, 3.5), return_fig=False, add_step_axis=None):
+        """Repr plot for Arrays with an associated multi-dimensional Grid.
+
+        * 1-D array, 2-D grid → 2-D heatmap of per-step means, labelled with
+          the grid positions and dimension names.
+        * All other combinations → the standard scan plot with a title that
+          notes the full grid shape, so high dimensionality is visible.
+        """
+        show_steps = SHOW_STEP_AXIS_IN_REPR if add_step_axis is None else add_step_axis
+        grid = self.grid
+        is_scalar_array = (self.ndim == 1) or all(ts <= 1 for ts in self.shape[1:])
+        grid_ndim = len(grid.shape)
+        dim_str = "×".join(str(s) for s in grid.shape)  # e.g. "10×8"
+
+        if not return_fig:
+            plt.ioff()
+        f = plt.figure(figsize=figsize)
+        ax = f.add_subplot(111)
+
+        if len(self) == 0:
+            warnings.warn(f"{self.name!r}: repr plot skipped -- array is empty.", stacklevel=2)
+            _annotate_empty_axis(ax, "empty array")
+        elif is_scalar_array and grid_ndim == 2:
+            try:
+                step_means = np.asarray(self.scan.nanmean())
+                grid_data = grid.to_grid(step_means)           # shape (nrows, ncols)
+                positions = grid.positions
+                if positions and len(positions) >= 2:
+                    x_raw = np.asarray(positions[1])
+                    y_raw = np.asarray(positions[0])
+                else:
+                    x_raw = np.arange(grid.shape[1])
+                    y_raw = np.arange(grid.shape[0])
+                p = plot2D(x_raw, y_raw, grid_data, axis=ax)
+                plt.colorbar(p, ax=ax, label=self.name or "mean")
+                if grid.dimension_names and len(grid.dimension_names) >= 2:
+                    ax.set_xlabel(grid.dimension_names[1])
+                    ax.set_ylabel(grid.dimension_names[0])
+                ax.set_title(f"Grid mean  [{dim_str}]")
+            except Exception as exc:
+                warnings.warn(f"{self.name!r}: repr plot failed ({exc}).", stacklevel=2)
+                _annotate_empty_axis(ax, "plot unavailable")
+        else:
+            # higher-D grid or per-event arrays: fall back to scan plot
+            try:
+                self.scan.plot(axis=ax, add_step_axis=show_steps)
+            except Exception as exc:
+                warnings.warn(f"{self.name!r}: repr plot failed ({exc}).", stacklevel=2)
+                _annotate_empty_axis(ax, "plot unavailable")
+            title = f"Scan plot  (grid: {dim_str})"
+            if not is_scalar_array:
+                title += f"  |  array shape: {'×'.join(str(s) for s in self.shape)}"
+            ax.set_title(title, fontsize=9)
+
+        ax.grid(True)
+        f.tight_layout()
+
+        if return_fig:
+            return f
+        if fmt == "svg":
+            s = io.StringIO()
+            f.savefig(s, format="svg", bbox_inches="tight")
+            imgobj = s.getvalue()
+        else:
+            tmpfile = BytesIO()
+            f.savefig(tmpfile, format="png", bbox_inches="tight")
+            imgobj = base64.b64encode(tmpfile.getvalue()).decode("utf-8")
+        plt.ion()
+        return imgobj
+
+    # ------------------------------------------------------------------
+    # Repr helpers: plot dispatch, caching, async display
+    # ------------------------------------------------------------------
+
+    def _get_repr_plot_png_b64(self, add_step_axis=None):
+        """Return a base-64 PNG string for the repr plot, or raise on failure.
+
+        This is the single entry-point for repr plot creation.  Change this
+        method (or the private helpers it calls) to alter how the plot looks.
+        """
+        if self.grid is not None:
+            return self._get_repr_grid_plot(fmt="png", add_step_axis=add_step_axis)
+        if (self.ndim == 1) or all(ts <= 1 for ts in self.shape[1:]):
+            return self._get_repr_hist_plot(fmt="png", add_step_axis=add_step_axis)
+        elif self.ndim_nonzero == 2:
+            return self._get_repr_map_plot(fmt="png", add_step_axis=add_step_axis)
+        else:
+            raise NotImplementedError("No repr plot for this array shape.")
+
+    def _get_repr_plot_figure(self, add_step_axis=None):
+        """Build the repr plot as a live ``Figure``, or raise on failure.
+
+        Same dispatch as :meth:`_get_repr_plot_png_b64`, but returns the
+        actual (still-open) figure instead of encoding it to a PNG -- used by
+        :meth:`interactive` to display a live, pannable/zoomable plot rather
+        than the default cached, disposable snapshot.
+        """
+        if self.grid is not None:
+            return self._get_repr_grid_plot(return_fig=True, add_step_axis=add_step_axis)
+        if (self.ndim == 1) or all(ts <= 1 for ts in self.shape[1:]):
+            return self._get_repr_hist_plot(return_fig=True, add_step_axis=add_step_axis)
+        elif self.ndim_nonzero == 2:
+            return self._get_repr_map_plot(return_fig=True, add_step_axis=add_step_axis)
+        else:
+            raise NotImplementedError("No repr plot for this array shape.")
+
+    def _supports_step_axis_toggle(self):
+        """Whether this array's repr plot has a step-index axis to toggle at
+        all: a scan with more than one step, that isn't a pure 2-D grid
+        heatmap (positions on both axes already, no notion of scan step)."""
+        if self.is_dask_array() or len(self.scan) <= 1:
+            return False
+        if self.grid is not None:
+            is_scalar_array = (self.ndim == 1) or all(ts <= 1 for ts in self.shape[1:])
+            if is_scalar_array and len(self.grid.shape) == 2:
+                return False
+        return True
+
+    def interactive(self, show_steps=None):
+        """Display this array's repr plot as a live, interactive figure.
+
+        The default repr (shown by just evaluating an ``Array`` in a cell) is
+        a cached, disposable PNG -- cheap, and safe to render without a
+        kernel (docs builds, nbconvert). This instead builds the same plot
+        live and displays it, so you can pan/zoom into it -- at the cost of
+        keeping a real figure/canvas alive in the kernel for as long as the
+        output cell exists. Prefer the plain repr for casual exploration and
+        reach for ``.interactive()`` on the one plot you actually want to dig
+        into.
+
+        Requires an interactive matplotlib backend (run ``%matplotlib
+        widget`` first, which needs the ``ipympl`` package) to actually be
+        pannable/zoomable; with the default inline backend this just shows a
+        static image, same as the plain repr.
+
+        When the plot has a step-index secondary axis to show at all (see
+        ``escape.storage.storage.SHOW_STEP_AXIS_IN_REPR`` for the global
+        default), a "show steps" checkbox appears below the figure to toggle
+        it for this plot specifically, without changing that global.
+
+        Parameters
+        ----------
+        show_steps : bool, optional
+            Initial checkbox state. Defaults to the current
+            ``SHOW_STEP_AXIS_IN_REPR`` global.
+
+        Returns
+        -------
+        matplotlib.figure.Figure or ipywidgets.VBox
+            A bare ``Figure`` when there's no step axis to toggle (nothing to
+            put a checkbox under); otherwise a ``VBox`` of the figure output
+            and the checkbox. Either way, evaluating this bare in a cell (or
+            as the trailing expression of ``arr.interactive()`` itself)
+            displays it via its own rich repr -- no separate ``display()``
+            call needed.
+        """
+        if self.is_dask_array():
+            raise Exception(
+                "interactive() needs the array computed first (dask arrays "
+                "delegate to dask's own repr) -- call .compute() first."
+            )
+
+        backend = plt.get_backend().lower()
+        if not any(tag in backend for tag in ("ipympl", "nbagg", "widget")):
+            warnings.warn(
+                f"interactive() works best with an interactive matplotlib backend "
+                f"(current backend: {plt.get_backend()!r}). Run '%matplotlib widget' "
+                "(requires the ipympl package) first for a live, pannable/zoomable plot.",
+                stacklevel=2,
+            )
+
+        if not self._supports_step_axis_toggle():
+            return self._get_repr_plot_figure()
+
+        try:
+            import ipywidgets as widgets
+        except ImportError:
+            return self._get_repr_plot_figure(add_step_axis=show_steps)
+
+        initial = SHOW_STEP_AXIS_IN_REPR if show_steps is None else show_steps
+        output = widgets.Output()
+        state = {"fig": None}
+
+        def _render(steps):
+            new_fig = self._get_repr_plot_figure(add_step_axis=steps)
+            output.clear_output(wait=True)
+            with output:
+                plt.show(new_fig)
+            if state["fig"] is not None:
+                plt.close(state["fig"])
+            state["fig"] = new_fig
+
+        _render(initial)
+        checkbox = widgets.Checkbox(value=initial, description="show steps", indent=False)
+        checkbox.observe(lambda change: _render(change["new"]), names="value")
+        return widgets.VBox([output, checkbox])
+
+    def _repr_cache_key(self):
+        """Cheap content hash used as a cache key for the repr PNG."""
+        try:
+            h = hashlib.sha256()
+            h.update(str(self.shape).encode())
+            h.update(str(getattr(self, "dtype", "")).encode())
+            h.update((self.name or "").encode())
+            data = self.data
+            if hasattr(data, "ravel"):
+                flat = data.ravel()
+                n = min(500, len(flat))
+                sample = flat[:n]
+                if hasattr(sample, "compute"):
+                    sample = sample.compute()
+                h.update(np.asarray(sample).tobytes())
+            return h.hexdigest()[:24]
+        except Exception:
+            return None
+
+    def _repr_cache_path(self, key):
+        cache_dir = Path.home() / ".cache" / "escape" / "repr"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / f"{key}.b64"
+
+    def _ipython_display_(self, **kwargs):
+        """Async Jupyter display: show 'Computing…' immediately, then update.
+
+        * Checks a disk cache keyed by a content hash of the array data before
+          starting any computation — cached results appear instantly.
+        * Runs plot creation in a background thread; if it takes more than 10 s
+          the display is updated with a 'Timed out' notice instead.
+        * Any exception inside the plot thread produces a styled error message
+          rather than propagating to the notebook.
+        """
+        try:
+            from IPython import display as _idisplay
+        except ImportError:
+            print(self.__repr__())
+            return
+
+        header = html.escape(self.__repr__(bare=True)).replace("\n", "<br/>\n")
+
+        # dask arrays: delegate to dask's own repr, no plot needed
+        if self.is_dask_array():
+            _idisplay.display(
+                _idisplay.HTML(header + "<br/>\n" + self.data._repr_html_())
+            )
+            return
+
+        # cache look-up
+        cache_key = self._repr_cache_key()
+        if cache_key is not None:
+            cache_path = self._repr_cache_path(cache_key)
+            if cache_path.exists():
+                try:
+                    b64 = cache_path.read_text()
+                    _idisplay.display(_idisplay.HTML(
+                        header + "<br/>\n"
+                        + f"<img src='data:image/png;base64,{b64}'>"
+                    ))
+                    return
+                except Exception:
+                    pass  # corrupted cache entry — fall through to recompute
+
+        # show placeholder immediately so the user sees something right away
+        handle = _idisplay.display(
+            _idisplay.HTML(header + "<br/>\n<em>Computing plot…</em>"),
+            display_id=True,
+        )
+
+        png_b64 = [None]
+        err_msg = [None]
+
+        def _compute():
+            try:
+                with _mpl_repr_lock:
+                    png_b64[0] = self._get_repr_plot_png_b64()
+            except NotImplementedError:
+                pass  # shape has no plot — leave png_b64 as None
+            except Exception as exc:
+                err_msg[0] = str(exc)
+
+        t = threading.Thread(target=_compute, daemon=True)
+        t.start()
+        t.join(timeout=10.0)
+
+        if t.is_alive():
+            body = "<em>Plot timed out (computation exceeded 10 s).</em>"
+        elif err_msg[0] is not None:
+            body = (
+                '<span style="color:#c0392b">Could not create plot: '
+                + html.escape(err_msg[0])
+                + "</span>"
+            )
+        elif png_b64[0] is not None:
+            # persist to cache
+            if cache_key is not None:
+                try:
+                    self._repr_cache_path(cache_key).write_text(png_b64[0])
+                except Exception:
+                    pass
+            body = f"<img src='data:image/png;base64,{png_b64[0]}'>"
+        else:
+            body = "<em>No plot available for this array shape.</em>"
+
+        handle.update(_idisplay.HTML(header + "<br/>\n" + body))
 
     def _repr_html_(self):
+        """HTML repr for static notebook export and non-IPython environments.
+
+        In a live Jupyter session :meth:`_ipython_display_` is called instead,
+        which provides the async 'Computing…' placeholder and caching.  This
+        method is the synchronous fallback used by nbconvert and similar tools
+        -- it can't show a placeholder while computing (there's no live
+        display to update), but it still enforces the same 10 s budget, via a
+        background thread, so a slow/stuck plot can't hang the whole export.
+        """
+        header = html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
+
         if self.is_dask_array():
+            return header + "<br />\n" + self.data._repr_html_()
+
+        png_b64 = [None]
+        err_msg = [None]
+
+        def _compute():
+            try:
+                with _mpl_repr_lock:
+                    png_b64[0] = self._get_repr_plot_png_b64()
+            except NotImplementedError:
+                pass  # shape has no plot — leave png_b64 as None
+            except Exception as exc:
+                err_msg[0] = str(exc)
+
+        t = threading.Thread(target=_compute, daemon=True)
+        t.start()
+        t.join(timeout=10.0)
+
+        if t.is_alive():
+            return header + "<br />\n<em>Plot timed out (computation exceeded 10 s).</em>"
+        if err_msg[0] is not None:
             return (
-                html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
-                + self.data._repr_html_()
+                header + "<br />\n"
+                + '<span style="color:#c0392b">Could not create plot: '
+                + html.escape(err_msg[0])
+                + "</span>"
             )
-        else:
-            if (self.ndim == 1) or all([ts <= 1 for ts in self.shape[1:]]):
-                return (
-                    html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
-                    + "<br />\n"
-                    + "<img src='data:image/png;base64,{}'>".format(
-                        self._get_repr_hist_plot(fmt="png")
-                    )
-                )
-
-            elif self.ndim_nonzero == 2:
-                return (
-                    html.escape(self.__repr__(bare=True)).replace("\n", "<br />\n")
-                    + "<br />\n"
-                    + "<img src='data:image/png;base64,{}'>".format(
-                        self._get_repr_map_plot(fmt="png")
-                    )
-                )
-            else:
-                return None
-
-    #     s = "<%s.%s object at %s>" % (
-    #         self.__class__.__module__,
-    #         self.__class__.__name__,
-    #         hex(id(self)),
-    #     )
-    #     s += " {}; shape {}".format(self.name, self.shape)
-    #     s += "\n"
-    #     if isinstance(self.data, np.ndarray):
-    #         s += self._get_ana_str()
-    #     if self.scan:
-    #         s += self.scan.__repr__()
-    #     return s
+        if png_b64[0] is not None:
+            return (
+                header + "<br />\n"
+                + f"<img src='data:image/png;base64,{png_b64[0]}'>"
+            )
+        return header
 
 
 # Inject numpy/dask delegate methods into Array
@@ -1627,7 +2009,25 @@ SCAN_STEP_METHODS = [
 # their per-step outputs into grid-shaped arrays using `to_grid`
 def _make_grid_scan_wrapper(method_name):
     def _wrapper(self, *args, **kwargs):
-        # Extract plotting options from kwargs (do not pass them to scan)
+        """Wraps Scan.{method} with grid reshaping and optional 2-D plotting.
+
+        Additional keyword arguments (consumed here, not forwarded to the scan):
+
+        Parameters
+        ----------
+        plot : bool or matplotlib.axes.Axes or matplotlib.figure.Figure, optional
+            If ``True``, plot the grid-shaped result with :func:`escape.plot2D`
+            using the current axes.  Pass a ``matplotlib.axes.Axes`` to target a
+            specific axes, or a ``matplotlib.figure.Figure`` to open a new subplot.
+            No plot is created by default.
+        plot_kws : dict, optional
+            Extra keyword arguments for :func:`escape.plot2D`.  The special keys
+            ``'colorbar'`` (bool, default ``True``) and ``'axis'``
+            (``matplotlib.axes.Axes``) are handled here and not forwarded.
+        """
+        import matplotlib.axes as _mplaxes
+
+        # Extract plotting options before forwarding to the underlying scan method
         plot_opt = kwargs.pop("plot", None)
         plot_kws = kwargs.pop("plot_kws", {}) or {}
 
@@ -1659,42 +2059,42 @@ def _make_grid_scan_wrapper(method_name):
         # Plotting: if requested and we have a 2D numpy array, call plot2D
         if plot_opt:
             try:
-                # choose candidate to plot (first element if tuple)
                 candidate = converted[0] if isinstance(converted, tuple) else converted
                 if isinstance(candidate, np.ndarray) and candidate.ndim == 2:
-                    # resolve axis/figure
-                    axis = None
-                    if plot_opt is True:
+                    # copy plot_kws early so we can pop special keys
+                    _pkw = dict(plot_kws)
+                    add_colorbar = _pkw.pop("colorbar", True)
+                    axis_from_kws = _pkw.pop("axis", None)
+
+                    # resolve target axes, in priority order
+                    if axis_from_kws is not None:
+                        axis = axis_from_kws
+                    elif isinstance(plot_opt, _mplaxes.Axes):
+                        axis = plot_opt
+                    elif hasattr(plot_opt, "add_subplot"):
+                        axis = plot_opt.add_subplot(111)
+                    elif plot_opt is True:
                         axis = plt.gca()
                     else:
-                        # Figure-like object
-                        try:
-                            if hasattr(plot_opt, "add_subplot"):
-                                axis = plot_opt.add_subplot(111)
-                            else:
-                                axis = plot_opt
-                        except Exception:
-                            axis = plt.gca()
+                        axis = plt.gca()
 
-                    # prepare x/y from positions; assume positions order matches shape
+                    # prepare x/y coordinate arrays from grid positions
                     positions = getattr(self, "positions", None)
                     if positions and len(positions) >= 2:
-                        # x corresponds to horizontal axis (cols), y to rows
                         x_raw = positions[1]
                         y_raw = positions[0]
-                        # helper to attach .name for labeling if available
+
                         class _Named:
                             def __init__(self, arr, name=None):
                                 self._arr = np.asarray(arr)
                                 self.name = name
-                            def __array__(self):
+                            def __array__(self, dtype=None):
                                 return self._arr
                             def __len__(self):
                                 return len(self._arr)
 
-                        x_named = _Named(x_raw, None)
-                        y_named = _Named(y_raw, None)
-                        # attach names if available
+                        x_named = _Named(x_raw)
+                        y_named = _Named(y_raw)
                         try:
                             if self.dimension_names and len(self.dimension_names) > 1:
                                 x_named.name = self.dimension_names[1]
@@ -1705,9 +2105,6 @@ def _make_grid_scan_wrapper(method_name):
                         x_named = "auto"
                         y_named = "auto"
 
-                    # copy plot_kws so we can handle colorbar without mutating caller dict
-                    _pkw = dict(plot_kws)
-                    add_colorbar = _pkw.pop("colorbar", True)
                     p = plot2D(x_named, y_named, candidate, axis=axis, **_pkw)
                     if add_colorbar:
                         try:
@@ -1719,6 +2116,8 @@ def _make_grid_scan_wrapper(method_name):
                 pass
 
         return converted
+
+    _wrapper.__doc__ = (_wrapper.__doc__ or "").replace("{method}", method_name)
     return _wrapper
 
 
@@ -1893,14 +2292,33 @@ class Scan:
     #     return med, mad
 
     def weighted_avg_and_std(self, weights=None, norm_samples=False, axis=0):
+        """Per-step weighted average and standard deviation.
+
+        Parameters
+        ----------
+        weights : Array, optional
+            Weight array aligned to this scan's data.  ``None`` uses uniform
+            weights (equivalent to :meth:`nanmean` / :meth:`nanstd`).
+        norm_samples : bool, optional
+            If ``True``, divide the per-step standard deviation by √N.
+        axis : int, optional
+            Axis along which to reduce (default 0 = event axis).
+
+        Returns
+        -------
+        avg : dask.array
+            Per-step weighted averages, shape ``(n_steps, …)``.
+        std : dask.array
+            Per-step weighted standard deviations, shape ``(n_steps, …)``.
+        """
         avg = []
         std = []
         for step in self:
-            if weights:
+            if weights is not None:
                 (ta, tw) = match_arrays(step, weights)
                 (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data, axis=axis)
             else:
-                (tavg, tstd) = utilities.weighted_avg_and_std(step.data, weights, axis=axis)
+                (tavg, tstd) = utilities.weighted_avg_and_std(step.data, axis=axis)
             avg.append(tavg)
             std.append(tstd)
         if norm_samples:
@@ -1908,26 +2326,38 @@ class Scan:
         return da.asarray(avg), da.asarray(std)
 
     def weighted_stat(self, weights=None):
-        if weights is None:
-            import warnings
-            warnings.warn("weights not provided, using unweighted median and mad!")
-            return self.median_and_mad()
-        else:
+        """Per-step weighted median and ±1σ-equivalent error via weighted quantiles.
+
+        Parameters
+        ----------
+        weights : Array, optional
+            Weight array aligned to this scan's data.  ``None`` uses uniform
+            weights (equivalent to unweighted median and MAD/√N).
+
+        Returns
+        -------
+        med : numpy.ndarray
+            Per-step weighted medians, shape ``(n_steps,)``.
+        err : numpy.ndarray
+            Per-step lower/upper errors, shape ``(2, n_steps)``.
+        """
+        if weights is not None:
             array, weightsf = escape.match_arrays(self._array, weights)
-            qsig = 0.682689492
-            med = []
-            err = []
-            # if len(weights.shape) == 3:
-            #     weights = weights[:,0,0]
-            for n, (ta, tw) in enumerate(zip(array.scan, weightsf.scan)):
-                if len(ta.shape) == 3:
-                    print(f"step {n}/{len(array.scan)}")
-                r = utilities.weighted_quantile(
-                    ta.data, [0.5 - qsig / 2, 0.5, 0.5 + qsig / 2], sample_weight=tw.data
-                )
-                med.append(r[1])
-                err.append(np.diff(r) / np.sqrt(len(ta.data)))
-            return np.asarray(med), np.asarray(err).T
+            weight_steps = weightsf.scan
+        else:
+            array = self._array
+            weight_steps = [None] * len(self)
+        qsig = 0.682689492
+        med = []
+        err = []
+        for ta, tw in zip(array.scan, weight_steps):
+            sw = tw.data if tw is not None else None
+            r = utilities.weighted_quantile(
+                ta.data, [0.5 - qsig / 2, 0.5, 0.5 + qsig / 2], sample_weight=sw
+            )
+            med.append(r[1])
+            err.append(np.diff(r) / np.sqrt(len(ta.data)))
+        return np.asarray(med), np.asarray(err).T
 
     def correlation_analysis_to(self, ref, *args, **kwargs):
         (td, tr) = match_arrays(self._array, ref)
@@ -1972,6 +2402,7 @@ class Scan:
         norm_samples=True,
         axis=None,
         use_quantiles=True,
+        add_step_axis=False,
         *args,
         **kwargs,
     ):
@@ -2010,6 +2441,18 @@ class Scan:
             axis.set_xlabel(scanpar_name)
             if self._array.name:
                 axis.set_ylabel(self._array.name)
+            if add_step_axis and len(x) > 1:
+                try:
+                    add_step_secondary_axis(
+                        axis,
+                        x,
+                        y,
+                        x2_label="step",
+                        fmt="{:.0f}",
+                        show_markers=False,
+                    )
+                except Exception:
+                    pass
         elif self._array.ndim_nonzero == 2:
             if use_quantiles:
                 tmp = np.asarray(
@@ -2033,6 +2476,19 @@ class Scan:
                 axis.set_xlabel(scanpar_name)
                 plt.colorbar(ih, ax=axis, label=self._array.name)
                 axis.set_ylabel("Median step waveform")
+                if add_step_axis and len(x) > 1:
+                    try:
+                        add_step_secondary_axis(
+                            axis,
+                            x,
+                            None,
+                            x2_label="step",
+                            fmt="{:.0f}",
+                            show_markers=False,
+                            label_turning_points=False,
+                        )
+                    except Exception:
+                        pass
                 return ic, icstd
 
     def hist(
@@ -2045,10 +2501,19 @@ class Scan:
         plot_axis=None,
         **kwargs,
     ):
-        if self._array.is_dask_array():
-            raise Exception(
-                "escape array needs to be numpy type for histogramming, compute first."
-            )
+        array = self._array
+        if array.is_dask_array():
+            nbytes = array.data.nbytes
+            if nbytes > HIST_DASK_WARN_BYTES:
+                warnings.warn(
+                    f"{array.name!r}: histogramming this dask array triggers "
+                    f"computation of {nbytes / 1024**3:.2f} GB of data, "
+                    "which may take a while.",
+                    stacklevel=2,
+                )
+            array = array.compute()
+        steps = array.scan if array is not self._array else self
+
         if not scanpar_name:
             names = list(self.parameter.keys())
             for scanpar_name in names:
@@ -2058,16 +2523,20 @@ class Scan:
                     break
         x_scan = np.asarray(self.parameter[scanpar_name]["values"]).ravel()
 
-        [hmin, hmax] = np.nanpercentile(
-            self._array.data.ravel().astype(float),
-            [cut_percentage, 100 - cut_percentage],
-        )
-        # hbins = np.linspace(hmin, hmax, N_intervals + 1)
-        hbins = np.histogram_bin_edges(
-            self._array.data.ravel(), bins, range=[hmin, hmax]
-        )
+        flat = array.data.ravel().astype(float)
+        if flat.size == 0:
+            raise ValueError("no data to histogram (array is empty)")
+        [hmin, hmax] = np.nanpercentile(flat, [cut_percentage, 100 - cut_percentage])
+        if not (np.isfinite(hmin) and np.isfinite(hmax) and hmin < hmax):
+            hmin, hmax = float(np.nanmin(flat)), float(np.nanmax(flat))
+            if not (np.isfinite(hmin) and np.isfinite(hmax)):
+                raise ValueError("no finite data to histogram (all values are NaN)")
+            if hmin == hmax:
+                hmin -= 0.5
+                hmax += 0.5
+        hbins = np.histogram_bin_edges(flat, bins, range=[hmin, hmax])
 
-        hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in self]
+        hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in steps]
         if normalize_to == "max":
             hdat = [td / td.max() for td in hdat]
         elif normalize_to == "sum":
@@ -2364,13 +2833,78 @@ def _make_scan_step_method(name):
     np_summary = next(
         (line.strip() for line in (np_func.__doc__ or "").split("\n") if line.strip()), ""
     ) if np_func else ""
-    doc = f"Apply :meth:`Array.{name}` to each scan step.\n\n"
-    if np_summary:
-        doc += f"{np_summary}\n\n"
-    doc += "Returns a list with one result per scan step."
+    doc = (
+        f"Apply :meth:`Array.{name}` to each scan step.\n\n"
+        + (f"{np_summary}\n\n" if np_summary else "")
+        + "Returns a list with one result per scan step.\n\n"
+        "Parameters\n"
+        "----------\n"
+        "plot : bool or matplotlib.axes.Axes or matplotlib.figure.Figure, optional\n"
+        "    If ``True``, plot the per-step results against the scan parameter using\n"
+        "    the current axes.  Pass a ``matplotlib.axes.Axes`` to target a specific\n"
+        "    axes, or a ``matplotlib.figure.Figure`` to open a new subplot.  No plot\n"
+        "    is created by default.\n"
+        "plot_kws : dict, optional\n"
+        "    Extra keyword arguments forwarded to the plot call.  Scalar-per-step\n"
+        "    results are drawn with ``Axes.plot``; array-per-step results are\n"
+        "    rendered as a 2-D heat-map via :func:`escape.plot2D`.  The special key\n"
+        "    ``'colorbar'`` (bool, default ``True``) toggles the colourbar for 2-D\n"
+        "    plots.\n"
+    )
 
     def method(self, *args, **kwargs):
-        return [getattr(step, name)(*args, **kwargs) for step in self]
+        plot_opt = kwargs.pop("plot", None)
+        plot_kws = kwargs.pop("plot_kws", {}) or {}
+        result = [getattr(step, name)(*args, **kwargs) for step in self]
+        if plot_opt:
+            try:
+                import matplotlib.axes as _mplaxes
+                if isinstance(plot_opt, _mplaxes.Axes):
+                    axis = plot_opt
+                elif hasattr(plot_opt, "add_subplot"):
+                    axis = plot_opt.add_subplot(111)
+                elif plot_opt is True:
+                    axis = plt.gca()
+                else:
+                    axis = plt.gca()
+
+                par_names = list(self.parameter.keys())
+                scanpar_name = par_names[0] if par_names else None
+                x = (
+                    np.asarray(self.parameter[scanpar_name]["values"]).ravel()
+                    if scanpar_name else np.arange(len(result))
+                )
+
+                try:
+                    arr = np.asarray(result, dtype=float)
+                except Exception:
+                    arr = None
+
+                if arr is not None:
+                    _pkw = dict(plot_kws)
+                    add_colorbar = _pkw.pop("colorbar", True)
+                    if arr.ndim == 1:
+                        axis.plot(x, arr, **_pkw)
+                        if scanpar_name:
+                            axis.set_xlabel(scanpar_name)
+                        if self._array.name:
+                            axis.set_ylabel(f"{name}({self._array.name})")
+                    elif arr.ndim == 2:
+                        y = np.arange(arr.shape[1])
+                        p = plot2D(x, y, arr.T, axis=axis, **_pkw)
+                        if scanpar_name:
+                            axis.set_xlabel(scanpar_name)
+                        if add_colorbar:
+                            try:
+                                plt.colorbar(
+                                    p, ax=axis,
+                                    label=f"{name}({self._array.name})" if self._array.name else name,
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                pass  # plotting must not break computation
+        return result
 
     method.__name__ = name
     method.__qualname__ = f"Scan.{name}"
@@ -2785,6 +3319,7 @@ def digitize(
     sort_groups_by_index=True,
     right=False,
     foo=np.digitize,
+    use_index_data=False,
     **kwargs,
 ):
     """Digitization function for escape arrays according to numpy.digitize.
@@ -2808,6 +3343,8 @@ def digitize(
         foo (function, optional): option to modify the digitisation function,
             needs still to behave closely to np digitize. Defaults to
             np.digitize.
+        use_index_data (bool, optional): if True, digitize based on the array's
+            index values rather than its data values. Defaults to False.
 
     Raises:
         NotImplementedError: error if no 1d escape.Array is provided as array
@@ -2821,7 +3358,7 @@ def digitize(
         raise NotImplementedError(
             "Only 1d escape arrays can be digitized in a sensible way."
         )
-    darray = array.data.ravel()
+    darray = array.index if use_index_data else array.data.ravel()
     if include_outlier_bins:
         direction = np.sign(bins[-1] - bins[0])
         if include_outlier_bins == "right":
@@ -2968,7 +3505,13 @@ def unravel_scans(*arrays, categorize_target=None):
 unravel_arrays = unravel_scans
 
 
-def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):
+def filter(
+    array,
+    *args,
+    foos_filtering=[operator.ge, operator.le],
+    use_index_data=False,
+    **kwargs,
+):
     """general filter function for escape arrays. checking for 1D arrays, applies
     arbitrary number of
     filter functions that take one argument as input and"""
@@ -2976,10 +3519,13 @@ def filter(array, *args, foos_filtering=[operator.ge, operator.le], **kwargs):
         raise NotImplementedError(
             "Only 1d escape arrays can be filtered in a sensible way."
         )
-    darray = array.data
-    if isinstance(darray, da.Array):
-        print("filtering, i.e. downsizing of arrays requires to convert to numpy.")
-        darray = darray.compute()
+    if use_index_data:
+        darray = array.index
+    else:
+        darray = array.data
+        if isinstance(darray, da.Array):
+            print("filtering, i.e. downsizing of arrays requires to convert to numpy.")
+            darray = darray.compute()
     # darray = array.data.ravel()
     ix = da.logical_and(
         *[tfoo(darray, targ) for tfoo, targ in zip(foos_filtering, args)]

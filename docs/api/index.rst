@@ -9,4 +9,6 @@ API Reference
    functions
    dataset
    example_data
+   timestamps
+   plotting
 

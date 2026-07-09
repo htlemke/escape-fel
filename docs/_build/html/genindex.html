@@ -7,6 +7,7 @@
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 --><title>Index - escape-fel 0.0.1 documentation</title>
 <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/plot_directive.css?v=7f9a90b1" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -296,11 +297,19 @@
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/array.html#escape.Array.abs">abs() (escape.Array method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.Scan.abs">(escape.Scan method)</a>
 </li>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.abs">(escape.storage.storage.Grid method)</a>
+</li>
+        </ul></li>
         <li><a href="api/array.html#escape.Array.all">all() (escape.Array method)</a>
 
         <ul>
           <li><a href="api/scan.html#escape.Scan.all">(escape.Scan method)</a>
+</li>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.all">(escape.storage.storage.Grid method)</a>
 </li>
         </ul></li>
         <li><a href="api/array.html#escape.Array.any">any() (escape.Array method)</a>
@@ -308,11 +317,13 @@
         <ul>
           <li><a href="api/scan.html#escape.Scan.any">(escape.Scan method)</a>
 </li>
-        </ul></li>
-        <li><a href="api/dataset.html#escape.DataSet.append">append() (escape.DataSet method)</a>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.any">(escape.storage.storage.Grid method)</a>
 </li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/dataset.html#escape.DataSet.append">append() (escape.DataSet method)</a>
+</li>
         <li><a href="api/scan.html#escape.Scan.append_parameter">append_parameter() (escape.Scan method)</a>
 </li>
         <li><a href="api/scan.html#escape.Scan.append_step">append_step() (escape.Scan method)</a>
@@ -500,14 +511,32 @@
 </li>
         <li><a href="api/array.html#escape.Array.is_dask_array">is_dask_array() (escape.Array method)</a>
 </li>
+        <li><a href="api/array.html#escape.Array.isfinite">isfinite() (escape.Array method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.Scan.isfinite">(escape.Scan method)</a>
+</li>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.isfinite">(escape.storage.storage.Grid method)</a>
+</li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="api/array.html#escape.Array.isfinite">isfinite() (escape.Array method)</a>
-</li>
         <li><a href="api/array.html#escape.Array.isinf">isinf() (escape.Array method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.Scan.isinf">(escape.Scan method)</a>
 </li>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.isinf">(escape.storage.storage.Grid method)</a>
+</li>
+        </ul></li>
         <li><a href="api/array.html#escape.Array.isnan">isnan() (escape.Array method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.Scan.isnan">(escape.Scan method)</a>
 </li>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.isnan">(escape.storage.storage.Grid method)</a>
+</li>
+        </ul></li>
     </ul></td>
   </tr></table>
 </section>
@@ -532,11 +561,17 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/example_data.html#escape.storage.example_data.make_array">make_array() (in module escape.storage.example_data)</a>
 </li>
+        <li><a href="api/example_data.html#escape.storage.example_data.make_discrete_scan">make_discrete_scan() (in module escape.storage.example_data)</a>
+</li>
+        <li><a href="api/example_data.html#escape.storage.example_data.make_grid_scan">make_grid_scan() (in module escape.storage.example_data)</a>
+</li>
         <li><a href="api/example_data.html#escape.storage.example_data.make_image_scan">make_image_scan() (in module escape.storage.example_data)</a>
 </li>
         <li><a href="api/example_data.html#escape.storage.example_data.make_pump_probe_scan">make_pump_probe_scan() (in module escape.storage.example_data)</a>
 </li>
         <li><a href="api/example_data.html#escape.storage.example_data.make_scan">make_scan() (in module escape.storage.example_data)</a>
+</li>
+        <li><a href="api/example_data.html#escape.storage.example_data.make_waveform_scan">make_waveform_scan() (in module escape.storage.example_data)</a>
 </li>
         <li><a href="api/array.html#escape.Array.map_index_blocks">map_index_blocks() (escape.Array method)</a>
 </li>
@@ -601,9 +636,11 @@
   <h2>N</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="api/scan.html#escape.Scan.nancount">nancount() (escape.Scan method)</a>
+        <li><a href="api/array.html#escape.Array.nancount">nancount() (escape.Array method)</a>
 
         <ul>
+          <li><a href="api/scan.html#escape.Scan.nancount">(escape.Scan method)</a>
+</li>
           <li><a href="api/scan.html#escape.storage.storage.Grid.nancount">(escape.storage.storage.Grid method)</a>
 </li>
         </ul></li>
@@ -698,11 +735,17 @@
         <li><a href="api/scan.html#escape.Scan.par_steps">par_steps (escape.Scan property)</a>
 </li>
         <li><a href="api/array.html#escape.Array.percentile">percentile() (escape.Array method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.Scan.percentile">(escape.Scan method)</a>
 </li>
-        <li><a href="api/array.html#escape.Array.persist">persist() (escape.Array method)</a>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.percentile">(escape.storage.storage.Grid method)</a>
 </li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/array.html#escape.Array.persist">persist() (escape.Array method)</a>
+</li>
         <li><a href="api/array.html#escape.Array.plot">plot() (escape.Array method)</a>
 
         <ul>
@@ -720,7 +763,13 @@
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/array.html#escape.Array.quantile">quantile() (escape.Array method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.Scan.quantile">(escape.Scan method)</a>
 </li>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.quantile">(escape.storage.storage.Grid method)</a>
+</li>
+        </ul></li>
     </ul></td>
   </tr></table>
 </section>
@@ -832,9 +881,11 @@
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/scan.html#escape.Scan.weighted_stat">weighted_stat() (escape.Scan method)</a>
+
+        <ul>
+          <li><a href="api/scan.html#escape.storage.storage.Grid.weighted_stat">(escape.storage.storage.Grid method)</a>
 </li>
-        <li><a href="api/scan.html#escape.storage.storage.Grid.weighted_stats">weighted_stats() (escape.storage.storage.Grid method)</a>
-</li>
+        </ul></li>
     </ul></td>
   </tr></table>
 </section>

@@ -33,6 +33,7 @@ from escape.storage import (
 from escape.storage.dataset import DataSet, merge_datasets, convert_resultsfile
 
 from . import utilities
+from . import utilities_detectors
 
 
 STORAGE_LOCK = None

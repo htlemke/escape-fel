@@ -180,17 +180,16 @@ def unflatten_dictionary(dflat, sep="."):
     return d
 
 
-def weighted_avg_and_std(values, weights, axis=0):
+def weighted_avg_and_std(values, weights=None, axis=0):
     """
     Return the weighted average and standard deviation.
-    values, weights -- Numpy ndarrays with the same shape.
+
+    ``weights=None`` uses uniform weights, equivalent to ``nanmean`` / ``nanstd``.
     """
-    if (da.asarray(weights) == 0).all():
+    if weights is not None and (da.asarray(weights) == 0).all():
         return (da.nan, da.nan)
     average = da.average(values, weights=weights, axis=axis)
-    variance = da.average(
-        (values - average) ** 2, weights=weights, axis=axis
-    )  # Fast and numerically precise
+    variance = da.average((values - average) ** 2, weights=weights, axis=axis)
     return (average, da.sqrt(variance))
 
 
@@ -820,6 +819,79 @@ def weighted_quantile(
     return np.interp(quantiles, weighted_quantiles, values)
 
 
+def match_array_to_index(index, aux_array, fill_value=0):
+    """Align an auxiliary escape.Array's data to an arbitrary pulse-ID sequence.
+
+    Auxiliary per-event channels (i0, boolean signal/reference flags, ...)
+    are typically recorded on a different index than the main detector
+    array -- some pulses may be missing on one side or the other, or the
+    ordering may differ. This matches by pulse ID (not position) and
+    returns a plain ndarray of length ``len(index)``.
+
+    Parameters
+    ----------
+    index : array-like
+        Target pulse IDs to align to (e.g. the main data Array's ``.index``).
+    aux_array : escape.Array
+        Array to pull values from. ``aux_array.data`` is computed if it's
+        still a dask array -- intended for small per-event channels (i0,
+        boolean masks), not another large detector stack.
+    fill_value : scalar, optional
+        Value assigned to entries of ``index`` that have no matching pulse
+        ID in ``aux_array.index``. Default 0 (== False for a boolean
+        result, == no weight for a numeric one).
+
+    Returns
+    -------
+    numpy.ndarray, shape (len(index),)
+    """
+    from .storage.storage import match_indexes
+
+    index = np.asarray(index)
+    aux_index = np.asarray(aux_array.index)
+    aux_data = aux_array.data
+    if hasattr(aux_data, "compute"):
+        aux_data = aux_data.compute()
+    aux_data = np.asarray(aux_data)
+
+    inds_master, (inds_slave,), _ = match_indexes(index, [aux_index])
+    out = np.full(len(index), fill_value, dtype=aux_data.dtype)
+    out[inds_master] = aux_data[inds_slave]
+    return out
+
+
+def bin_ids_from_source(index, bin_source):
+    """Bin id for each pulse ID in ``index``, using ``bin_source``'s own
+    scan-step structure as the bin definition.
+
+    ``bin_source`` is typically the output of :meth:`Array.digitize` or any
+    other Array whose ``.scan.step_lengths`` partitions its own events into
+    the groups that should serve as bins -- bin id ``n`` is "the n-th scan
+    step of ``bin_source``". Pulse IDs in ``index`` with no match in
+    ``bin_source.index`` get bin id ``-1`` (meant to be excluded downstream).
+
+    Parameters
+    ----------
+    index : array-like
+        Pulse IDs to assign a bin id to (e.g. the main data Array's ``.index``).
+    bin_source : escape.Array
+        Array whose scan-step grouping defines the bins.
+
+    Returns
+    -------
+    numpy.ndarray[int], shape (len(index),)
+    """
+    from .storage.storage import match_indexes
+
+    index = np.asarray(index)
+    step_lengths = bin_source.scan.step_lengths
+    inds_master, (inds_slave,), _ = match_indexes(np.asarray(bin_source.index), [index])
+    bin_of_matched = np.digitize(inds_master, bins=np.cumsum(step_lengths))
+    out = np.full(len(index), -1, dtype=int)
+    out[inds_slave] = bin_of_matched
+    return out
+
+
 ##########
 
 
@@ -970,7 +1042,7 @@ class ReferenceByRunno:
 def is_local_client_distributed():
     # Check the locally scoped config first
     current_sched = dask.config.get("scheduler", None)
-    
+
     if current_sched == 'threads':
         return False
     # If no local config is set, check if a global client exists
@@ -979,5 +1051,4 @@ def is_local_client_distributed():
         return True
     except ValueError:
         return False
-    
-    
+

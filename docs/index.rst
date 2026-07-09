@@ -28,11 +28,19 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    user_guide/custom_processing
 
 .. toctree::
+   :maxdepth: 2
+   :caption: SwissFEL
+
+   user_guide/swissfel
+   user_guide/stream
+
+.. toctree::
    :maxdepth: 1
    :caption: Examples
 
    examples/quickstart
    examples/pump_probe
+   examples/stack_viewer_and_dual_axis
 
 .. toctree::
    :maxdepth: 1

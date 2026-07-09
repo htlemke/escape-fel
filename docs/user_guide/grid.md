@@ -19,29 +19,42 @@ The Grid stores:
 ## Creating a Grid
 
 Grids are constructed automatically by the SwissFEL parser when it detects a
-multi-dimensional scan pattern.  For manual construction, pass `grid_specs` to
-{class}`~escape.Array`:
+multi-dimensional scan pattern.
+
+For quick testing and documentation examples use
+{func}`~escape.storage.example_data.make_grid_scan`:
+
+```python
+from escape.storage.example_data import make_grid_scan
+
+sig = make_grid_scan(
+    shape=(5, 8),                          # 5 rows × 8 columns
+    dim_names=("delay_ps", "motor_mm"),
+    dim_ranges=((-0.5, 2.0), (0.0, 4.0)),
+    n_events_per_step=200,
+    seed=0,
+)
+print(sig.grid.shape)   # [5, 8]
+```
+
+For manual construction, pass `grid_specs` to {class}`~escape.Array`:
 
 ```python
 import numpy as np
-import escape
+import escape, itertools
 
 # 3×4 grid scan: steps 0..11 mapped to a 3×4 matrix
-n_steps = 12
 n_per_step = 200
-x_vals = np.array([0.0, 1.0, 2.0])    # rows
-y_vals = np.array([0.0, 0.5, 1.0, 1.5])  # columns
-
-# Build scan_step_info parameter: each step knows its grid index
-import itertools
+x_vals = np.array([0.0, 1.0, 2.0])
+y_vals = np.array([0.0, 0.5, 1.0, 1.5])
 grid_indices = [{"grid_index": list(idx)} for idx in itertools.product(range(3), range(4))]
+n_steps = len(grid_indices)
 
 data  = np.random.randn(n_steps * n_per_step)
 index = np.arange(len(data))
 
 arr = escape.Array(
-    data=data,
-    index=index,
+    data=data, index=index,
     step_lengths=[n_per_step] * n_steps,
     parameter={"scan_step_info": {"values": grid_indices}},
     grid_specs={
@@ -50,8 +63,6 @@ arr = escape.Array(
         "grid_dimension_names": ["x_mm", "y_mm"],
     },
 )
-print(arr.grid)
-# <Grid shape=(3, 4) dims=['x_mm', 'y_mm'] filled=12/12 (100.0%)>
 ```
 
 ## Indexing a Grid
@@ -85,20 +96,49 @@ grid_stds  = arr.grid.nanstd()     # shape (3, 4)
 ### Built-in 2-D Plotting
 
 Pass `plot=True` to any grid statistic method to get an immediate 2-D colour
-map:
+map.  The `plot` argument accepts three kinds of values:
+
+| `plot=` value | Effect |
+|---|---|
+| `True` | draw on the current Matplotlib axes (`plt.gca()`) |
+| a `Figure` | create a new subplot inside that figure |
+| an `Axes` | draw on that specific axes |
 
 ```python
-arr.grid.nanmean(plot=True)
-# displays a pcolormesh with x_mm and y_mm axes
+# Quickest option — current axes:
+sig.grid.nanmean(plot=True)
+
+# Specific axes:
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+sig.grid.nanmean(plot=ax, plot_kws={"cmap": "viridis"})
+
+# Custom colourmap, fixed colour range, no colourbar:
+sig.grid.nanmean(
+    plot=True,
+    plot_kws={"cmap": "plasma", "vmin": 0.0, "vmax": 1.0, "colorbar": False},
+)
+
+# Pass an Axes via plot_kws instead of via plot= (alternative syntax):
+sig.grid.nanmean(plot=True, plot_kws={"axis": ax, "cmap": "magma"})
 ```
 
-Custom keyword arguments for the plot:
+```{eval-rst}
+.. plot::
 
-```python
-arr.grid.nanmean(
-    plot=True,
-    plot_kws={"cmap": "viridis", "vmin": -1, "vmax": 1},
-)
+   import matplotlib
+   matplotlib.use("Agg")
+   import matplotlib.pyplot as plt
+   from escape.storage.example_data import make_grid_scan
+
+   sig = make_grid_scan(shape=(5, 8), n_events_per_step=200, seed=0)
+
+   fig, axes = plt.subplots(1, 2, figsize=(9, 3.5))
+   sig.grid.nanmean(plot=axes[0], plot_kws={"cmap": "viridis"})
+   axes[0].set_title("nanmean")
+   sig.grid.nanstd(plot=axes[1],  plot_kws={"cmap": "plasma"})
+   axes[1].set_title("nanstd")
+   plt.tight_layout()
 ```
 
 ## Fill Count

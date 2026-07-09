@@ -20,6 +20,7 @@ dependencies = [
     "rich",
     "matplotlib",
     "pandas",
+    "adjustText",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

@@ -9,6 +9,7 @@
         <title>Example Data Generators - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -266,6 +267,16 @@
 <p>These functions create realistic FEL-like event data without requiring external
 data sources, making them suitable for documentation notebooks and unit tests.
 All generators accept a <code class="docutils literal notranslate"><span class="pre">seed</span></code> parameter for reproducible output.</p>
+<section id="available-generators">
+<h2>Available generators<a class="headerlink" href="#available-generators" title="Link to this heading">¶</a></h2>
+<p>make_array          – plain 1-D Array (no scan)
+make_scan           – 1-D scalar signal across a 1-D scan
+make_pump_probe_scan – pump-probe scan returning (signal, i0, pump_on, delay)
+make_image_scan     – 2-D image data per event across a scan (map-plot repr)
+make_waveform_scan  – 1-D waveform per event across a scan (map-plot repr)
+make_grid_scan      – scalar signal on a 2-D (or N-D) grid with an attached Grid
+make_discrete_scan  – integer/discrete-valued scan (exercises repr edge-case handling)</p>
+</section>
 <dl class="py function">
 <dt class="sig sig-object py" id="escape.storage.example_data.make_array">
 <span class="sig-prename descclassname"><span class="pre">escape.storage.example_data.</span></span><span class="sig-name descname"><span class="pre">make_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_events</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_fn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'signal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sparse_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="array.html#escape.Array" title="escape.storage.storage.Array"><span class="pre">Array</span></a></span></span><a class="reference internal" href="../_modules/escape/storage/example_data.html#make_array"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.example_data.make_array" title="Link to this definition">¶</a></dt>
@@ -294,6 +305,85 @@ where not every instrument records every pulse.</p></li>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">sig</span> <span class="o">=</span> <span class="n">make_array</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">ix</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">ix</span> <span class="o">/</span> <span class="mf">200.0</span><span class="p">),</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">sig</span><span class="o">.</span><span class="n">shape</span>
 <span class="go">(1000,)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="escape.storage.example_data.make_discrete_scan">
+<span class="sig-prename descclassname"><span class="pre">escape.storage.example_data.</span></span><span class="sig-name descname"><span class="pre">make_discrete_scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_events_per_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">300</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_par_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'delay_ps'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_par_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(0,</span> <span class="pre">1,</span> <span class="pre">2,</span> <span class="pre">3)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'photon_count'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="array.html#escape.Array" title="escape.storage.storage.Array"><span class="pre">Array</span></a></span></span><a class="reference internal" href="../_modules/escape/storage/example_data.html#make_discrete_scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.example_data.make_discrete_scan" title="Link to this definition">¶</a></dt>
+<dd><p>Create a scan with discrete integer values.</p>
+<p>Models a photon-counting detector or any channel with only a handful of
+distinct values.  The degenerate percentile range (all steps may share the
+same min/max) exercises the robustness fixes in the hist-plot repr path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of scan steps.</p></li>
+<li><p><strong>n_events_per_step</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Events per step.</p></li>
+<li><p><strong>scan_par_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the scanned parameter.</p></li>
+<li><p><strong>scan_par_values</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Defaults to equally spaced values in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>values</strong> (<em>sequence</em><em> of </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Discrete output values that are randomly drawn per event.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name tag.</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – Random seed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>1-D integer Array useful for testing edge-case repr behaviour.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="array.html#escape.Array" title="escape.Array">escape.Array</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">escape.storage.example_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_discrete_scan</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cnt</span> <span class="o">=</span> <span class="n">make_discrete_scan</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;binary_flag&quot;</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cnt</span><span class="o">.</span><span class="n">dtype</span>
+<span class="go">dtype(&#39;int32&#39;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cnt</span>              <span class="c1"># should render without errors despite degenerate range</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="escape.storage.example_data.make_grid_scan">
+<span class="sig-prename descclassname"><span class="pre">escape.storage.example_data.</span></span><span class="sig-name descname"><span class="pre">make_grid_scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(5,</span> <span class="pre">8)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_events_per_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">150</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('delay_ps',</span> <span class="pre">'motor_mm')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim_ranges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">((-0.5,</span> <span class="pre">2.0),</span> <span class="pre">(0.0,</span> <span class="pre">4.0))</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">signal_fn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.08</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'signal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="array.html#escape.Array" title="escape.storage.storage.Array"><span class="pre">Array</span></a></span></span><a class="reference internal" href="../_modules/escape/storage/example_data.html#make_grid_scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.example_data.make_grid_scan" title="Link to this definition">¶</a></dt>
+<dd><p>Create a scalar scan Array with a multi-dimensional grid structure.</p>
+<p>Steps are laid out on a full Cartesian grid so the attached
+<a class="reference internal" href="scan.html#escape.storage.storage.Grid" title="escape.storage.storage.Grid"><code class="xref py py-class docutils literal notranslate"><span class="pre">Grid</span></code></a> object can reshape per-step
+aggregates into a 2-D (or N-D) image.  This exercises the grid heatmap
+repr path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>shape</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em> of </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Grid dimensions, e.g. <code class="docutils literal notranslate"><span class="pre">(5,</span> <span class="pre">8)</span></code> for a 5-row × 8-column grid.
+Can be higher-dimensional (e.g. <code class="docutils literal notranslate"><span class="pre">(3,</span> <span class="pre">4,</span> <span class="pre">5)</span></code>).</p></li>
+<li><p><strong>n_events_per_step</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Events recorded at each grid point.</p></li>
+<li><p><strong>dim_names</strong> (<em>sequence</em><em> of </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of each grid axis (length must equal <code class="docutils literal notranslate"><span class="pre">len(shape)</span></code>).</p></li>
+<li><p><strong>dim_ranges</strong> (<em>sequence</em><em> of </em><em>(</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>)</em>) – <code class="docutils literal notranslate"><span class="pre">(min,</span> <span class="pre">max)</span></code> range of parameter values along each axis.</p></li>
+<li><p><strong>signal_fn</strong> (<em>callable</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">f(*par_values)</span> <span class="pre">-&gt;</span> <span class="pre">float</span></code> giving the mean signal at a grid point.
+Receives one positional argument per grid dimension.  Defaults to a
+Gaussian ridge along the first dimension.</p></li>
+<li><p><strong>noise</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Standard deviation of additive Gaussian noise.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name tag for the returned Array.</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – Random seed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>1-D scalar Array with <code class="docutils literal notranslate"><span class="pre">prod(shape)</span> <span class="pre">*</span> <span class="pre">n_events_per_step</span></code> events and
+an attached Grid.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="array.html#escape.Array" title="escape.Array">escape.Array</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">escape.storage.example_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_grid_scan</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sig</span> <span class="o">=</span> <span class="n">make_grid_scan</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sig</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">[6, 10]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sig</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">plot</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>          <span class="c1"># 2-D heatmap</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sig</span>                                   <span class="c1"># triggers grid repr plot</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -427,6 +517,44 @@ If <em>None</em> a simple cosine response is used.</p></li>
 </div>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="escape.storage.example_data.make_waveform_scan">
+<span class="sig-prename descclassname"><span class="pre">escape.storage.example_data.</span></span><span class="sig-name descname"><span class="pre">make_waveform_scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">12</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_events_per_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">waveform_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">128</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_par_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'delay_ps'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_par_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">signal_fn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'tof_waveform'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="array.html#escape.Array" title="escape.storage.storage.Array"><span class="pre">Array</span></a></span></span><a class="reference internal" href="../_modules/escape/storage/example_data.html#make_waveform_scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.example_data.make_waveform_scan" title="Link to this definition">¶</a></dt>
+<dd><p>Create a scan Array with a 1-D waveform per event.</p>
+<p>Models a time-of-flight or photodiode trace that changes shape across a
+scan.  This exercises the 2-D map-plot repr path (<code class="docutils literal notranslate"><span class="pre">ndim_nonzero</span> <span class="pre">==</span> <span class="pre">2</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of scan steps.</p></li>
+<li><p><strong>n_events_per_step</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Waveforms recorded per step.</p></li>
+<li><p><strong>waveform_length</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of samples in each waveform.</p></li>
+<li><p><strong>scan_par_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the scanned parameter.</p></li>
+<li><p><strong>scan_par_values</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Values per step.  Defaults to <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1,</span> <span class="pre">…,</span> <span class="pre">n_steps-1]</span></code>.</p></li>
+<li><p><strong>signal_fn</strong> (<em>callable</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">f(par_value,</span> <span class="pre">time_axis)</span> <span class="pre">-&gt;</span> <span class="pre">waveform</span></code> giving the mean waveform shape
+at each step.  Defaults to a Gaussian peak that shifts with scan par.</p></li>
+<li><p><strong>noise</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Fractional shot-to-shot noise amplitude.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name tag for the returned Array.</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – Random seed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Array with shape <code class="docutils literal notranslate"><span class="pre">(n_steps</span> <span class="pre">*</span> <span class="pre">n_events_per_step,</span> <span class="pre">waveform_length)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="array.html#escape.Array" title="escape.Array">escape.Array</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">escape.storage.example_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_waveform_scan</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tof</span> <span class="o">=</span> <span class="n">make_waveform_scan</span><span class="p">(</span><span class="n">n_steps</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">waveform_length</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tof</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">(1600, 64)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tof</span><span class="o">.</span><span class="n">scan</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">plot</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># mean waveform vs scan parameter</span>
+</pre></div>
+</div>
+</dd></dl>
+
 </section>
 
         </article>
@@ -477,10 +605,14 @@ If <em>None</em> a simple cosine response is used.</p></li>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Example Data Generators</a><ul>
+<li><a class="reference internal" href="#available-generators">Available generators</a></li>
 <li><a class="reference internal" href="#escape.storage.example_data.make_array"><code class="docutils literal notranslate"><span class="pre">make_array()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.example_data.make_discrete_scan"><code class="docutils literal notranslate"><span class="pre">make_discrete_scan()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.example_data.make_grid_scan"><code class="docutils literal notranslate"><span class="pre">make_grid_scan()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.example_data.make_image_scan"><code class="docutils literal notranslate"><span class="pre">make_image_scan()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.example_data.make_pump_probe_scan"><code class="docutils literal notranslate"><span class="pre">make_pump_probe_scan()</span></code></a></li>
 <li><a class="reference internal" href="#escape.storage.example_data.make_scan"><code class="docutils literal notranslate"><span class="pre">make_scan()</span></code></a></li>
+<li><a class="reference internal" href="#escape.storage.example_data.make_waveform_scan"><code class="docutils literal notranslate"><span class="pre">make_waveform_scan()</span></code></a></li>
 </ul>
 </li>
 </ul>

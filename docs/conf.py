@@ -14,10 +14,15 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
+    "matplotlib.sphinxext.plot_directive",
     "myst_parser",
     "sphinx_copybutton",
     "nbsphinx",
 ]
+
+plot_include_source = False
+plot_html_show_source_link = False
+plot_formats = [("png", 120)]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]

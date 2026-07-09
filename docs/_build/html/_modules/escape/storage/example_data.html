@@ -8,6 +8,7 @@
         <title>escape.storage.example_data - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -259,6 +260,16 @@
 <span class="sd">These functions create realistic FEL-like event data without requiring external</span>
 <span class="sd">data sources, making them suitable for documentation notebooks and unit tests.</span>
 <span class="sd">All generators accept a ``seed`` parameter for reproducible output.</span>
+
+<span class="sd">Available generators</span>
+<span class="sd">--------------------</span>
+<span class="sd">make_array          – plain 1-D Array (no scan)</span>
+<span class="sd">make_scan           – 1-D scalar signal across a 1-D scan</span>
+<span class="sd">make_pump_probe_scan – pump-probe scan returning (signal, i0, pump_on, delay)</span>
+<span class="sd">make_image_scan     – 2-D image data per event across a scan (map-plot repr)</span>
+<span class="sd">make_waveform_scan  – 1-D waveform per event across a scan (map-plot repr)</span>
+<span class="sd">make_grid_scan      – scalar signal on a 2-D (or N-D) grid with an attached Grid</span>
+<span class="sd">make_discrete_scan  – integer/discrete-valued scan (exercises repr edge-case handling)</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -608,6 +619,289 @@
         <span class="n">step_lengths</span><span class="o">=</span><span class="n">step_lengths</span><span class="p">,</span>
         <span class="n">parameter</span><span class="o">=</span><span class="n">parameter</span><span class="p">,</span>
         <span class="n">name</span><span class="o">=</span><span class="s2">&quot;detector_image&quot;</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="make_waveform_scan">
+<a class="viewcode-back" href="../../../api/example_data.html#escape.storage.example_data.make_waveform_scan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_waveform_scan</span><span class="p">(</span>
+    <span class="n">n_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">12</span><span class="p">,</span>
+    <span class="n">n_events_per_step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
+    <span class="n">waveform_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="n">scan_par_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;delay_ps&quot;</span><span class="p">,</span>
+    <span class="n">scan_par_values</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">signal_fn</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">noise</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;tof_waveform&quot;</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a scan Array with a 1-D waveform per event.</span>
+
+<span class="sd">    Models a time-of-flight or photodiode trace that changes shape across a</span>
+<span class="sd">    scan.  This exercises the 2-D map-plot repr path (``ndim_nonzero == 2``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_steps : int</span>
+<span class="sd">        Number of scan steps.</span>
+<span class="sd">    n_events_per_step : int</span>
+<span class="sd">        Waveforms recorded per step.</span>
+<span class="sd">    waveform_length : int</span>
+<span class="sd">        Number of samples in each waveform.</span>
+<span class="sd">    scan_par_name : str</span>
+<span class="sd">        Name of the scanned parameter.</span>
+<span class="sd">    scan_par_values : array-like, optional</span>
+<span class="sd">        Values per step.  Defaults to ``[0, 1, …, n_steps-1]``.</span>
+<span class="sd">    signal_fn : callable, optional</span>
+<span class="sd">        ``f(par_value, time_axis) -&gt; waveform`` giving the mean waveform shape</span>
+<span class="sd">        at each step.  Defaults to a Gaussian peak that shifts with scan par.</span>
+<span class="sd">    noise : float</span>
+<span class="sd">        Fractional shot-to-shot noise amplitude.</span>
+<span class="sd">    name : str</span>
+<span class="sd">        Name tag for the returned Array.</span>
+<span class="sd">    seed : int, optional</span>
+<span class="sd">        Random seed.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    escape.Array</span>
+<span class="sd">        Array with shape ``(n_steps * n_events_per_step, waveform_length)``.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from escape.storage.example_data import make_waveform_scan</span>
+<span class="sd">    &gt;&gt;&gt; tof = make_waveform_scan(n_steps=8, waveform_length=64, seed=0)</span>
+<span class="sd">    &gt;&gt;&gt; tof.shape</span>
+<span class="sd">    (1600, 64)</span>
+<span class="sd">    &gt;&gt;&gt; tof.scan.nanmean(plot=True)  # mean waveform vs scan parameter</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">scan_par_values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">scan_par_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_steps</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">scan_par_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">scan_par_values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">waveform_length</span><span class="p">)</span>
+
+    <span class="n">all_data</span><span class="p">,</span> <span class="n">index_parts</span><span class="p">,</span> <span class="n">step_lengths</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="n">pulse_id</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">par_val</span> <span class="ow">in</span> <span class="n">scan_par_values</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">signal_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">span</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">scan_par_values</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">-</span> <span class="n">scan_par_values</span><span class="o">.</span><span class="n">min</span><span class="p">())</span>
+            <span class="n">center</span> <span class="o">=</span> <span class="mf">0.2</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">par_val</span> <span class="o">-</span> <span class="n">scan_par_values</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">span</span><span class="p">,</span> <span class="mf">1e-12</span><span class="p">)</span>
+            <span class="n">mean_wf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">((</span><span class="n">t</span> <span class="o">-</span> <span class="n">center</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="mf">0.07</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">mean_wf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">signal_fn</span><span class="p">(</span><span class="n">par_val</span><span class="p">,</span> <span class="n">t</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="n">n_events_per_step</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">+</span> <span class="n">noise</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">standard_normal</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="n">shot_noise</span> <span class="o">=</span> <span class="n">noise</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">standard_normal</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">waveform_length</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">waveforms</span> <span class="o">=</span> <span class="p">(</span><span class="n">mean_wf</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">scale</span> <span class="o">+</span> <span class="n">shot_noise</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+        <span class="n">ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pulse_id</span><span class="p">,</span> <span class="n">pulse_id</span> <span class="o">+</span> <span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">all_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">waveforms</span><span class="p">)</span>
+        <span class="n">index_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span>
+        <span class="n">step_lengths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">pulse_id</span> <span class="o">+=</span> <span class="n">n</span>
+
+    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">all_data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">index_parts</span><span class="p">)</span>
+    <span class="n">parameter</span> <span class="o">=</span> <span class="p">{</span><span class="n">scan_par_name</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;values&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">scan_par_values</span><span class="p">)}}</span>
+    <span class="k">return</span> <span class="n">Array</span><span class="p">(</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+        <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">,</span>
+        <span class="n">step_lengths</span><span class="o">=</span><span class="n">step_lengths</span><span class="p">,</span>
+        <span class="n">parameter</span><span class="o">=</span><span class="n">parameter</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="make_grid_scan">
+<a class="viewcode-back" href="../../../api/example_data.html#escape.storage.example_data.make_grid_scan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_grid_scan</span><span class="p">(</span>
+    <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span>
+    <span class="n">n_events_per_step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>
+    <span class="n">dim_names</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;delay_ps&quot;</span><span class="p">,</span> <span class="s2">&quot;motor_mm&quot;</span><span class="p">),</span>
+    <span class="n">dim_ranges</span><span class="o">=</span><span class="p">((</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">)),</span>
+    <span class="n">signal_fn</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">noise</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.08</span><span class="p">,</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;signal&quot;</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a scalar scan Array with a multi-dimensional grid structure.</span>
+
+<span class="sd">    Steps are laid out on a full Cartesian grid so the attached</span>
+<span class="sd">    :class:`~escape.storage.storage.Grid` object can reshape per-step</span>
+<span class="sd">    aggregates into a 2-D (or N-D) image.  This exercises the grid heatmap</span>
+<span class="sd">    repr path.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    shape : tuple of int</span>
+<span class="sd">        Grid dimensions, e.g. ``(5, 8)`` for a 5-row × 8-column grid.</span>
+<span class="sd">        Can be higher-dimensional (e.g. ``(3, 4, 5)``).</span>
+<span class="sd">    n_events_per_step : int</span>
+<span class="sd">        Events recorded at each grid point.</span>
+<span class="sd">    dim_names : sequence of str</span>
+<span class="sd">        Name of each grid axis (length must equal ``len(shape)``).</span>
+<span class="sd">    dim_ranges : sequence of (float, float)</span>
+<span class="sd">        ``(min, max)`` range of parameter values along each axis.</span>
+<span class="sd">    signal_fn : callable, optional</span>
+<span class="sd">        ``f(*par_values) -&gt; float`` giving the mean signal at a grid point.</span>
+<span class="sd">        Receives one positional argument per grid dimension.  Defaults to a</span>
+<span class="sd">        Gaussian ridge along the first dimension.</span>
+<span class="sd">    noise : float</span>
+<span class="sd">        Standard deviation of additive Gaussian noise.</span>
+<span class="sd">    name : str</span>
+<span class="sd">        Name tag for the returned Array.</span>
+<span class="sd">    seed : int, optional</span>
+<span class="sd">        Random seed.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    escape.Array</span>
+<span class="sd">        1-D scalar Array with ``prod(shape) * n_events_per_step`` events and</span>
+<span class="sd">        an attached Grid.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from escape.storage.example_data import make_grid_scan</span>
+<span class="sd">    &gt;&gt;&gt; sig = make_grid_scan(shape=(6, 10), seed=0)</span>
+<span class="sd">    &gt;&gt;&gt; sig.grid.shape</span>
+<span class="sd">    [6, 10]</span>
+<span class="sd">    &gt;&gt;&gt; sig.grid.nanmean(plot=True)          # 2-D heatmap</span>
+<span class="sd">    &gt;&gt;&gt; sig                                   # triggers grid repr plot</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="n">ndim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">positions</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">),</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">dim_ranges</span><span class="p">[:</span><span class="n">ndim</span><span class="p">],</span> <span class="n">shape</span><span class="p">)</span>
+    <span class="p">]</span>
+
+    <span class="n">grid_indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndindex</span><span class="p">(</span><span class="o">*</span><span class="n">shape</span><span class="p">))</span>
+    <span class="n">data_parts</span><span class="p">,</span> <span class="n">index_parts</span><span class="p">,</span> <span class="n">step_lengths</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="n">scan_step_info</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">par_values</span> <span class="o">=</span> <span class="p">{</span><span class="n">dn</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">dn</span> <span class="ow">in</span> <span class="n">dim_names</span><span class="p">[:</span><span class="n">ndim</span><span class="p">]}</span>
+    <span class="n">pulse_id</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">grid_idx</span> <span class="ow">in</span> <span class="n">grid_indices</span><span class="p">:</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">positions</span><span class="p">[</span><span class="n">d</span><span class="p">][</span><span class="n">grid_idx</span><span class="p">[</span><span class="n">d</span><span class="p">]])</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="n">signal_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Gaussian ridge centred on middle of first axis, flat along others</span>
+            <span class="n">c0</span> <span class="o">=</span> <span class="p">(</span><span class="n">dim_ranges</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">dim_ranges</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
+            <span class="n">mean_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">((</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">c0</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">0.3</span> <span class="o">*</span> <span class="p">(</span><span class="n">dim_ranges</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">dim_ranges</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]))</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">mean_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">signal_fn</span><span class="p">(</span><span class="o">*</span><span class="n">coords</span><span class="p">))</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="n">n_events_per_step</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pulse_id</span><span class="p">,</span> <span class="n">pulse_id</span> <span class="o">+</span> <span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="p">(</span><span class="n">mean_val</span> <span class="o">+</span> <span class="n">noise</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">standard_normal</span><span class="p">(</span><span class="n">n</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+        <span class="n">data_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vals</span><span class="p">)</span>
+        <span class="n">index_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span>
+        <span class="n">step_lengths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">scan_step_info</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;grid_index&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">grid_idx</span><span class="p">)})</span>
+        <span class="k">for</span> <span class="n">d</span><span class="p">,</span> <span class="n">dn</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">dim_names</span><span class="p">[:</span><span class="n">ndim</span><span class="p">]):</span>
+            <span class="n">par_values</span><span class="p">[</span><span class="n">dn</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="n">d</span><span class="p">])</span>
+        <span class="n">pulse_id</span> <span class="o">+=</span> <span class="n">n</span>
+
+    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">data_parts</span><span class="p">)</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">index_parts</span><span class="p">)</span>
+    <span class="n">parameter</span> <span class="o">=</span> <span class="p">{</span><span class="n">dn</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;values&quot;</span><span class="p">:</span> <span class="n">par_values</span><span class="p">[</span><span class="n">dn</span><span class="p">]}</span> <span class="k">for</span> <span class="n">dn</span> <span class="ow">in</span> <span class="n">dim_names</span><span class="p">[:</span><span class="n">ndim</span><span class="p">]}</span>
+    <span class="n">parameter</span><span class="p">[</span><span class="s2">&quot;scan_step_info&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;values&quot;</span><span class="p">:</span> <span class="n">scan_step_info</span><span class="p">}</span>
+
+    <span class="n">grid_specs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;shape&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">shape</span><span class="p">),</span>
+        <span class="s2">&quot;positions&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">positions</span><span class="p">],</span>
+        <span class="s2">&quot;grid_dimension_names&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">dim_names</span><span class="p">[:</span><span class="n">ndim</span><span class="p">]),</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">Array</span><span class="p">(</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+        <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">,</span>
+        <span class="n">step_lengths</span><span class="o">=</span><span class="n">step_lengths</span><span class="p">,</span>
+        <span class="n">parameter</span><span class="o">=</span><span class="n">parameter</span><span class="p">,</span>
+        <span class="n">grid_specs</span><span class="o">=</span><span class="n">grid_specs</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="make_discrete_scan">
+<a class="viewcode-back" href="../../../api/example_data.html#escape.storage.example_data.make_discrete_scan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_discrete_scan</span><span class="p">(</span>
+    <span class="n">n_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">n_events_per_step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
+    <span class="n">scan_par_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;delay_ps&quot;</span><span class="p">,</span>
+    <span class="n">scan_par_values</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;photon_count&quot;</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a scan with discrete integer values.</span>
+
+<span class="sd">    Models a photon-counting detector or any channel with only a handful of</span>
+<span class="sd">    distinct values.  The degenerate percentile range (all steps may share the</span>
+<span class="sd">    same min/max) exercises the robustness fixes in the hist-plot repr path.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_steps : int</span>
+<span class="sd">        Number of scan steps.</span>
+<span class="sd">    n_events_per_step : int</span>
+<span class="sd">        Events per step.</span>
+<span class="sd">    scan_par_name : str</span>
+<span class="sd">        Name of the scanned parameter.</span>
+<span class="sd">    scan_par_values : array-like, optional</span>
+<span class="sd">        Defaults to equally spaced values in ``[0, 1]``.</span>
+<span class="sd">    values : sequence of int</span>
+<span class="sd">        Discrete output values that are randomly drawn per event.</span>
+<span class="sd">    name : str</span>
+<span class="sd">        Name tag.</span>
+<span class="sd">    seed : int, optional</span>
+<span class="sd">        Random seed.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    escape.Array</span>
+<span class="sd">        1-D integer Array useful for testing edge-case repr behaviour.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from escape.storage.example_data import make_discrete_scan</span>
+<span class="sd">    &gt;&gt;&gt; cnt = make_discrete_scan(values=(0, 1), name=&quot;binary_flag&quot;, seed=0)</span>
+<span class="sd">    &gt;&gt;&gt; cnt.dtype</span>
+<span class="sd">    dtype(&#39;int32&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; cnt              # should render without errors despite degenerate range</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">scan_par_values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">scan_par_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">n_steps</span><span class="p">)</span>
+    <span class="n">scan_par_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">scan_par_values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+
+    <span class="n">data_parts</span><span class="p">,</span> <span class="n">index_parts</span><span class="p">,</span> <span class="n">step_lengths</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="n">pulse_id</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">scan_par_values</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">n_events_per_step</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pulse_id</span><span class="p">,</span> <span class="n">pulse_id</span> <span class="o">+</span> <span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">drawn</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+        <span class="n">data_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">drawn</span><span class="p">)</span>
+        <span class="n">index_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span>
+        <span class="n">step_lengths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">pulse_id</span> <span class="o">+=</span> <span class="n">n</span>
+
+    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">data_parts</span><span class="p">)</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">index_parts</span><span class="p">)</span>
+    <span class="n">parameter</span> <span class="o">=</span> <span class="p">{</span><span class="n">scan_par_name</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;values&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">scan_par_values</span><span class="p">)}}</span>
+    <span class="k">return</span> <span class="n">Array</span><span class="p">(</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+        <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">,</span>
+        <span class="n">step_lengths</span><span class="o">=</span><span class="n">step_lengths</span><span class="p">,</span>
+        <span class="n">parameter</span><span class="o">=</span><span class="n">parameter</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
     <span class="p">)</span></div>
 
 </pre></div>

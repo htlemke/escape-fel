@@ -9,6 +9,7 @@
         <title>Module-Level Functions - escape-fel 0.0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/plot_directive.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
     
@@ -406,17 +407,43 @@ filter functions that take one argument as input and</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="escape.storage.storage.unravel_arrays">
-<span class="sig-prename descclassname"><span class="pre">escape.storage.storage.</span></span><span class="sig-name descname"><span class="pre">unravel_arrays</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">arrays</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">categorize_target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/escape/storage/storage.html#unravel_arrays"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#escape.storage.storage.unravel_arrays" title="Link to this definition">¶</a></dt>
-<dd><p>Unravel multiple escape arrays to a sorter array spanning out the dimensions of the arrays.</p>
-<dl>
-<dt>Args:</dt><dd><p><a href="#id1"><span class="problematic" id="id2">*</span></a>arrays: arbitrary number of escape arrays.
-categorize_target: optional argument to categorize the resulting array according to a target array, e.g. for coloring in plots.
-Returns:</p>
-<blockquote>
-<div><p>escape.Array: The unraveled array.</p>
-</div></blockquote>
+<span class="sig-prename descclassname"><span class="pre">escape.storage.storage.</span></span><span class="sig-name descname"><span class="pre">unravel_arrays</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">arrays</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">categorize_target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#escape.storage.storage.unravel_arrays" title="Link to this definition">¶</a></dt>
+<dd><p>Create a grid-sorter Array spanning the Cartesian product of multiple scan structures.</p>
+<p>Takes N Arrays that each carry a 1-D scan (one parameter axis each) and
+produces a single sorter Array whose scan steps correspond to all
+combinations of those parameter axes — effectively “unravelling” the
+individual scans into an N-D grid.</p>
+<p>The resulting sorter can be used with <a class="reference internal" href="array.html#escape.Array.categorize" title="escape.Array.categorize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">categorize()</span></code></a> to
+apply the grid grouping to any other channel.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>*arrays</strong> (<a class="reference internal" href="array.html#escape.Array" title="escape.Array"><em>escape.Array</em></a>) – Two or more Arrays whose scan structures define the grid axes.
+The number of steps in each Array becomes the size of one grid dimension.</p></li>
+<li><p><strong>categorize_target</strong> (<a class="reference internal" href="array.html#escape.Array" title="escape.Array"><em>escape.Array</em></a><em>, </em><em>optional</em>) – If provided, immediately <a class="reference internal" href="array.html#escape.Array.categorize" title="escape.Array.categorize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">categorize()</span></code></a> this Array
+onto the resulting grid and return the categorized result instead of
+the raw sorter.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A sorter Array with <code class="docutils literal notranslate"><span class="pre">product(n_steps_per_input)</span></code> scan steps and a
+<a class="reference internal" href="scan.html#escape.storage.storage.Grid" title="escape.storage.storage.Grid"><code class="xref py py-class docutils literal notranslate"><span class="pre">Grid</span></code></a> attached, or — when
+<em>categorize_target</em> is given — the categorized target Array.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="array.html#escape.Array" title="escape.Array">escape.Array</a></p>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Build a 10 × 8 grid from two independent 1-D scans and compute per-cell
+means:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sorter</span> <span class="o">=</span> <span class="n">escape</span><span class="o">.</span><span class="n">unravel_scans</span><span class="p">(</span><span class="n">scan_a</span><span class="p">,</span> <span class="n">scan_b</span><span class="p">)</span>
+<span class="n">sig_grid</span> <span class="o">=</span> <span class="n">sorter</span><span class="o">.</span><span class="n">categorize</span><span class="p">(</span><span class="n">sig</span><span class="p">)</span>
+<span class="n">means</span> <span class="o">=</span> <span class="n">sig_grid</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">nanmean</span><span class="p">()</span>   <span class="c1"># shape (10, 8)</span>
+</pre></div>
+</div>
+<p class="rubric">Notes</p>
+<p>Previously named <code class="docutils literal notranslate"><span class="pre">unravel_arrays</span></code>; that name is kept as a deprecated alias.</p>
 </dd></dl>
 
 </section>
