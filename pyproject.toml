@@ -12,6 +12,7 @@ authors = [{ name = "Henrik Lemke", email = "h.t.lemke@gmail.com" }]
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
+    "scipy",
     "dask[array]",
     "h5py",
     "zarr",
@@ -22,6 +23,11 @@ dependencies = [
     "pandas",
     "adjustText",
 ]
+
+[project.optional-dependencies]
+# escape.wavefront can use scikit-image for a wider unwrapped dynamic range;
+# it degrades gracefully (no unwrap) if absent.
+wavefront = ["scikit-image"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -39,6 +45,10 @@ Issues = "https://github.com/htlemke/escape-fel/issues"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["escape*"]
+
+[tool.setuptools.package-data]
+# bundle the EXAFS demo dataset (Cu foil, APS 13ID; from xraylarch examples)
+"escape.exafs" = ["data/*.xmu"]
 
 [tool.setuptools_scm]
 # version is derived automatically from git tags: v0.1.0 -> 0.1.0

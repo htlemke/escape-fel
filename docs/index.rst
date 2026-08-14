@@ -26,6 +26,8 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    user_guide/grid
    user_guide/dataset
    user_guide/custom_processing
+   user_guide/wavefront
+   user_guide/exafs
 
 .. toctree::
    :maxdepth: 2

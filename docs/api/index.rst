@@ -11,4 +11,6 @@ API Reference
    example_data
    timestamps
    plotting
+   wavefront
+   exafs
 
