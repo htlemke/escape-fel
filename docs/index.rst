@@ -49,3 +49,9 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    :caption: API Reference
 
    api/index
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   development/releasing
