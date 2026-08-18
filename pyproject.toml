@@ -23,11 +23,6 @@ dependencies = [
     "pandas",
     "adjustText",
 ]
-
-[project.optional-dependencies]
-# escape.wavefront can use scikit-image for a wider unwrapped dynamic range;
-# it degrades gracefully (no unwrap) if absent.
-wavefront = ["scikit-image"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -35,6 +30,11 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Physics",
 ]
+
+[project.optional-dependencies]
+# escape.wavefront can use scikit-image for a wider unwrapped dynamic range;
+# it degrades gracefully (no unwrap) if absent.
+wavefront = ["scikit-image"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"
