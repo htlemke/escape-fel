@@ -197,6 +197,8 @@ class Array:
         step_lengths: List of step sizes for each scan step.
         parameter: Scan parameter metadata for each step.
         name: Optional array name.
+        unit: Optional physical unit of the array's data (e.g. ``"eV"``,
+            ``"mm"``), used to annotate axis labels in ``plot``/``hist``.
         source: Optional source metadata object.
         grid_specs: Optional metadata used to build ``scan.grid``.
     """
@@ -207,6 +209,7 @@ class Array:
         step_lengths=None,
         parameter=None,
         name=None,
+        unit=None,
         source=None,
         grid_specs=None,
     ):
@@ -234,6 +237,7 @@ class Array:
         self._scan_parameter = parameter
         self._scan_step_lengths = step_lengths
         self.name = name
+        self.unit = unit
         self.source = source
         self._touched = False
         self._tools = None
@@ -884,6 +888,13 @@ class Array:
             for tanr, tar in zip(indsrt * noref, (indxs * ref).scan.mean(axis=0))
         )
 
+    def _labeled_name(self):
+        """``name`` for axis labels, with ``unit`` appended in parentheses
+        when both are set (e.g. ``"energy (eV)"``)."""
+        if self.name and self.unit:
+            return f"{self.name} ({self.unit})"
+        return self.name or (f"({self.unit})" if self.unit else None)
+
     def plot(
         self,
         axis=None,
@@ -897,8 +908,8 @@ class Array:
             axis = plt.gca()
         axis.plot(x, y, linespec, *args, **kwargs)
 
-        if self.name:
-            axis.set_ylabel(self.name)
+        if self._labeled_name():
+            axis.set_ylabel(self._labeled_name())
         axis.set_xlabel("index")
 
     def plot_corr(
@@ -972,7 +983,7 @@ class Array:
             if not plot_axis:
                 plot_axis = plt.gca()
             plt.step(hbins[:-1], hdat, where="post")
-            plt.xlabel(self.name)
+            plt.xlabel(self._labeled_name())
         return hdat, hbins
 
     def __repr__(self, bare=False):
@@ -3217,12 +3228,17 @@ def concatenate(arraylist, grid_specs=None):
                     )
         step_lengths.extend(list(array.scan.step_lengths))
 
+    names = {array.name for array in arraylist if array.name}
+    units = {array.unit for array in arraylist if array.unit}
+
     return Array(
         data=data,
         index=index,
         parameter=parameter,
         step_lengths=step_lengths,
         grid_specs=grid_specs,
+        name=names.pop() if len(names) == 1 else None,
+        unit=units.pop() if len(units) == 1 else None,
     )
 
 

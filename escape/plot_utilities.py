@@ -14,6 +14,12 @@ import matplotlib.ticker as mticker
 import matplotlib.transforms as mtransforms
 import matplotlib.colors as mcolors
 from IPython import get_ipython
+from IPython.display import display
+
+try:
+    from sidecar import Sidecar
+except ImportError:  # pragma: no cover - optional dependency
+    Sidecar = None
 
 
 class GinputNB:
@@ -666,6 +672,14 @@ class MultipleRoiSelector(widgets.HBox):
         same data in the same cell -- e.g. after re-running the cell, the
         previous ROIs are still there. If several selectors share a
         cell/data at once, whichever is changed most recently wins.
+    detached : bool
+        If ``True``, show this widget in a JupyterLab Sidecar panel instead
+        of inline. Re-running the same cell (same resolved ``title``)
+        replaces that widget's existing sidecar panel rather than opening
+        another one. Requires the ``sidecar`` package.
+    title : str, optional
+        Sidecar panel title. Defaults to ``data.name`` if ``data`` is an
+        ``escape.Array`` with one set, else ``name``.
     """
 
     # Shared across all instances/cells for the lifetime of the kernel; see
@@ -682,6 +696,8 @@ class MultipleRoiSelector(widgets.HBox):
         ax=None,
         convert_rois_to_int="inner",
         remember_last_roi_in_cell=False,
+        detached=False,
+        title=None,
     ):
         # super().__init__(layout=widgets.Layout(flex_flow="row wrap"))
         super().__init__()
@@ -775,6 +791,13 @@ class MultipleRoiSelector(widgets.HBox):
             ]
 
             self.roi_selectors[-1].line_select_callback(999, 999)
+
+        array_name = getattr(data, "name", None)
+        resolved_title = title or array_name or name
+        _close_sidecar(name)
+        if detached:
+            _open_sidecar(name, resolved_title, lambda: display(self))
+            _suppress_inline_redisplay(self)
 
     @property
     def rois(self):
@@ -1041,6 +1064,14 @@ class StepViewer(widgets.VBox):
         finished steps.
     figname : str
         Name of the created matplotlib figure.
+    detached : bool
+        If ``True``, show this widget in a JupyterLab Sidecar panel instead
+        of inline. Re-running with the same ``figname`` replaces that
+        widget's existing sidecar panel rather than opening another one.
+        Requires the ``sidecar`` package.
+    title : str, optional
+        Sidecar panel title. Defaults to ``array.name`` if set, else
+        ``figname``.
     """
 
     def __init__(
@@ -1049,6 +1080,8 @@ class StepViewer(widgets.VBox):
         data_selection=slice(None, 100),
         update_rate=1,
         figname="StepViewer",
+        detached=False,
+        title=None,
     ):
         super().__init__()
         self.array = array
@@ -1090,6 +1123,13 @@ class StepViewer(widgets.VBox):
             self.output,
             widgets.HBox([self.selector, self.step_text]),
         ]
+
+        array_name = getattr(array, "name", None)
+        resolved_title = title or array_name or figname
+        _close_sidecar(figname)
+        if detached:
+            _open_sidecar(figname, resolved_title, lambda: display(self))
+            _suppress_inline_redisplay(self)
 
         self.selector.observe(lambda d: self.update(d["new"]), names="value")
 
@@ -1173,7 +1213,44 @@ def _auto_cell_name(prefix="cell"):
     return None
 
 
-def nfigure(num=_AUTO_NAME, **kwargs):
+_SIDECARS = {}  # identity key -> live Sidecar, so a repeat call replaces instead of stacking
+
+
+def _close_sidecar(key):
+    """Close and forget any sidecar previously opened under ``key``, if one exists."""
+    old = _SIDECARS.pop(key, None)
+    if old is not None:
+        old.close()
+
+
+def _open_sidecar(key, title, show_fn):
+    """Open a fresh Sidecar titled ``title``, run ``show_fn()`` with an
+    ``Output`` widget (already displayed inside the sidecar) as the active
+    display target, and remember it under ``key`` -- the next call for the
+    same key (see :func:`_close_sidecar`) replaces it instead of piling up
+    panels."""
+    if Sidecar is None:
+        raise ImportError(
+            "detached=True needs the 'sidecar' package and the JupyterLab "
+            "sidecar extension installed (pip install sidecar)."
+        )
+    sc = Sidecar(title=title)
+    out = widgets.Output()
+    with sc:
+        display(out)
+    with out:
+        show_fn()
+    _SIDECARS[key] = sc
+
+
+def _suppress_inline_redisplay(obj):
+    """Make ``display(obj)``/a bare trailing expression a no-op for ``obj``,
+    so a widget already shown in a sidecar doesn't *also* render inline if
+    the caller leaves it as a cell's last expression."""
+    obj._ipython_display_ = lambda: None
+
+
+def nfigure(num=_AUTO_NAME, *, detached=False, title=None, **kwargs):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
     instead of being reused/added to (matplotlib's default when ``num``
@@ -1191,6 +1268,15 @@ def nfigure(num=_AUTO_NAME, **kwargs):
     num : str or int, optional
         Figure name/number, forwarded to ``plt.figure``. Auto-derived from
         the current cell if omitted.
+    detached : bool
+        If ``True``, show the figure in a JupyterLab Sidecar panel (a tab
+        beside/below the notebook) instead of inline. Requires the
+        ``sidecar`` package and its JupyterLab extension. Re-running the
+        same cell (same ``num``) replaces that figure's existing sidecar
+        panel rather than opening another one.
+    title : str, optional
+        Sidecar panel title. Defaults to ``str(num)`` -- the figure's own
+        name effectively doubles as its title.
     **kwargs
         Forwarded to ``plt.figure``.
     """
@@ -1199,10 +1285,14 @@ def nfigure(num=_AUTO_NAME, **kwargs):
     if num in plt.get_figlabels():
         Warning('Figure of name "{num}" exists and is closed.')
     plt.close(num)
-    return plt.figure(num=num, **kwargs)
+    _close_sidecar(num)
+    fig = plt.figure(num=num, **kwargs)
+    if detached:
+        _open_sidecar(num, title or str(num), lambda: plt.show(fig))
+    return fig
 
 
-def nsubplots(nrows=1, ncols=1, *, num=_AUTO_NAME, **kwargs):
+def nsubplots(nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, **kwargs):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
     omitted).
@@ -1214,6 +1304,11 @@ def nsubplots(nrows=1, ncols=1, *, num=_AUTO_NAME, **kwargs):
     num : str or int, optional
         Figure name/number, forwarded to ``plt.subplots``. Auto-derived from
         the current cell if omitted.
+    detached : bool
+        Show the figure in a JupyterLab Sidecar panel instead of inline
+        (see :func:`nfigure`).
+    title : str, optional
+        Sidecar panel title. Defaults to ``str(num)``.
     **kwargs
         Forwarded to ``plt.subplots``.
     """
@@ -1222,10 +1317,14 @@ def nsubplots(nrows=1, ncols=1, *, num=_AUTO_NAME, **kwargs):
     if num in plt.get_figlabels():
         Warning('Figure of name "{num}" exists and is closed.')
     plt.close(num)
-    return plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+    _close_sidecar(num)
+    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+    if detached:
+        _open_sidecar(num, title or str(num), lambda: plt.show(fig))
+    return fig, ax
 
 
-def nsubplot_mosaic(*args, num=_AUTO_NAME, **kwargs):
+def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, **kwargs):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
     when omitted).
@@ -1237,6 +1336,11 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, **kwargs):
     num : str or int, optional
         Figure name/number, forwarded to ``plt.subplot_mosaic``.
         Auto-derived from the current cell if omitted.
+    detached : bool
+        Show the figure in a JupyterLab Sidecar panel instead of inline
+        (see :func:`nfigure`).
+    title : str, optional
+        Sidecar panel title. Defaults to ``str(num)``.
     **kwargs
         Forwarded to ``plt.subplot_mosaic``.
     """
@@ -1245,7 +1349,11 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, **kwargs):
     if num in plt.get_figlabels():
         Warning('Figure of name "{num}" exists and is closed.')
     plt.close(num)
-    return plt.subplot_mosaic(*args, num=num, **kwargs)
+    _close_sidecar(num)
+    fig, axd = plt.subplot_mosaic(*args, num=num, **kwargs)
+    if detached:
+        _open_sidecar(num, title or str(num), lambda: plt.show(fig))
+    return fig, axd
 
 
 class StepViewerP(widgets.VBox):
@@ -1272,6 +1380,14 @@ class StepViewerP(widgets.VBox):
     update_rate : float
         Seconds between polls of the background computation for newly
         finished steps.
+    detached : bool
+        If ``True``, show this widget in a JupyterLab Sidecar panel instead
+        of inline. Re-running with the same resolved ``title`` replaces
+        that widget's existing sidecar panel rather than opening another
+        one. Requires the ``sidecar`` package.
+    title : str, optional
+        Sidecar panel title. Defaults to ``array.name`` if set, else
+        ``"StepViewerP"``.
     """
 
     def __init__(
@@ -1280,6 +1396,8 @@ class StepViewerP(widgets.VBox):
         wid,
         data_selection=slice(None, 100),
         update_rate=1,
+        detached=False,
+        title=None,
     ):
         super().__init__()
         self.array = array
@@ -1327,6 +1445,13 @@ class StepViewerP(widgets.VBox):
             self.output,
             widgets.HBox([self.selector, self.step_text]),
         ]
+
+        array_name = getattr(array, "name", None)
+        resolved_title = title or array_name or "StepViewerP"
+        _close_sidecar(resolved_title)
+        if detached:
+            _open_sidecar(resolved_title, resolved_title, lambda: display(self))
+            _suppress_inline_redisplay(self)
 
         self.selector.observe(lambda d: self.update(d["new"]), names="value")
 
@@ -1881,6 +2006,14 @@ class StackViewer(widgets.VBox):
         Percentile bounds used when ``autoscale="percentile"``.
     figname : str
         Base name for the created matplotlib figures.
+    detached : bool
+        If ``True``, show this widget in a JupyterLab Sidecar panel instead
+        of inline. Re-running with the same ``figname`` replaces that
+        widget's existing sidecar panel rather than opening another one.
+        Requires the ``sidecar`` package.
+    title : str, optional
+        Sidecar panel title. Defaults to ``array.name`` if set, else
+        ``figname``.
     """
 
     def __init__(
@@ -1897,6 +2030,8 @@ class StackViewer(widgets.VBox):
         autoscale="minmax",
         autoscale_percentile=(1, 99),
         figname="StackViewer",
+        detached=False,
+        title=None,
     ):
         super().__init__()
         self.figname = figname
@@ -1995,6 +2130,13 @@ class StackViewer(widgets.VBox):
         self._syncing_clim = False
         self.im.callbacks.connect("changed", self._on_main_clim_changed)
         self.im.norm.callbacks.connect("changed", self._on_main_clim_changed)
+
+        array_name = getattr(array, "name", None)
+        resolved_title = title or array_name or figname
+        _close_sidecar(figname)
+        if detached:
+            _open_sidecar(figname, resolved_title, lambda: display(self))
+            _suppress_inline_redisplay(self)
 
         self._load(0)
 

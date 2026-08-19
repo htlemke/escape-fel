@@ -7,6 +7,7 @@ from ..storage.storage import ArraySelector
 from pathlib import Path
 import numpy as np
 import logging
+from functools import lru_cache
 from dask import array as da
 
 
@@ -15,6 +16,23 @@ def ispath(x):
         p = Path(x)
         if p.exists():
             return p
+
+
+@lru_cache(maxsize=8)
+def _get_jf_handler(jf_id, gain_file, dark_file):
+    """Return a per-worker-process JFDataHandler, reused across chunks/calls.
+
+    Loading gain/pedestal produces large arrays (100s of MB for big
+    detectors); building a fresh JFDataHandler per jf_correct() call and
+    shipping it through a dask closure duplicates that memory on every call
+    and worker. Caching on the plain (jf_id, gain_file, dark_file) key -
+    not on a method, which would leak `self` - means each worker builds one
+    handler the first time it sees a given calibration and reuses it after.
+    """
+    h = JFDataHandler(jf_id)
+    h.gain_file = gain_file
+    h.pedestal_file = dark_file
+    return h
 
 
 def jf_correct_obj(
@@ -81,16 +99,32 @@ def jf_correct(
         else:
             return data_corr
     else:
-        h = JFDataHandler(jf_id)
-        h.gain_file = gain_file
-        h.pedestal_file = dark_file
-        if mask:
-            h.pixel_mask = mask
-        if not module_map is None:
-            h.module_map = module_map
+        # a lightweight, calibration-free handler just to compute the output
+        # shape; gain/pedestal are loaded lazily per-worker in proc_and_mask
+        h_shape = JFDataHandler(jf_id)
+        if module_map is not None:
+            h_shape.module_map = module_map
+        out_shape = h_shape.get_shape_out(
+            gap_pixels=cor_tile_gaps, geometry=cor_geometry
+        )
 
-        def proc_and_mask(*args, **kwargs):
-            o = h.process(*args, **kwargs)
+        def proc_and_mask(block, **extra_kwargs):
+            h = _get_jf_handler(jf_id, gain_file, dark_file)
+            if mask is not None and not np.array_equal(h.pixel_mask, mask):
+                h.pixel_mask = mask
+            if module_map is not None and not np.array_equal(h.module_map, module_map):
+                h.module_map = module_map
+
+            o = h.process(
+                block,
+                conversion=cor_gain_dark_mask,
+                gap_pixels=cor_tile_gaps,
+                geometry=cor_geometry,
+                mask=cor_mask,
+                double_pixels=double_pixels,
+                parallel=comp_parallel,
+                **extra_kwargs,
+            )
             o[
                 ~np.broadcast_to(
                     h.get_pixel_mask(
@@ -105,15 +139,7 @@ def jf_correct(
 
         data_corr = array.map_index_blocks(
             proc_and_mask,
-            conversion=cor_gain_dark_mask,
-            gap_pixels=cor_tile_gaps,
-            geometry=cor_geometry,
-            mask=cor_mask,
-            double_pixels=double_pixels,
-            parallel=comp_parallel,
-            new_element_size=h.get_shape_out(
-                gap_pixels=cor_tile_gaps, geometry=cor_geometry
-            ),
+            new_element_size=out_shape,
             dtype=float,
             **kwargs,
         )

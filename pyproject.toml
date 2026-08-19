@@ -13,7 +13,7 @@ requires-python = ">=3.9"
 dependencies = [
     "numpy",
     "scipy",
-    "dask[array]",
+    "dask[array,dataframe]",
     "h5py",
     "zarr",
     "hickle",
@@ -22,6 +22,8 @@ dependencies = [
     "matplotlib",
     "pandas",
     "adjustText",
+    "ipywidgets",
+    "ipython",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -35,6 +37,10 @@ classifiers = [
 # escape.wavefront can use scikit-image for a wider unwrapped dynamic range;
 # it degrades gracefully (no unwrap) if absent.
 wavefront = ["scikit-image"]
+# nfigure/StackViewer/etc.'s detached=True shows plots/widgets in a
+# JupyterLab Sidecar panel instead of inline; degrades to a clear
+# ImportError (not silent fallback) if absent.
+sidecar = ["sidecar"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"

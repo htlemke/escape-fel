@@ -507,11 +507,13 @@ def load_dataset_from_scan(
                                 ddata[tsdno] = []
                             ddata[tsdno].append(tsd)
                     for colno in range(len(ddata.keys())):
-                        td[f"{tdet}_dap_col{colno}"] = Array(
+                        colname = f"{tdet}_dap_col{colno}"
+                        td[colname] = Array(
                             data=np.concatenate(ddata[colno], axis=0),
                             index=np.concatenate(index, axis=0),
                             step_lengths=step_lengths,
                             parameter={"step_number": {"values": steps}},
+                            name=colname,
                         )
                 print("Finished loading DAP data.")
 

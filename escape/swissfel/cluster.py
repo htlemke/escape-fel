@@ -549,6 +549,7 @@ def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection, g
             step_lengths=s_sl,
             parameter=tparameter,
             grid_specs=grid_specs,
+            name=ch,
         )
         return tarr
 
@@ -847,6 +848,7 @@ def _build_escape_array_v02(
             step_lengths=step_lengths,
             parameter=tparameter,
             grid_specs=grid_specs,
+            name=ch,
         )
     except Exception as exc:
         logger.error("Could not create Array for %s: %s", ch, exc)
