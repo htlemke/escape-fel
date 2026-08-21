@@ -1,10 +1,11 @@
-from ..stream.testStream import TestData
 from .storage import Array
 import numpy as np
 from dask import array as da
 
 
 def get_test_data(N_pulses=1e4, as_array=True, as_da=True):
+    from ..stream.testStream import TestData
+
     td = TestData()
     d = {
         key: np.asarray(tl)

@@ -24,6 +24,10 @@ dependencies = [
     "adjustText",
     "ipywidgets",
     "ipython",
+    "lazy-object-proxy",
+    "distributed",
+    "datastorage",
+    "oschmod",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
