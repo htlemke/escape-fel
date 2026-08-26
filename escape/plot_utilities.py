@@ -571,7 +571,10 @@ class RectangleSelectNB:
         fig.canvas.mpl_connect("motion_notify_event", self._on_drag_motion)
 
     def _on_drag_motion(self, event):
-        if not self.selector.active or getattr(self.selector, "_eventpress", None) is None:
+        if (
+            not self.selector.active
+            or getattr(self.selector, "_eventpress", None) is None
+        ):
             return
         extents = self.selector.extents
         if extents == self._last_live_extents:
@@ -910,16 +913,16 @@ class MultipleRoiSelector(widgets.HBox):
         # Update main data plot
         main_image = self.ax_data.get_images()[0]
         main_image.set_clim(vmin, vmax)
-        
+
         # Update all ROI plots
         for ax in self.axs_rois:
             if ax.get_images():
                 roi_image = ax.get_images()[0]
                 roi_image.set_clim(vmin, vmax)
-        
+
         # Force redraw of all figures
         plt.draw()
-    
+
     def synchronize_colormaps(self):
         """Manually synchronize all colormap limits to match the main plot."""
         if self.ax_data.get_images():
@@ -1213,7 +1216,9 @@ def _auto_cell_name(prefix="cell"):
     return None
 
 
-_SIDECARS = {}  # identity key -> live Sidecar, so a repeat call replaces instead of stacking
+_SIDECARS = (
+    {}
+)  # identity key -> live Sidecar, so a repeat call replaces instead of stacking
 
 
 def _close_sidecar(key):
@@ -1234,7 +1239,7 @@ def _open_sidecar(key, title, show_fn):
             "detached=True needs the 'sidecar' package and the JupyterLab "
             "sidecar extension installed (pip install sidecar)."
         )
-    sc = Sidecar(title=title)
+    sc = Sidecar(title=title, anchor="split-right")
     out = widgets.Output()
     with sc:
         display(out)
@@ -1292,7 +1297,9 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, **kwargs):
     return fig
 
 
-def nsubplots(nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, **kwargs):
+def nsubplots(
+    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, **kwargs
+):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
     omitted).
@@ -1543,11 +1550,21 @@ def _build_norm(kind, kwargs, vmin, vmax):
     if isinstance(kind, mcolors.Normalize):
         return kind
     if kind not in _NORM_KINDS:
-        raise ValueError(f"Unknown norm {kind!r}; expected one of {_NORM_KINDS}, a Normalize instance, or None.")
+        raise ValueError(
+            f"Unknown norm {kind!r}; expected one of {_NORM_KINDS}, a Normalize instance, or None."
+        )
 
     kwargs = dict(kwargs or {})
-    if vmin is None or vmax is None or not (np.isfinite(vmin) and np.isfinite(vmax)) or vmin == vmax:
-        vmin, vmax = 0.0, 1.0  # placeholder bounds; corrected by autoscale on the first real frame
+    if (
+        vmin is None
+        or vmax is None
+        or not (np.isfinite(vmin) and np.isfinite(vmax))
+        or vmin == vmax
+    ):
+        vmin, vmax = (
+            0.0,
+            1.0,
+        )  # placeholder bounds; corrected by autoscale on the first real frame
 
     if kind == "log":
         kwargs.setdefault("vmin", max(vmin, 1e-3))
@@ -1645,7 +1662,11 @@ class RoiRegion:
         self.ydata = None if ydata is None else np.asarray(ydata)
         self.on_change = on_change
 
-        props = dict(edgecolor=color, facecolor=color or "red", alpha=0.15) if color else None
+        props = (
+            dict(edgecolor=color, facecolor=color or "red", alpha=0.15)
+            if color
+            else None
+        )
         self.selector = RectangleSelector(
             ax,
             self._on_select,
@@ -1827,8 +1848,12 @@ class RoiPanel(widgets.VBox):
         # appends a trend plot (see StackViewer._ensure_roi_panel) it joins this
         # box as a flex-wrapping sibling, so it flows beside/under this column
         # instead of splitting the slider away from the tabs it belongs above.
-        self._selector_box = widgets.VBox([widgets.HBox([self.clim_slider, add_button]), self.tabs])
-        self.layout = widgets.Layout(display="flex", flex_flow="row wrap", align_items="flex-start")
+        self._selector_box = widgets.VBox(
+            [widgets.HBox([self.clim_slider, add_button]), self.tabs]
+        )
+        self.layout = widgets.Layout(
+            display="flex", flex_flow="row wrap", align_items="flex-start"
+        )
         self.children = [self._selector_box]
 
     def add_region(self, extents=None, name=None):
@@ -1842,12 +1867,19 @@ class RoiPanel(widgets.VBox):
 
         preview_output = widgets.Output()
         with preview_output:
-            preview_fig, preview_ax = plt.subplots(figsize=self.preview_figsize, constrained_layout=True)
+            preview_fig, preview_ax = plt.subplots(
+                figsize=self.preview_figsize, constrained_layout=True
+            )
             plt.show(preview_fig)
 
         title = widgets.Text(value=name, description="Name:")
-        title.observe(lambda change, i=idx: self._on_title_changed(i, change["new"]), names="value")
-        self.tabs.children = self.tabs.children + (widgets.VBox([title, preview_output]),)
+        title.observe(
+            lambda change, i=idx: self._on_title_changed(i, change["new"]),
+            names="value",
+        )
+        self.tabs.children = self.tabs.children + (
+            widgets.VBox([title, preview_output]),
+        )
         self.tabs.set_title(idx, name)
 
         region = RoiRegion(
@@ -2074,9 +2106,13 @@ class StackViewer(widgets.VBox):
 
         ny, nx = self._peek_shape()
         if self._xdata is not None and len(self._xdata) != nx:
-            raise ValueError(f"xdata has length {len(self._xdata)}, expected {nx} (image width)")
+            raise ValueError(
+                f"xdata has length {len(self._xdata)}, expected {nx} (image width)"
+            )
         if self._ydata is not None and len(self._ydata) != ny:
-            raise ValueError(f"ydata has length {len(self._ydata)}, expected {ny} (image height)")
+            raise ValueError(
+                f"ydata has length {len(self._ydata)}, expected {ny} (image height)"
+            )
 
         self.output = widgets.Output()
         with self.output:
@@ -2089,7 +2125,9 @@ class StackViewer(widgets.VBox):
             if built_norm is not None:
                 im_kwargs["norm"] = built_norm
             if self._use_mesh:
-                from .utilities import plot2D  # lazy: utilities imports this module itself
+                from .utilities import (
+                    plot2D,
+                )  # lazy: utilities imports this module itself
 
                 x = self._xdata if self._xdata is not None else "auto"
                 y = self._ydata if self._ydata is not None else "auto"
@@ -2114,8 +2152,12 @@ class StackViewer(widgets.VBox):
         # added (see _ensure_roi_panel) it becomes a sibling of this card in a
         # flex-wrapping layout, so the two flow side by side or stack depending on
         # available width, instead of always being forced into one rigid column.
-        self._image_box = widgets.VBox([self.output, widgets.HBox([self.slider, self.status])])
-        self.layout = widgets.Layout(display="flex", flex_flow="row wrap", align_items="flex-start")
+        self._image_box = widgets.VBox(
+            [self.output, widgets.HBox([self.slider, self.status])]
+        )
+        self.layout = widgets.Layout(
+            display="flex", flex_flow="row wrap", align_items="flex-start"
+        )
         self.children = [self._image_box]
 
         # Colorbar drag/pan/zoom (which matplotlib supports out of the box) does
@@ -2181,7 +2223,9 @@ class StackViewer(widgets.VBox):
                 self._show(idx, data, final=True)
         else:
             if is_dask:
-                threading.Thread(target=self._load_frame_bg, args=(idx, block, cancel_event)).start()
+                threading.Thread(
+                    target=self._load_frame_bg, args=(idx, block, cancel_event)
+                ).start()
             else:
                 self._show(idx, np.asarray(block), final=True)
 
@@ -2257,7 +2301,11 @@ class StackViewer(widgets.VBox):
         if not self._rois_requested or self.roi_panel is not None:
             return
         make_norm = (
-            (lambda vmin, vmax: _build_norm(self._norm_kind, self._norm_kwargs, vmin, vmax))
+            (
+                lambda vmin, vmax: _build_norm(
+                    self._norm_kind, self._norm_kwargs, vmin, vmax
+                )
+            )
             if self._norm_kind is not None
             else None
         )
@@ -2334,7 +2382,9 @@ class StackViewer(widgets.VBox):
         for name, d in self._roi_means.items():
             xs = sorted(d)
             color = regions_by_name[name].color if name in regions_by_name else None
-            self.trend_ax.plot(xs, [d[x] for x in xs], marker="o", label=name, color=color)
+            self.trend_ax.plot(
+                xs, [d[x] for x in xs], marker="o", label=name, color=color
+            )
         if self._roi_means:
             self.trend_ax.legend()
         self.trend_ax.set_xlabel("step index" if self.step_mode else "frame index")
@@ -2352,7 +2402,7 @@ class StackViewer(widgets.VBox):
             plt.close(self.trend_fig)
 
 
-def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=.3, **kwargs):
+def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, **kwargs):
     """Plot a line with a shaded error band (a lighter-weight
     ``fill_between``-style alternative to matplotlib's ``errorbar``).
 
@@ -2384,33 +2434,37 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=.3, **kwar
         The shaded error band, or ``None`` if ``yerr`` wasn't given.
     """
     if not axis:
-        axis=plt.gca()
+        axis = plt.gca()
 
-    args = [x,y]
+    args = [x, y]
     if fmt is not None:
         args.append(fmt)
-    lh = axis.plot(*args,**kwargs)[0]
-    
+    lh = axis.plot(*args, **kwargs)[0]
+
     if yerr is not None:
         yerr = np.atleast_1d(yerr)
-        if yerr.ndim ==     1:
-            fh = axis.fill(np.hstack([np.asarray(x),np.asarray(x)[::-1]]),
-                    np.hstack([np.asarray(y)-yerr,np.asarray(y)[::-1]+yerr[::-1]]),
-                    alpha=falpha,
-                    color = lh.get_color(),
-                    zorder=lh.get_zorder()-0.1
+        if yerr.ndim == 1:
+            fh = axis.fill(
+                np.hstack([np.asarray(x), np.asarray(x)[::-1]]),
+                np.hstack([np.asarray(y) - yerr, np.asarray(y)[::-1] + yerr[::-1]]),
+                alpha=falpha,
+                color=lh.get_color(),
+                zorder=lh.get_zorder() - 0.1,
             )
         if yerr.ndim == 2:
-            fh = axis.fill(np.hstack([np.asarray(x),np.asarray(x)[::-1]]),
-                    np.hstack([np.asarray(y)-yerr[0,:],np.asarray(y)[::-1]+yerr[1,::-1]]),
-                    alpha=falpha,
-                    color = lh.get_color(),
-                    zorder=lh.get_zorder()-0.1
+            fh = axis.fill(
+                np.hstack([np.asarray(x), np.asarray(x)[::-1]]),
+                np.hstack(
+                    [np.asarray(y) - yerr[0, :], np.asarray(y)[::-1] + yerr[1, ::-1]]
+                ),
+                alpha=falpha,
+                color=lh.get_color(),
+                zorder=lh.get_zorder() - 0.1,
             )
     else:
         fh = None
 
-    return lh,fh
+    return lh, fh
 
 
 # ----------------------------------------------------------------------------
@@ -2538,7 +2592,9 @@ def _stagger_tick_labels(ax, ax2, crossings, gap_frac, secondary_side, n_levels=
     # one) -- not inward, which would push stacked labels down into the data.
     direction = 1 if secondary_side == "top" else -1
     for i in range(1, len(positions)):
-        level = (level + 1) % n_levels if abs(positions[i] - positions[i - 1]) < gap else 0
+        level = (
+            (level + 1) % n_levels if abs(positions[i] - positions[i - 1]) < gap else 0
+        )
         if level:
             offset = mtransforms.offset_copy(
                 labels[i].get_transform(),
@@ -2995,7 +3051,9 @@ def add_step_secondary_axis(
         ax2.set_xlabel(x2_label, color=accent_color)
         ax2.tick_params(axis="x", colors=accent_color)
         ax2.spines["top"].set_color(accent_color)
-        ax2.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, pos: fmt.format(v)))
+        ax2.xaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda v, pos: fmt.format(v))
+        )
         crossings = []
     else:
         # Pick a tick *stride* from one representative cycle's length, rather
@@ -3007,7 +3065,9 @@ def add_step_secondary_axis(
         # same phase every cycle by construction, so repeats reliably land on
         # (and get stacked onto) the same x1 positions.
         real_segments = [(a, b) for a, b in segments if b > a]
-        seg_len = (real_segments[0][1] - real_segments[0][0] + 1) if real_segments else n
+        seg_len = (
+            (real_segments[0][1] - real_segments[0][0] + 1) if real_segments else n
+        )
         candidates = mticker.MaxNLocator(nbins=n_ticks).tick_values(0, seg_len - 1)
         raw_stride = (candidates[1] - candidates[0]) if len(candidates) > 1 else seg_len
         # Snap to a divisor of the cycle length (nearest, ties favouring the
@@ -3020,7 +3080,10 @@ def add_step_secondary_axis(
         tick_values = np.arange(0, n, stride)
 
         ax2, crossings = add_crossing_secondary_axis(
-            ax, x1, step, y,
+            ax,
+            x1,
+            step,
+            y,
             tick_values=tick_values,
             x2_label=x2_label,
             fmt=fmt,
@@ -3034,5 +3097,3 @@ def add_step_secondary_axis(
         _label_turning_points(ax, x1, y, turning_points, fmt, accent_color)
 
     return ax2, crossings, turning_points
-
-

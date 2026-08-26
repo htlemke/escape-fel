@@ -40,49 +40,53 @@ class ArrayTools:
         if show:
             display(s)
         return s
-    
+
     def compare_to_reference(
-        self, 
-        is_reference, 
-        N_agg_ref=100, 
-        weights=None, 
-        cmp_type='ratio',
+        self,
+        is_reference,
+        N_agg_ref=100,
+        weights=None,
+        cmp_type="ratio",
         axis_survey=None,
-    ):  
+    ):
         """Compare the array to a reference defined by a boolean mask is_reference.
         The comparison can be done by ratio or difference. The reference is aggregated
         over N_agg_ref pulses, and weights can be applied."""
         array = self._array
-        if array.ndim >1:
+        if array.ndim > 1:
             print("Warning: array has more than one dimension, no weights applied.")
             hdim = True
         else:
             hdim = False
-        resort = is_reference.get_index_array(N_index_aggregation=N_agg_ref) # new sorting according to pulse id (/ real time) bins for reference taking
+        resort = is_reference.get_index_array(
+            N_index_aggregation=N_agg_ref
+        )  # new sorting according to pulse id (/ real time) bins for reference taking
         array = resort.categorize(array)
-        array = array.scan.tools.has_N_refsig(is_reference) # filter out steps that don't have any reference or signal 
+        array = array.scan.tools.has_N_refsig(
+            is_reference
+        )  # filter out steps that don't have any reference or signal
 
         array_sig = array[~is_reference]
         array_ref = array[is_reference]
-        
+
         if not hdim:
-            if cmp_type =='ratio':
+            if cmp_type == "ratio":
                 array_cmp = array_sig.scan / array_ref.scan.weighted_stat(weights)[0]
-            if cmp_type =='difference':
+            if cmp_type == "difference":
                 array_cmp = array_sig.scan - array_ref.scan.weighted_stat(weights)[0]
         else:
-            if cmp_type =='ratio':
+            if cmp_type == "ratio":
                 array_cmp = array_sig.scan / array_ref.scan.mean(axis=0)
-            if cmp_type =='difference':
+            if cmp_type == "difference":
                 array_cmp = array_sig.scan - array_ref.scan.mean(axis=0)
 
         if axis_survey and not hdim:
-            array_ref.plot(axis=axis_survey,ms=.3,label="Reference, single pulse")
+            array_ref.plot(axis=axis_survey, ms=0.3, label="Reference, single pulse")
             # array_sig.plot(axis=axis.survey,ms=.3,label="Signal")
 
-            array_ref.plot(axis=axis_survey,ms=.3, label='ref (off) single plse')
-            array_ref.scan.plot(axis=axis_survey, label='Reference, aggregated')
-            array_sig.scan.plot(axis=axis_survey, label='Signal, aggregated')
+            array_ref.plot(axis=axis_survey, ms=0.3, label="ref (off) single plse")
+            array_ref.scan.plot(axis=axis_survey, label="Reference, aggregated")
+            array_sig.scan.plot(axis=axis_survey, label="Signal, aggregated")
 
         return array_cmp
 
@@ -258,12 +262,16 @@ class ArrayTools:
         if is_reference is None:
             is_reference_arr = np.zeros(n, dtype=bool)
         else:
-            is_reference_arr = match_array_to_index(index, is_reference, fill_value=False).astype(bool)
+            is_reference_arr = match_array_to_index(
+                index, is_reference, fill_value=False
+            ).astype(bool)
 
         if is_signal is None:
             is_signal_arr = ~is_reference_arr
         else:
-            is_signal_arr = match_array_to_index(index, is_signal, fill_value=False).astype(bool)
+            is_signal_arr = match_array_to_index(
+                index, is_signal, fill_value=False
+            ).astype(bool)
 
         if n_ref_min > 0 and not is_reference_arr.any():
             # n_ref_min > 0 gates every bin on ever seeing that many reference
@@ -280,7 +288,9 @@ class ArrayTools:
         if weights is None:
             weights_arr = np.ones(n)
         else:
-            weights_arr = match_array_to_index(index, weights, fill_value=0.0).astype(float)
+            weights_arr = match_array_to_index(index, weights, fill_value=0.0).astype(
+                float
+            )
 
         if bins is None:
             step_lengths = list(array.scan.step_lengths)
@@ -296,12 +306,20 @@ class ArrayTools:
         par_steps = bin_source_scan.par_steps
 
         event_shape = tuple(array.shape[1:])
-        event_nbytes = int(np.prod(event_shape, dtype=np.int64) * array.data.dtype.itemsize) if event_shape else array.data.dtype.itemsize
+        event_nbytes = (
+            int(np.prod(event_shape, dtype=np.int64) * array.data.dtype.itemsize)
+            if event_shape
+            else array.data.dtype.itemsize
+        )
         frac_signal = float(is_signal_arr.mean()) if n else 0.0
 
         if chunk_size == "auto":
             chunk_size = _rd.suggest_chunk_size(
-                event_nbytes, n_bins_total, frac_signal, memory_budget_bytes, n_ref_min=n_ref_min,
+                event_nbytes,
+                n_bins_total,
+                frac_signal,
+                memory_budget_bytes,
+                n_ref_min=n_ref_min,
             )
 
         data = array.data
@@ -319,9 +337,17 @@ class ArrayTools:
 
         partials = [
             delayed(_rd.bin_running_ref)(
-                data_d, is_signal_d, is_reference_d, bins_d, weights_d, n_refs, n_ref_min,
-                cmp_type=cmp_type, ref_weighted=ref_weighted,
-                compute_std=compute_std, compute_quantile=compute_quantile,
+                data_d,
+                is_signal_d,
+                is_reference_d,
+                bins_d,
+                weights_d,
+                n_refs,
+                n_ref_min,
+                cmp_type=cmp_type,
+                ref_weighted=ref_weighted,
+                compute_std=compute_std,
+                compute_quantile=compute_quantile,
             )
             for data_d, is_signal_d, is_reference_d, bins_d, weights_d in zip(
                 data.to_delayed().ravel(),
@@ -336,23 +362,36 @@ class ArrayTools:
         # real ResultStore (which eagerly allocates its numpy buffers for
         # the "memory" backend) is only needed when we're actually going to
         # write into it via store_merge.
-        nbytes_estimate = _rd.estimate_result_bytes(n_bins_total, event_shape, data.dtype) * (2 if compute_std else 1)
+        nbytes_estimate = _rd.estimate_result_bytes(
+            n_bins_total, event_shape, data.dtype
+        ) * (2 if compute_std else 1)
         use_disk = h5 is not None or nbytes_estimate > memory_budget_bytes
 
         if use_disk:
             result_store = _rd.ResultStore(
-                n_bins_total, event_shape, dtype=data.dtype, backend="disk",
-                memory_budget_bytes=memory_budget_bytes, parent_h5py=h5, track_std=compute_std,
+                n_bins_total,
+                event_shape,
+                dtype=data.dtype,
+                backend="disk",
+                memory_budget_bytes=memory_budget_bytes,
+                parent_h5py=h5,
+                track_std=compute_std,
             )
-            merge_task = _rd.store_merge(partials, result_store, event_shape, arity=merge_arity)
+            merge_task = _rd.store_merge(
+                partials, result_store, event_shape, arity=merge_arity
+            )
         else:
-            merge_task = _rd.tree_merge(partials, n_bins_total, event_shape, arity=merge_arity)
+            merge_task = _rd.tree_merge(
+                partials, n_bins_total, event_shape, arity=merge_arity
+            )
 
         # `merge_task` is a single Delayed; every da.from_delayed below shares
         # it, so dask only runs the underlying computation once *per shared
         # dask.compute() call* -- see the redundant-computation note above.
         data_out_da = da.from_delayed(
-            delayed(_extract_component)(merge_task, 0), (n_bins_total, *event_shape), dtype=data.dtype
+            delayed(_extract_component)(merge_task, 0),
+            (n_bins_total, *event_shape),
+            dtype=data.dtype,
         )
         n_out_da = da.from_delayed(
             delayed(_extract_component)(merge_task, 1), (n_bins_total,), dtype=float
@@ -363,7 +402,9 @@ class ArrayTools:
         std_arr = None
         if compute_std:
             sumsq_out_da = da.from_delayed(
-                delayed(_extract_component)(merge_task, 2), (n_bins_total, *event_shape), dtype=data.dtype
+                delayed(_extract_component)(merge_task, 2),
+                (n_bins_total, *event_shape),
+                dtype=data.dtype,
             )
             var = sumsq_out_da / n_reshaped - mean**2
             std_arr = da.sqrt(da.clip(var, 0, None))
@@ -371,13 +412,24 @@ class ArrayTools:
         bin_index = np.arange(n_bins_total)
         bin_step_lengths = [1] * n_bins_total
         binned = Array(
-            data=mean, index=bin_index, step_lengths=bin_step_lengths, parameter=bin_source_scan.parameter,
+            data=mean,
+            index=bin_index,
+            step_lengths=bin_step_lengths,
+            parameter=bin_source_scan.parameter,
         )
         n_signal = Array(
-            data=n_out_da, index=bin_index, step_lengths=bin_step_lengths, parameter=bin_source_scan.parameter,
+            data=n_out_da,
+            index=bin_index,
+            step_lengths=bin_step_lengths,
+            parameter=bin_source_scan.parameter,
         )
         std = (
-            Array(data=std_arr, index=bin_index, step_lengths=bin_step_lengths, parameter=bin_source_scan.parameter)
+            Array(
+                data=std_arr,
+                index=bin_index,
+                step_lengths=bin_step_lengths,
+                parameter=bin_source_scan.parameter,
+            )
             if compute_std
             else None
         )
@@ -386,7 +438,11 @@ class ArrayTools:
         if compute_quantile:
             raw_merged = _rd.merge_raw_quantile_data(partials, arity=merge_arity)
             quantile = delayed(_rd.finalize_quantile)(
-                raw_merged, n_bins_total, event_shape, quantiles=quantiles, weighted=quantile_weighted,
+                raw_merged,
+                n_bins_total,
+                event_shape,
+                quantiles=quantiles,
+                weighted=quantile_weighted,
             )
 
         if compute:
@@ -397,61 +453,89 @@ class ArrayTools:
                 to_compute.append(quantile)
             computed = dask.compute(*to_compute)
             it = iter(computed)
-            binned = Array(data=next(it), index=bin_index, step_lengths=bin_step_lengths, parameter=bin_source_scan.parameter)
-            n_signal = Array(data=next(it), index=bin_index, step_lengths=bin_step_lengths, parameter=bin_source_scan.parameter)
+            binned = Array(
+                data=next(it),
+                index=bin_index,
+                step_lengths=bin_step_lengths,
+                parameter=bin_source_scan.parameter,
+            )
+            n_signal = Array(
+                data=next(it),
+                index=bin_index,
+                step_lengths=bin_step_lengths,
+                parameter=bin_source_scan.parameter,
+            )
             if compute_std:
-                std = Array(data=next(it), index=bin_index, step_lengths=bin_step_lengths, parameter=bin_source_scan.parameter)
+                std = Array(
+                    data=next(it),
+                    index=bin_index,
+                    step_lengths=bin_step_lengths,
+                    parameter=bin_source_scan.parameter,
+                )
             if compute_quantile:
                 quantile = next(it)
 
         return binned, par_steps, n_signal, std, quantile
 
-    def timetool_binning(self,timetool, time_vec=None, time_bins=None):
+    def timetool_binning(self, timetool, time_vec=None, time_bins=None):
         array = self._array
 
-        if not time_vec: 
-            t = timetool.scan.par_steps.iloc[:,0] # timevec scan
+        if time_vec is None:
+            t = timetool.scan.par_steps.iloc[:, 0]  # timevec scan
+        else:
+            t = time_vec
 
-        t_tt = timetool.scan + t # taking the time of the step and adding the time tool delay for each shot - the real measured delay 
-        
-        tt_med = timetool.nanmedian() # try to get the average tt values as median, for binning. 
+        t_tt = (
+            timetool.scan + t
+        )  # taking the time of the step and adding the time tool delay for each shot - the real measured delay
 
-        if isinstance(time_bins,Number):
+        tt_med = (
+            timetool.nanmedian()
+        )  # try to get the average tt values as median, for binning.
+
+        if isinstance(time_bins, Number) and type(time_bins) is float:
             time_bins = np.arange(
-                utilities.roundto(np.nanmin(t)+tt_med,time_bins) - time_bins/2,
-                utilities.roundto(np.nanmax(t)+tt_med,time_bins) + time_bins/2,
-                time_bins)
+                utilities.roundto(np.nanmin(t) + tt_med, time_bins) - time_bins / 2,
+                utilities.roundto(np.nanmax(t) + tt_med, time_bins) + time_bins / 2,
+                time_bins,
+            )
         t_tt_binned = t_tt.digitize(time_bins)
-        
+
         array_tt = (t_tt_binned).categorize(array)
-        
+
         return array_tt
 
-#>>>>>>>>>>>>>>>
+
+# >>>>>>>>>>>>>>>
 
 
-def timetool_binning(array,timetool, time_vec=None, time_bins=None, tbinsize=20e-15):
+def timetool_binning(array, timetool, time_vec=None, time_bins=None, tbinsize=20e-15):
 
-    if not time_vec: 
-        t = timetool.scan.par_steps.iloc[:,0] # timevec scan
+    if not time_vec:
+        t = timetool.scan.par_steps.iloc[:, 0]  # timevec scan
 
-    t_tt = timetool.scan + t # taking the time of the step and adding the time tool delay for each shot - the real measured delay 
-    
-    tt_med = timetool.nanmedian() # try to get the average tt values as median, for binning. 
+    t_tt = (
+        timetool.scan + t
+    )  # taking the time of the step and adding the time tool delay for each shot - the real measured delay
 
-    if isinstance(time_bins,Number):
+    tt_med = (
+        timetool.nanmedian()
+    )  # try to get the average tt values as median, for binning.
+
+    if isinstance(time_bins, Number):
         time_bins = np.arange(
-            utilities.roundto(np.nanmin(t)+tt_med,time_bins),
-            utilities.roundto(np.nanmax(t)+tt_med,time_bins)+time_bins,
-            tbinsize)
+            utilities.roundto(np.nanmin(t) + tt_med, time_bins),
+            utilities.roundto(np.nanmax(t) + tt_med, time_bins) + time_bins,
+            tbinsize,
+        )
     t_tt_binned = t_tt.digitize(time_bins)
-    
+
     array_tt = (t_tt_binned).categorize(array)
-    
+
     return array_tt
 
 
-#<<<<<<<<<<<<<<<
+# <<<<<<<<<<<<<<<
 
 
 def timetool_binning_dev(
@@ -574,8 +658,12 @@ def timetool_binning_dev(
             rng_hi = utilities.roundto(np.nanmax(t_normal) + tt_med, time_bins)
             fine_bins = np.arange(rng_lo - tbinsize / 2, rng_hi + tbinsize, tbinsize)
         else:
-            bin_lo = utilities.roundto(np.nanmin(t_normal) + tt_med, tbinsize) - tbinsize / 2
-            bin_hi = utilities.roundto(np.nanmax(t_normal) + tt_med, tbinsize) + tbinsize / 2
+            bin_lo = (
+                utilities.roundto(np.nanmin(t_normal) + tt_med, tbinsize) - tbinsize / 2
+            )
+            bin_hi = (
+                utilities.roundto(np.nanmax(t_normal) + tt_med, tbinsize) + tbinsize / 2
+            )
             fine_bins = np.arange(bin_lo, bin_hi + tbinsize * 0.5, tbinsize)
 
         # isolated narrow bins for each long-delay point
@@ -602,7 +690,9 @@ def timetool_binning_dev(
         step_centers = t_tt_binned.scan.par_steps.iloc[:, 0].values
         step_bin_idx = np.searchsorted(all_bins, step_centers) - 1
         step_bin_idx = np.clip(step_bin_idx, 0, len(bin_widths) - 1)
-        valid_steps = np.where(np.diff(all_bins)[step_bin_idx] <= max_valid_width)[0].tolist()
+        valid_steps = np.where(np.diff(all_bins)[step_bin_idx] <= max_valid_width)[
+            0
+        ].tolist()
 
         if valid_steps:
             t_tt_binned = t_tt_binned.scan[valid_steps]
@@ -610,9 +700,7 @@ def timetool_binning_dev(
     # ── 6. categorise target array ───────────────────────────────────────────
     return t_tt_binned.categorize(array)
 
-
-
-        # return (N_sig <= len(self._array[is_sig])) and (N_ref <= len(self._array[is_ref]))
+    # return (N_sig <= len(self._array[is_sig])) and (N_ref <= len(self._array[is_ref]))
 
 
 class ScanTools:
@@ -627,25 +715,20 @@ class ScanTools:
         s = StepViewer(data)
         display(s)
         return s
-    
 
-    def has_N_refsig(self,is_ref,is_sig=None,N_ref = 1, N_sig=1):
+    def has_N_refsig(self, is_ref, is_sig=None, N_ref=1, N_sig=1):
         if is_sig is not None:
             sel = is_ref | is_sig
-            #TODO
-        
+            # TODO
+
         is_ref = self._scan._array.categorize(is_ref).compute()
 
         valid_steps = []
-        for n,step in enumerate(is_ref.scan):
+        for n, step in enumerate(is_ref.scan):
             if (N_ref <= sum(step.data)) and (N_sig <= sum(~step.data)):
                 valid_steps.append(n)
 
         return self._scan[valid_steps]
-    
-
-        
-
 
     def corr_ana_plot(self, referece, scanpar_name=None, axis=None):
         if not scanpar_name:

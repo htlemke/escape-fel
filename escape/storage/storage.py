@@ -51,6 +51,44 @@ SHOW_STEP_AXIS_IN_REPR = True
 # (histogramming always needs the full array, unlike most lazy operations).
 HIST_DASK_WARN_BYTES = 500 * 1024**2
 
+# Above this size, digitize()/filter() refuse to eagerly compute a dask array
+# rather than just warning (see _eagerly_compute_dask below).
+DASK_EAGER_COMPUTE_WARN_BYTES = 500 * 1024**2
+
+
+def _eagerly_compute_dask(darray, op_name, array_name):
+    """Materialize a dask array needed by an eager, data-dependent operation.
+
+    digitize()/filter() have to inspect every value to decide which bin or
+    keep-mask an event falls into, so -- unlike most Array operations, which
+    stay lazy and let dask build a task graph -- they cannot run without the
+    full array in memory; the size of the result isn't knowable from shape
+    and dtype alone. If the array's byte size is unknown (e.g. it already
+    carries an unresolved boolean-index selection) or exceeds
+    DASK_EAGER_COMPUTE_WARN_BYTES, raise rather than silently pulling a
+    potentially huge amount of data into memory. Otherwise warn and compute.
+    """
+    nbytes = darray.nbytes
+    if np.isnan(nbytes) or nbytes > DASK_EAGER_COMPUTE_WARN_BYTES:
+        size_desc = "an unknown amount of" if np.isnan(nbytes) else f"{nbytes / 1024**3:.2f} GB of"
+        raise NotImplementedError(
+            f"{array_name!r}: {op_name}() needs every value of this dask array "
+            f"to decide the result, which would compute {size_desc} data. "
+            "This is only supported for dask arrays that are cheap to "
+            f"materialize (<= {DASK_EAGER_COMPUTE_WARN_BYTES / 1024**3:.2f} GB "
+            "and of known size). Call .compute() explicitly first (or pass a "
+            "numpy-backed Array / a smaller subset) if you really want this "
+            "-- .estimate_compute_time() can give a rough sense of the cost."
+        )
+    warnings.warn(
+        f"{array_name!r}: {op_name}() triggers computation of "
+        f"{nbytes / 1024**3:.2f} GB of dask data because the result depends "
+        "on the actual data values.",
+        stacklevel=3,
+    )
+    with ProgressBar():
+        return darray.compute()
+
 def _annotate_empty_axis(ax, message):
     """Blank an axis and center a short status message on it.
 
@@ -486,6 +524,17 @@ class Array:
     def ndim_nonzero(self, *args, **kwargs):
         return len(np.asarray(self.shape)[np.nonzero(self.shape)[0]])
 
+    @property
+    def nbytes(self):
+        """Size of the underlying data in bytes.
+
+        Delegates to the underlying numpy/dask array's own ``nbytes``, so for
+        a dask-backed Array this is derived from shape/dtype (no computation
+        triggered) -- and is ``nan`` if the shape itself isn't known yet
+        (e.g. after an unresolved boolean-index selection).
+        """
+        return self.data.nbytes
+
     def transpose(self, *args):
         if not args:
             axes = tuple(range(self.ndim - 1, -1, -1))
@@ -532,21 +581,26 @@ class Array:
     def T(self):
         return self.transpose()
 
-    def compute(self, **kwargs):
-        """Evaluate the dask graph and return a new Array backed by a NumPy array.
+    def compute(self, inplace=False, **kwargs):
+        """Evaluate the dask graph and return an Array backed by a NumPy array.
 
         No-op when the data is already a NumPy array (returns *self* with a
         message).  All index and scan metadata are preserved.
 
         Parameters
         ----------
+        inplace : bool, optional
+            If True, replace this Array's own data with the computed NumPy
+            array and return *self* instead of creating a new Array.
+            Default is False.
         **kwargs
             Forwarded to :func:`dask.array.Array.compute`.
 
         Returns
         -------
         escape.Array
-            Same Array with NumPy data instead of a dask graph.
+            Array with NumPy data instead of a dask graph (``self`` if
+            ``inplace`` is True, otherwise a new Array).
 
         See Also
         --------
@@ -554,18 +608,83 @@ class Array:
         """
         if self.is_dask_array():
             with ProgressBar():
-                return Array(
-                    data=self.data.compute(**kwargs),
-                    index=self.index,
-                    step_lengths=self.scan.step_lengths,
-                    parameter=self.scan.parameter,
-                )
+                computed = self.data.compute(**kwargs)
+            if inplace:
+                self._data = computed
+                return self
+            return Array(
+                data=computed,
+                index=self.index,
+                step_lengths=self.scan.step_lengths,
+                parameter=self.scan.parameter,
+            )
         else:
             if self.name:
                 print(f"No `compute` necessary for {self.name}")
             else:
                 print(f"No `compute` necessary")
             return self
+
+    def estimate_compute_time(self, n_probe=2, print_result=True):
+        """Roughly estimate the wall-clock cost of computing this Array.
+
+        :attr:`nbytes` only tells you the *size* of the result, which says
+        nothing about how expensive it was to get there -- a tiny output can
+        still hide a slow per-chunk computation (an FFT, a slow file read,
+        ...). This times a small, evenly-spread sample of chunks and
+        linearly extrapolates to the full chunk count, giving a ballpark
+        figure without paying for a full compute.
+
+        This is a best-effort estimate, not a guarantee: it assumes chunks
+        cost about the same to compute, and doesn't account for the full
+        array parallelizing differently than the probe does (e.g. many more
+        chunks than CPU cores queueing up, or one-off overhead -- like
+        opening a file -- being amortized differently).
+
+        Parameters
+        ----------
+        n_probe : int, optional
+            Number of chunks to sample and time, spread evenly across the
+            array (not just the first few, so a position-dependent cost
+            isn't missed). Defaults to 2. Capped at the array's total chunk
+            count.
+        print_result : bool, optional
+            If True (default), print a short human-readable summary.
+
+        Returns
+        -------
+        float
+            Estimated total compute time in seconds. ``0.0`` if the Array is
+            already NumPy-backed (nothing left to compute).
+        """
+        if not self.is_dask_array():
+            if print_result:
+                print(f"{self.name!r}: already computed (NumPy-backed), nothing to estimate.")
+            return 0.0
+
+        darray = self.data
+        n_blocks_total = int(np.prod(darray.numblocks))
+        if n_blocks_total == 0:
+            return 0.0
+        n_probe = max(1, min(n_probe, n_blocks_total))
+
+        flat_indices = np.linspace(0, n_blocks_total - 1, n_probe, dtype=int)
+        probe_blocks = [
+            darray.blocks[np.unravel_index(i, darray.numblocks)] for i in flat_indices
+        ]
+
+        t0 = time.time()
+        da.compute(*probe_blocks)
+        elapsed = time.time() - t0
+
+        estimated_total = elapsed / n_probe * n_blocks_total
+        if print_result:
+            print(
+                f"{self.name!r}: probed {n_probe}/{n_blocks_total} chunk(s) in "
+                f"{elapsed:.3g} s -> estimated ~{estimated_total:.3g} s to compute "
+                "the full array (rough, assumes uniform per-chunk cost)."
+            )
+        return estimated_total
 
     def persist(self):
         self.data.persist()
@@ -2506,12 +2625,35 @@ class Scan:
         self,
         cut_percentage=0,
         bins="auto",
+        step_bins=False,
         normalize_to=None,
         scanpar_name=None,
         plot_results=True,
         plot_axis=None,
         **kwargs,
     ):
+        """
+        step_bins : int or False, optional
+            If set to a positive integer N, ignore ``bins`` and instead pick
+            histogram bin edges whose width is the spacing between adjacent
+            scan steps divided by N, with a bin center landing on every scan
+            step's own value. This is meant for the case where the
+            histogrammed channel is expected to line up with the scan
+            parameter itself (e.g. histogramming a signal against a
+            digitize() of that same/a closely related signal) -- it removes
+            the visual "smearing" that comes from an ``auto``/global bin
+            width being unrelated to the scan's own step size. N=1 gives one
+            bin per step spacing; N=2 adds one bin center halfway between
+            each pair of steps; N=3 adds two, etc.
+
+            This assumes equidistant scan steps: the bin width is derived
+            from the *median* step spacing, so on a non-equidistant scan
+            (e.g. a digitize() with sparsely populated bins in the tails)
+            the bins will systematically mismatch the true local step
+            spacing away from the typical value, and the visual benefit this
+            option is meant to provide breaks down. A warning is raised in
+            that case. Defaults to False (use ``bins`` as before).
+        """
         array = self._array
         if array.is_dask_array():
             nbytes = array.data.nbytes
@@ -2545,7 +2687,34 @@ class Scan:
             if hmin == hmax:
                 hmin -= 0.5
                 hmax += 0.5
-        hbins = np.histogram_bin_edges(flat, bins, range=[hmin, hmax])
+        if step_bins:
+            if not (isinstance(step_bins, Number) and step_bins >= 1):
+                raise ValueError("step_bins must be a positive integer (or False)")
+            if len(x_scan) < 2:
+                raise ValueError(
+                    "step_bins needs at least 2 scan steps to determine a step spacing"
+                )
+            step_diffs = np.diff(x_scan)
+            step_width = np.median(step_diffs)
+            if not np.allclose(step_diffs, step_width, rtol=1e-2, atol=0):
+                warnings.warn(
+                    f"{array.name!r}: step_bins assumes equidistant scan steps, "
+                    f"but the actual step spacing ranges from "
+                    f"{step_diffs.min():.4g} to {step_diffs.max():.4g} (median "
+                    f"{step_width:.4g}). Bin width is derived from the median "
+                    "spacing, so bins will mismatch the true local step size "
+                    "wherever the scan is non-equidistant (e.g. sparsely "
+                    "populated digitize() bins).",
+                    stacklevel=2,
+                )
+            width = step_width / step_bins
+            anchor = x_scan[0]
+            n_lo = int(np.floor((hmin - anchor) / width)) - 1
+            n_hi = int(np.ceil((hmax - anchor) / width)) + 1
+            centers = anchor + np.arange(n_lo, n_hi + 1) * width
+            hbins = utilities.center_to_edges(centers)
+        else:
+            hbins = np.histogram_bin_edges(flat, bins, range=[hmin, hmax])
 
         hdat = [np.histogram(td.data.ravel(), bins=hbins)[0] for td in steps]
         if normalize_to == "max":
@@ -2556,9 +2725,14 @@ class Scan:
         if plot_results:
             if not plot_axis:
                 plot_axis = plt.gca()
-            # utilities.plot2D(x_scan, utilities.edges_to_center(hbins), hdat.T, **kwargs)
-            plt.pcolormesh(x_scan, utilities.edges_to_center(hbins), hdat.T, **kwargs)
-            plt.xlabel(scanpar_name)
+            utilities.plot2D(
+                x_scan,
+                utilities.edges_to_center(hbins),
+                hdat.T,
+                axis=plot_axis,
+                **kwargs,
+            )
+            plot_axis.set_xlabel(scanpar_name)
         return x_scan, hbins, hdat
 
     def append_step(self, parameter, step_length):
@@ -2971,9 +3145,19 @@ def match_arrays(*args):
 weighted_avg_and_std = escaped(utilities.weighted_avg_and_std)
 
 
-def compute(*args):
+def compute(*args, inplace=False):
     """compute multiple escape arrays or dask arrays. Interesting when calculating multiple small arrays
-    from the same ancestor dask based array"""
+    from the same ancestor dask based array
+
+    Parameters
+    ----------
+    *args : escape.Array, dask.array.Array, or other
+        Arrays/objects to compute. Non-dask objects are passed through unchanged.
+    inplace : bool, optional
+        If True, escape.Array inputs have their own data replaced with the
+        computed NumPy array (returned as the same instances) instead of
+        new Array objects being created. Default is False.
+    """
     argtypes = []
     argcollection = []
     for arg in args:
@@ -2998,14 +3182,18 @@ def compute(*args):
     out = []
     for ta, argtype in zip(args, argtypes):
         if ("esc-array" in argtype) and ("dask_array" in argtype):
-            out.append(
-                Array(
-                    data=res[next_dask_index],
-                    index=ta.index,
-                    step_lengths=ta.scan.step_lengths,
-                    parameter=ta.scan.parameter,
+            if inplace:
+                ta._data = res[next_dask_index]
+                out.append(ta)
+            else:
+                out.append(
+                    Array(
+                        data=res[next_dask_index],
+                        index=ta.index,
+                        step_lengths=ta.scan.step_lengths,
+                        parameter=ta.scan.parameter,
+                    )
                 )
-            )
             next_dask_index += 1
         elif ("daskcollection" in argtype) and ("dask_array" in argtype):
             out.append(res[next_dask_index])
@@ -3341,6 +3529,12 @@ def digitize(
     """Digitization function for escape arrays according to numpy.digitize.
     Works for 1D arrays only.
 
+    Bin membership depends on the actual data values, so a dask-backed array
+    cannot be digitized lazily: it is auto-computed with a warning if small
+    (<= ``DASK_EAGER_COMPUTE_WARN_BYTES``, and of known size), otherwise a
+    ``NotImplementedError`` is raised -- call ``.compute()`` on the array
+    first in that case.
+
     Args:
         array (escape.Array): the escape array holding data that are supposed
             to be sorted/digitized.
@@ -3375,6 +3569,8 @@ def digitize(
             "Only 1d escape arrays can be digitized in a sensible way."
         )
     darray = array.index if use_index_data else array.data.ravel()
+    if isinstance(darray, da.Array):
+        darray = _eagerly_compute_dask(darray, "digitize", array.name)
     if include_outlier_bins:
         direction = np.sign(bins[-1] - bins[0])
         if include_outlier_bins == "right":
@@ -3530,7 +3726,14 @@ def filter(
 ):
     """general filter function for escape arrays. checking for 1D arrays, applies
     arbitrary number of
-    filter functions that take one argument as input and"""
+    filter functions that take one argument as input and
+
+    Which events survive depends on the actual data values, so a dask-backed
+    array cannot be filtered lazily: it is auto-computed with a warning if
+    small (<= ``DASK_EAGER_COMPUTE_WARN_BYTES``, and of known size),
+    otherwise a ``NotImplementedError`` is raised -- call ``.compute()`` on
+    the array first in that case.
+    """
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be filtered in a sensible way."
@@ -3540,8 +3743,7 @@ def filter(
     else:
         darray = array.data
         if isinstance(darray, da.Array):
-            print("filtering, i.e. downsizing of arrays requires to convert to numpy.")
-            darray = darray.compute()
+            darray = _eagerly_compute_dask(darray, "filter", array.name)
     # darray = array.data.ravel()
     ix = da.logical_and(
         *[tfoo(darray, targ) for tfoo, targ in zip(foos_filtering, args)]

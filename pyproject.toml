@@ -45,6 +45,9 @@ wavefront = ["scikit-image"]
 # JupyterLab Sidecar panel instead of inline; degrades to a clear
 # ImportError (not silent fallback) if absent.
 sidecar = ["sidecar"]
+# escape.fit_gui attaches an interactive lmfit fitting panel to a matplotlib
+# Axes; raises a clear ImportError (not silent fallback) if absent.
+fit = ["lmfit"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"

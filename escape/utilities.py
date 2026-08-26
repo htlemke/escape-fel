@@ -385,8 +385,7 @@ def plot2D(
         axis = kwargs.pop("ax", None)
 
     def bin_array(arr):
-        arr = np.asarray(arr)
-        return np.hstack([arr - np.diff(arr)[0] / 2, arr[-1] + np.diff(arr)[-1] / 2])
+        return center_to_edges(np.asarray(arr))
 
     C = np.asarray(C)
 

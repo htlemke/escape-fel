@@ -27,7 +27,7 @@ class TestData:
         if self.driftNodes is None:
             delta = np.cumsum(poisson(self.driftTimescale, 4))
             delta -= delta[1]
-            delta += np.int(self.pulseId)
+            delta += np.int64(self.pulseId)
             self.driftNodes = delta
             self.driftData = randn(4)
             self.driftInterpolator = PchipInterpolator(self.driftNodes, self.driftData)
