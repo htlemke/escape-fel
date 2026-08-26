@@ -26,7 +26,6 @@ dependencies = [
     "ipython",
     "lazy-object-proxy",
     "distributed",
-    "datastorage",
     "oschmod",
 ]
 classifiers = [
@@ -48,6 +47,11 @@ sidecar = ["sidecar"]
 # escape.fit_gui attaches an interactive lmfit fitting panel to a matplotlib
 # Axes; raises a clear ImportError (not silent fallback) if absent.
 fit = ["lmfit"]
+# datastorage.datastorage-based dict<->HDF5 round-tripping is one legacy
+# storage format among several for DataSet non-Array entries
+# (esc_type="datastorage"); not on conda-forge, so kept optional. Raises a
+# clear ImportError (not silent fallback) if used without it installed.
+legacy = ["datastorage"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"

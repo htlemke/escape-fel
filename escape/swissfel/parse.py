@@ -17,11 +17,6 @@ import escape
 from copy import deepcopy as copy
 import oschmod
 
-try:
-    from datastorage.datastorage import dictToH5Group
-except:
-    print("issue with datastorage import!")
-
 import traceback
 
 # from ipytree import Node

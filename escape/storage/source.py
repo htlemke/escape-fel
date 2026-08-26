@@ -1,6 +1,5 @@
 import pickle
 from distributed.protocol import serialize, deserialize
-from datastorage.datastorage import dictToH5, dictToH5Group
 import inspect
 
 SOURCETYPES = ["factory", "dataset", "status", "array_map_index_blocks"]
@@ -79,4 +78,6 @@ class Source:
         Args:
             group (h5py or zarr group): h5py __parent__ group object into which the source group will be written.
         """
+        from datastorage.datastorage import dictToH5Group
+
         dictToH5Group(self.as_dict(), group=group)

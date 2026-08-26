@@ -20,11 +20,6 @@ import numpy as np
 import oschmod
 import dask
 
-try:
-    from datastorage.datastorage import dictToH5Group, unwrapArray
-except:
-    print("issue with datastorage import!")
-
 logger = logging.getLogger(__name__)
 
 
@@ -140,6 +135,8 @@ class DataSet:
                     self.results_file[name].attrs["esc_type"] = "hickled"
                     self._esc_types[name] = "hickled"
                 elif as_datastorage:
+                    from datastorage.datastorage import dictToH5Group
+
                     self.results_file.require_group(name)
                     dictToH5Group(data, self.results_file[name])
                     self.results_file[name].attrs["esc_type"] = "datastorage"
@@ -282,6 +279,8 @@ class DataSet:
                             dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "hickled"
                     elif self.results_file[tname].attrs["esc_type"] == "datastorage":
+                        from datastorage.datastorage import unwrapArray
+
                         self.datasets[tname] = unwrapArray(self.results_file[tname])
                         dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "datastorage"
