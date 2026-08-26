@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Auto-bumps and pushes a new PATCH tag whenever `main` is pushed to origin,
+# so every push to main becomes a PyPI release via .github/workflows/publish.yml
+# (and, downstream, a ReadTheDocs "latest" rebuild + eventual conda-forge
+# autotick-bot bump). See docs/development/releasing.md.
+#
+# This only ever bumps the last digit (PATCH). If a push is a MINOR release
+# (new feature, or a breaking change per the semver convention in
+# docs/development/releasing.md), tag it yourself BEFORE pushing
+# (`git tag vX.Y.0`) — this hook skips auto-tagging when the commit being
+# pushed already carries a v*.*.* tag.
+#
+# Bypass for a single push (e.g. pushing a WIP/experimental commit to main
+# without releasing it): SKIP_AUTOTAG=1 git push
+set -euo pipefail
+
+remote="$1"
+
+if [ -n "${SKIP_AUTOTAG:-}" ]; then
+    exit 0
+fi
+
+zero="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+    [ "$local_ref" = "refs/heads/main" ] || continue
+    [ "$local_sha" = "$zero" ] && continue  # branch deletion
+
+    # Already tagged at this exact commit (e.g. a deliberate manual MINOR
+    # bump) -- don't also add a patch tag on top of it.
+    if [ -n "$(git tag --points-at "$local_sha" --list 'v*.*.*')" ]; then
+        continue
+    fi
+
+    latest=$(git tag --list 'v*.*.*' --sort=-v:refname --merged "$local_sha" | head -1)
+    if [ -z "$latest" ]; then
+        echo "pre-push: no existing v*.*.* tag reachable from $local_sha, skipping auto-tag" >&2
+        continue
+    fi
+
+    version="${latest#v}"
+    IFS='.' read -r major minor patch <<< "$version"
+    next="v${major}.${minor}.$((patch + 1))"
+
+    echo "pre-push: auto-tagging $next on $local_sha and pushing to $remote" >&2
+    if ! git tag "$next" "$local_sha" 2>/dev/null; then
+        echo "pre-push: tag $next already exists, skipping auto-tag" >&2
+        continue
+    fi
+    if ! git push "$remote" "$next" </dev/null; then
+        echo "pre-push: failed to push tag $next; deleting local tag. Push of main continues." >&2
+        git tag -d "$next"
+    fi
+done
+
+exit 0

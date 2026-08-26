@@ -30,7 +30,34 @@ should not be reused or treated as release markers. Always tag with a
 leading `v`.
 ```
 
-## Release checklist
+## Auto-tagging on push (`.githooks/pre-push`)
+
+Every push of `main` to `origin` auto-creates and pushes the next PATCH tag
+(`vX.Y.Z` → `vX.Y.(Z+1)`), which in turn triggers the PyPI publish above —
+so **pushing to `main` releases**, without a separate manual tag step. This
+is a client-side hook, so each clone/machine needs to opt in once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Behavior:
+
+- Skips auto-tagging if the commit being pushed already carries a `v*.*.*`
+  tag — so a deliberate MINOR/MAJOR release still works exactly like the
+  manual flow below: tag it yourself (`git tag vX.Y.0`) *before* pushing,
+  and the hook leaves it alone.
+- Only fires on `refs/heads/main`; other branches are never auto-tagged.
+- Bypass for a single push that shouldn't release (e.g. an experimental
+  commit to `main`): `SKIP_AUTOTAG=1 git push`.
+- Never blocks the underlying code push — if the tag push itself fails for
+  any reason, it just warns and continues.
+
+The hook only bumps the last digit. It has no way to know a push contains a
+breaking change or new feature (see "Choosing the version number" below) —
+that judgment call is still yours; make it by tagging manually beforehand.
+
+## Release checklist (manual / MINOR+ releases)
 
 1. Make sure `main` is green and up to date locally:
 
@@ -47,7 +74,9 @@ leading `v`.
    ```
 
    (`git push --tags` also works, but pushes *all* local tags — prefer
-   pushing the single new tag explicitly.)
+   pushing the single new tag explicitly.) If you tag before pushing `main`
+   itself, the auto-tag hook above sees the commit is already tagged and
+   won't also add a PATCH tag on top of it.
 
 3. Watch the **Publish to PyPI** run under the repo's *Actions* tab. Once it
    finishes, the release is live — `pip install escape-fel` will pick it up
