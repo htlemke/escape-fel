@@ -32,6 +32,7 @@ class TestData:
         self.i = 0.0
         self.pump_on = 0.0
         self.t = 0.0
+        self.timetool = 0.0
         self.i_pump = 0.0
         self.drift = 0.0
 
@@ -62,7 +63,8 @@ class TestData:
         drift = float(self._drift_itp(pulse_id))
         step_index = int(pulse_id // self.step_length)
         t_nominal = self.tstart + self.tstepsize * step_index
-        t = float(t_nominal + self.tjitter * np.random.randn())
+        timetool = float(self.tjitter * np.random.randn())
+        t = t_nominal + timetool
 
         i0 = float(np.random.gamma(2.3, 1))
         sig = 1.0 - np.cos(2 * np.pi / 0.7 * t) * np.exp(-t / 2)
@@ -83,6 +85,7 @@ class TestData:
         self.i = i
         self.pump_on = float(pump_on)
         self.t = t
+        self.timetool = timetool
         self.i_pump = i_pump
         self.drift = drift
 
@@ -90,6 +93,7 @@ class TestData:
             "i0": i0,
             "i": i,
             "t": t,
+            "timetool": timetool,
             "i_pump": i_pump,
             "pump_on": self.pump_on,
             "pulse_id": float(pulse_id),
@@ -103,6 +107,46 @@ class TestData:
 
 
 def get_test_data(N_pulses=1e4, as_array=True, as_da=True, step_length=200):
+    """Generate a synthetic pump-probe dataset for testing/examples.
+
+    Simulates a delay scan (steps of ``t_nominal`` spaced by ``tstepsize``,
+    starting at ``tstart``) with per-shot timetool jitter, shot noise, a
+    slow intensity drift, and a pump on/off pattern -- see
+    :class:`TestData` for the generative model.
+
+    Parameters
+    ----------
+    N_pulses : int, optional
+        Total number of simulated shots. Default 10000.
+    as_array : bool, optional
+        If True (default), wrap each channel as an :class:`escape.Array`
+        sharing the delay scan's step structure. If False, return plain
+        numpy arrays.
+    as_da : bool, optional
+        Only used when ``as_array`` is True: if True (default), back each
+        Array with a dask array; if False, use a plain in-memory numpy
+        array.
+    step_length : int, optional
+        Number of shots per scan step. Default 200.
+
+    Returns
+    -------
+    dict
+        Keys are channel names, values are :class:`escape.Array` (or numpy
+        array, if ``as_array=False``), each with ``N_pulses`` events:
+
+        - ``"i0"`` : incoming intensity monitor.
+        - ``"i"`` : signal intensity (pump-probe response riding on ``i0``).
+        - ``"t"`` : fully corrected per-shot delay, i.e. ``t_nominal +
+          timetool`` -- the quantity you'd bin a real pump-probe scan on.
+        - ``"timetool"`` : per-shot timetool jitter only (mean zero), *not*
+          including the nominal per-step delay -- pair this with
+          ``time_vec="auto"`` in :meth:`~escape.storage.storage_tools.ArrayTools.timetool_binning`,
+          which adds the nominal delay back in per scan step.
+        - ``"i_pump"`` : per-shot effective pump strength.
+        - ``"pump_on"`` : 1.0/0.0 pump on/off flag.
+        - ``"drift"`` : slow intensity drift shared by nearby shots.
+    """
     N_pulses = int(N_pulses)
     td = TestData(step_length=step_length)
     d = {

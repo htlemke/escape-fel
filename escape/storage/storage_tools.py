@@ -29,6 +29,31 @@ class ArrayTools:
         rois={},
         show=True,
     ):
+        """Interactively pick rectangular ROIs on this Array's mean 2D image.
+
+        Computes the mean image over ``data_selection`` and displays it in
+        an interactive :class:`~escape.utilities.MultipleRoiSelector`
+        widget. Each time a ROI is moved/resized, ``s.result`` is updated
+        with the corresponding slice of the *full* (uncropped-in-event-
+        axis) Array for every named ROI.
+
+        Parameters
+        ----------
+        data_selection : slice, optional
+            Event-axis selection used only to compute the preview mean
+            image. Default the first 100 events.
+        rois : dict, optional
+            Initial ``{name: (x0, x1, y0, y1)}`` rectangular ROI
+            definitions.
+        show : bool, optional
+            If True (default), display the widget immediately.
+
+        Returns
+        -------
+        MultipleRoiSelector
+            The interactive selector; ``s.result`` holds ``{name:
+            escape.Array}`` for each ROI, kept in sync as ROIs change.
+        """
         def append_rois(s):
             s.result = {}
             for nam, roi in s.rois.items():
@@ -477,26 +502,73 @@ class ArrayTools:
 
         return binned, par_steps, n_signal, std, quantile
 
-    def timetool_binning(self, timetool, time_vec=None, time_bins=None):
+    def timetool_binning(self, timetool, time_vec="auto", time_bins=None):
+        """Bin this Array along a timetool-corrected delay axis.
+
+        Builds a corrected per-shot delay from ``timetool`` (optionally
+        adding a nominal per-scan-step delay, see ``time_vec``), digitizes
+        it into ``time_bins``, and re-groups this Array (via
+        :meth:`~escape.storage.storage.Array.categorize`) accordingly.
+
+        Parameters
+        ----------
+        timetool : escape.Array
+            Per-shot delay signal to bin against. Whether this should be a
+            *raw* jitter/correction (to be combined with each scan step's
+            nominal delay) or an *already fully corrected* per-shot delay
+            depends on ``time_vec`` -- see below.
+        time_vec : "auto", array-like, None, or False, optional
+            Controls what, if anything, is added to ``timetool`` per scan
+            step before binning:
+
+            - ``"auto"`` (default): the nominal delay is read from
+              ``timetool``'s own scan (``timetool.scan.par_steps.iloc[:,
+              0]``, i.e. its first scan parameter) and added to every
+              per-shot value of ``timetool``, one scan step at a time --
+              i.e. ``timetool`` is treated as a raw jitter/correction only.
+              This is the traditional behaviour, appropriate when
+              ``timetool`` is a genuine timetool-edge correction separate
+              from the nominal delay stage position.
+            - array-like: an explicit per-step nominal delay (length must
+              match the number of scan steps in ``timetool``), added the
+              same way instead of reading it off ``timetool.scan``.
+            - ``None`` or ``False``: nothing is added -- ``timetool`` is
+              used as-is. Use this when ``timetool`` already holds the
+              fully corrected per-shot delay (nominal + jitter combined),
+              e.g. the synthetic ``"t"`` channel from
+              :func:`escape.storage.test_data.get_test_data` (as opposed
+              to its separate, jitter-only ``"timetool"`` channel, which
+              pairs with ``time_vec="auto"``).
+        time_bins : array-like or float, optional
+            Explicit bin edges (array-like), or a bin width (float) in the
+            same units as the corrected delay -- in which case edges are
+            auto-generated to span the corrected delay's observed
+            min/max, rounded outward to that width via
+            :func:`escape.utilities.roundto`.
+
+        Returns
+        -------
+        escape.Array
+            This Array, re-grouped into the resulting time bins.
+        """
         array = self._array
 
-        if time_vec is None:
-            t = timetool.scan.par_steps.iloc[:, 0]  # timevec scan
+        if time_vec is None or time_vec is False:
+            t_tt = timetool  # timetool already is the fully corrected delay
         else:
-            t = time_vec
-
-        t_tt = (
-            timetool.scan + t
-        )  # taking the time of the step and adding the time tool delay for each shot - the real measured delay
-
-        tt_med = (
-            timetool.nanmedian()
-        )  # try to get the average tt values as median, for binning.
+            if isinstance(time_vec, str) and time_vec == "auto":
+                t = timetool.scan.par_steps.iloc[:, 0]  # nominal delay per step
+            else:
+                t = time_vec
+            t_tt = (
+                timetool.scan + t
+            )  # taking the time of the step and adding the time tool delay for each shot - the real measured delay
 
         if isinstance(time_bins, Number) and type(time_bins) is float:
+            t_tt_data = t_tt.compute().data if t_tt.is_dask_array() else t_tt.data
             time_bins = np.arange(
-                utilities.roundto(np.nanmin(t) + tt_med, time_bins) - time_bins / 2,
-                utilities.roundto(np.nanmax(t) + tt_med, time_bins) + time_bins / 2,
+                utilities.roundto(np.nanmin(t_tt_data), time_bins) - time_bins / 2,
+                utilities.roundto(np.nanmax(t_tt_data), time_bins) + time_bins / 2,
                 time_bins,
             )
         t_tt_binned = t_tt.digitize(time_bins)
@@ -711,12 +783,50 @@ class ScanTools:
         self,
         data_selection=slice(None, 100),
     ):
+        """Display an interactive :class:`~escape.utilities.StepViewer` for
+        browsing the per-step averages of this scan's Array.
+
+        Parameters
+        ----------
+        data_selection : slice, optional
+            Currently unused (reserved for limiting events per step);
+            kept for API compatibility.
+
+        Returns
+        -------
+        StepViewer
+            The displayed widget.
+        """
         data = self._scan._array
         s = StepViewer(data)
         display(s)
         return s
 
     def has_N_refsig(self, is_ref, is_sig=None, N_ref=1, N_sig=1):
+        """Restrict this scan to steps containing enough reference/signal events.
+
+        For each scan step, computes ``is_ref`` (categorized onto this
+        scan) and keeps the step only if it has at least ``N_ref``
+        reference events and at least ``N_sig`` non-reference (signal)
+        events.
+
+        Parameters
+        ----------
+        is_ref : escape.Array
+            Boolean, per-event; True marks a reference event.
+        is_sig : escape.Array, optional
+            Not yet implemented -- reserved for an explicit signal mask
+            (currently ``~is_ref`` is used as signal).
+        N_ref : int, optional
+            Minimum reference events required per step. Default 1.
+        N_sig : int, optional
+            Minimum signal events required per step. Default 1.
+
+        Returns
+        -------
+        escape.Scan
+            This scan restricted to the qualifying steps.
+        """
         if is_sig is not None:
             sel = is_ref | is_sig
             # TODO
@@ -731,6 +841,26 @@ class ScanTools:
         return self._scan[valid_steps]
 
     def corr_ana_plot(self, referece, scanpar_name=None, axis=None):
+        """Plot :meth:`~escape.storage.storage.Array.correlation_analysis_to`
+        results (zero-free vs. zero-fixed linear/quadratic correlation to
+        *referece*) against a scan parameter, one point per scan step.
+
+        Parameters
+        ----------
+        referece : escape.Array
+            Reference array each step is correlated against (passed to
+            ``correlation_analysis_to``; note the parameter name matches
+            the misspelling used by that call site).
+        scanpar_name : str, optional
+            Scan parameter to use for the x-axis. Defaults to the first
+            parameter in ``self._scan.parameter``.
+        axis : matplotlib.axes.Axes, optional
+            Axes to plot into. Defaults to ``plt.gca()``.
+
+        Returns
+        -------
+        None
+        """
         if not scanpar_name:
             names = list(self._scan.parameter.keys())
             scanpar_name = names[0]
@@ -769,6 +899,31 @@ class ScanTools:
         rois={},
         show=True,
     ):
+        """Interactively pick rectangular ROIs on the scan's mean 2D image,
+        with a per-step viewer for browsing how each ROI looks across steps.
+
+        Parameters
+        ----------
+        data_selection : slice, optional
+            Event-axis selection used to compute the preview mean image
+            and passed through to the per-step viewer. Default the first
+            100 events.
+        rois : dict, optional
+            Initial ``{name: (x0, x1, y0, y1)}`` rectangular ROI
+            definitions.
+        show : bool, optional
+            If True (default), display the interactive widget and keep
+            ``s.result`` live-updated as ROIs change. If False, build
+            ``s.result`` once from the given ``rois`` without displaying
+            anything (useful for scripted/non-interactive use).
+
+        Returns
+        -------
+        StepViewerP or object
+            The displayed widget when ``show=True``; otherwise a plain
+            object exposing ``.rois`` and ``.result`` (``{name:
+            escape.Array}``).
+        """
         def append_rois(s):
             s.result = {}
             for nam, roi in s.rois.items():
