@@ -1,6 +1,6 @@
 # Live-Stream Data Acquisition
 
-`escape.stream_new` provides live, pulse-by-pulse data acquisition from the
+`escape.stream` provides live, pulse-by-pulse data acquisition from the
 SwissFEL beamline network.  It mirrors the `escape.Array` API so that analysis
 code written against stored data can be applied to a live stream with a
 mechanical substitution.
@@ -45,7 +45,7 @@ mechanical substitution.
 
 ## API mirror — Array and Stream
 
-| Operation | `escape.Array` (stored) | `escape.stream_new.Stream` (live) |
+| Operation | `escape.Array` (stored) | `escape.stream.Stream` (live) |
 |---|---|---|
 | Create | `Array('ch', scan)` | `Stream('ch', ew)` |
 | Filter | `arr[bool_mask]` | `stream[mask_stream]` |
@@ -62,18 +62,18 @@ mechanical substitution.
 
 ## Quick start
 
-### Synthetic test data (offline)
+### Synthetic test data (offline, no `psi-datahub` needed)
 
 ```python
-from escape.stream_new import (
-    Stream, EventWorker, TestStream, DataHubLocalEventHandler,
+from escape.stream import (
+    Stream, EventWorker, TestStream, LocalEventHandler,
 )
 import numpy as np
 
 ts = TestStream(port=9999, interval=0.02)   # ~50 Hz synthetic stream
 ts.start()
 
-ew = EventWorker(DataHubLocalEventHandler(host='localhost', port=9999))
+ew = EventWorker(LocalEventHandler(host='localhost', port=9999))
 
 i0   = Stream('i0',      ew, unit='a.u.')
 i    = Stream('i',       ew, unit='a.u.')
@@ -84,10 +84,15 @@ for s in [i0, i, t, pump]:
     s.accumulate(True)
 ```
 
+`LocalEventHandler` only needs `bsread` and is the handler used by
+`escape/stream/example_local_stream.ipynb`.  `DataHubLocalEventHandler` is the
+`psi-datahub`-backed equivalent (see below) — same interface, but future-proof
+against the bsread → Redis/Dragonfly transport migration.
+
 ### Live SwissFEL data (dispatcher / Redis)
 
 ```python
-from escape.stream_new import Stream, EventWorker, DataHubEventHandler
+from escape.stream import Stream, EventWorker, DataHubEventHandler
 
 # bsread via SwissFEL dispatcher (current production backend)
 ew = EventWorker(DataHubEventHandler(backend='bsread'))
@@ -103,7 +108,7 @@ i0.accumulate(True)
 ### Merging channels from two backends
 
 ```python
-from escape.stream_new import MultiSourceEventHandler
+from escape.stream import MultiSourceEventHandler
 
 ew = EventWorker(MultiSourceEventHandler(
     DataHubLocalEventHandler(host='localhost', port=9999),  # local channels
@@ -166,7 +171,7 @@ hp.stop()
 ## Acquisition lifetime — StreamContext
 
 ```python
-from escape.stream_new import StreamContext
+from escape.stream import StreamContext
 
 # Timed block
 with StreamContext(i0, ratio):
@@ -195,7 +200,7 @@ i0.plot_hist(axes=ax, update=0.5)
 | `EventHandler_SFEL()` | bsread + dispatcher | legacy; prefer DataHubEventHandler |
 
 For the full architecture diagram and design proposals see the
-[stream_new design review](https://claude.ai/code/artifact/cd017151-c247-442e-a358-79066e3283a2).
+[stream design review](https://claude.ai/code/artifact/cd017151-c247-442e-a358-79066e3283a2).
 
 ---
 

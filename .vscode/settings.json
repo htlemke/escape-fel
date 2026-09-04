@@ -4,5 +4,32 @@
     },
     "python.formatting.provider": "none",
     "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python.defaultInterpreterPath": "/sf/bernina/applications/python/environments/default/bin/python"
+    "python.defaultInterpreterPath": "/sf/bernina/applications/python/environments/default/bin/python",
+    "workbench.colorCustomizations": {
+        "activityBar.activeBackground": "#de8852",
+        "activityBar.background": "#de8852",
+        "activityBar.foreground": "#15202b",
+        "activityBar.inactiveForeground": "#15202b99",
+        "activityBarBadge.background": "#aff0c8",
+        "activityBarBadge.foreground": "#15202b",
+        "activityBarTop.activeBackground": "#de8852",
+        "activityBarTop.background": "#de8852",
+        "activityBarTop.foreground": "#15202b",
+        "activityBarTop.inactiveForeground": "#15202b99",
+        "commandCenter.border": "#15202b99",
+        "commandCenter.foreground": "#15202b",
+        "sash.hoverBorder": "#de8852",
+        "statusBar.background": "#d56b28",
+        "statusBar.debuggingBackground": "#d56b28",
+        "statusBar.debuggingForeground": "#15202b",
+        "statusBar.foreground": "#15202b",
+        "statusBarItem.hoverBackground": "#aa5520",
+        "statusBarItem.remoteBackground": "#5ee191",
+        "statusBarItem.remoteForeground": "#15202b",
+        "titleBar.activeBackground": "#d56b28",
+        "titleBar.activeForeground": "#15202b",
+        "titleBar.inactiveBackground": "#d56b2899",
+        "titleBar.inactiveForeground": "#15202b99"
+    },
+    "peacock.color": "#d56b28"
 }

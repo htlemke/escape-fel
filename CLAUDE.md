@@ -80,12 +80,20 @@ real, documented, and installable (`docs/api/wavefront.rst`,
 only load on explicit `from escape import wavefront` / `import escape.exafs`.
 See the dedicated section below.
 
-**`escape/stream/` and `escape/stream_new/` are not part of the stable API.**
-Neither is imported by `escape/__init__.py`. `stream` is legacy/unfinished;
-`stream_new` is an active work-in-progress rewrite (`EscData`/`Stream`
-classes) meant to eventually mirror the `Array` API for live/streaming data.
-Do not reference either from documentation, examples, or new integrations
-unless explicitly asked to work on the stream refactor itself.
+**`escape/stream/` is not part of the stable API** (not imported by
+`escape/__init__.py`). It provides live, pulse-by-pulse data acquisition
+(`Stream`/`EventWorker`, mirroring the `Array` API — see
+`docs/user_guide/stream.md`), with pluggable event handlers: `LocalEventHandler`
+(direct bsread, no extra deps — used by the offline
+`escape/stream/example_local_stream.ipynb` demo), `EventHandler_SFEL` (bsread +
+dispatcher), and the `psi-datahub`-backed `DataHubEventHandler` /
+`DataHubLocalEventHandler` / `MultiSourceEventHandler` (`escape/stream/es_wrappers_datahub.py`,
+optional — degrades gracefully if `psi-datahub` isn't installed). As of
+2026-09-04 this absorbed the former `escape/stream_new/` work-in-progress
+rewrite (now removed) — don't expect that module name to exist any more in
+older notes/branches. Do not reference `escape.stream` from documentation,
+examples, or new integrations outside this stream work unless explicitly
+asked to.
 
 ### Core data model — `escape/storage/storage.py` (~3900 lines, the heart of the package)
 
@@ -267,17 +275,23 @@ deriving function parameters from notebook-namespace variables.
   at that release with correct deps/sha256, plus a review-request comment
   was posted. Check the PR for current CI/review status before assuming
   it's still stuck.
-- **`escape/stream_new/` is the intended eventual replacement for
-  `escape/stream/`**, planned to expose a `Stream` class (rename/alias of
-  the current `EscData`) mirroring the `Array` API where meaningful, adapted
-  for live/mutable data: `Stream.digitize(bins_or_source)` (fixed bins, or
-  auto-extending bins keyed off another `Stream`) returns a `ScanTemplate`
-  whose `.categorize(other_stream)` re-groups a second stream by that
-  binning; `Stream[mask_stream]` / `.filter(mask_stream)` emits only events
-  where the mask stream is truthy at the same pulse ID; `scan.plot_live()`
-  live-updates a scan-step plot. This is unstarted/in-progress — see the
-  "not part of the stable API" note above; don't treat `stream_new`'s
-  current shape as a finished design to build on top of without checking in.
+- **`escape/stream/` was rewritten 2026-09-04** to fix a class of bugs where
+  the event loop silently never started on channel registration (a
+  `hasattr(self, "loopThread")`-vs-`None` guard in
+  `EventWorker.stopEventLoop()` let an `AttributeError` in the debounced
+  restart-timer thread get swallowed by the default thread excepthook,
+  aborting `_do_restart()` before `startEventLoop()` ran — see
+  `escape/stream/escape_stream.py`'s `EventWorker.stopEventLoop`, now an
+  identity check). The rewrite (formerly prototyped as the now-removed
+  `escape/stream_new/`) exposes `Stream` (`EscData` kept as a back-compat
+  alias) mirroring the `Array` API for live data: `Stream.digitize(bins)`
+  returns a `StreamBinning` whose `.categorize(other_stream)` re-groups a
+  second stream by that binning; `Stream[mask_stream]` / `.filter(mask_stream)`
+  emits only events where the mask stream is truthy at the same pulse ID.
+  Validated against the offline synthetic test stream
+  (`escape/stream/testStream.py` + `LocalEventHandler`,
+  `escape/stream/example_local_stream.ipynb`) — still not part of the stable
+  API (see above), so treat it as real but pre-release.
 - **Naming history**: `map_index_blocks` was previously called
   `map_event_blocks` — if you see the old name in older notebooks/docs
   references, it's the same method.
