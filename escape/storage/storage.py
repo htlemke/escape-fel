@@ -1458,6 +1458,27 @@ class Array:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / f"{key}.b64"
 
+    @staticmethod
+    def _in_rich_display_frontend():
+        """Whether the active IPython shell can actually render HTML/images.
+
+        ``_ipython_display_`` is invoked by *any* IPython shell, not just
+        notebook-style ones -- including a plain ``ipython`` terminal
+        console. A terminal console has no HTML renderer, so handing it an
+        ``IPython.display.HTML`` object shows nothing useful (just that
+        object's own bare ``<IPython.core.display.HTML object>`` repr)
+        instead of anything about the array. Jupyter notebook/lab, Jupyter
+        console, qtconsole, and VS Code's interactive window are all
+        kernel-backed (``ZMQInteractiveShell``) and do support it; a plain
+        terminal session is ``TerminalInteractiveShell``.
+        """
+        try:
+            from IPython import get_ipython
+        except ImportError:
+            return False
+        shell = get_ipython()
+        return shell is not None and shell.__class__.__name__ == "ZMQInteractiveShell"
+
     def _ipython_display_(self, **kwargs):
         """Async Jupyter display: show 'Computing…' immediately, then update.
 
@@ -1467,10 +1488,16 @@ class Array:
           the display is updated with a 'Timed out' notice instead.
         * Any exception inside the plot thread produces a styled error message
           rather than propagating to the notebook.
+        * Falls back to the plain ascii repr outside of a notebook-style
+          (kernel-backed) frontend -- see :meth:`_in_rich_display_frontend`.
         """
         try:
             from IPython import display as _idisplay
         except ImportError:
+            print(self.__repr__())
+            return
+
+        if not self._in_rich_display_frontend():
             print(self.__repr__())
             return
 
