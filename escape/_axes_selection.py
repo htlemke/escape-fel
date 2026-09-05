@@ -11,22 +11,34 @@ import numpy as np
 from matplotlib.widgets import SpanSelector
 
 
+def snapshot_data_lines(ax):
+    """The ``Line2D`` artists on ``ax`` at the moment the *first* escape
+    tool attached to it, cached on the axes itself.
+
+    An interactive ``SpanSelector`` adds its own ``Line2D`` edge-handle
+    artists to the axes it's attached to. Without this cache, attaching a
+    *second* tool to the same axes (e.g. both a fit panel and a frequency
+    panel on one subplot) would re-scan ``ax.get_lines()`` and could pick up
+    the first tool's span-handle artist as if it were the data line, instead
+    of the line that was actually there before either tool attached.
+    """
+    if not hasattr(ax, "_escape_data_lines"):
+        ax._escape_data_lines = list(ax.get_lines())
+    return ax._escape_data_lines
+
+
 class AxesRangeSelector:
     """Owns picking a target ``Line2D`` on an ``Axes`` and an optional
-    x-range within it.
-
-    Captures the target line once, at construction, *before* any caller
-    creates a ``SpanSelector`` on the same axes -- an interactive
-    ``SpanSelector`` adds its own ``Line2D`` edge-handle artists to the
-    axes, so re-querying ``ax.get_lines()`` later risks picking up a
-    widget-internal line instead of data.
+    x-range within it. See :func:`snapshot_data_lines` for why the line list
+    is captured via a shared, axes-cached snapshot rather than a fresh
+    ``ax.get_lines()`` call.
     """
 
     def __init__(self, ax, line=None):
         self.ax = ax
         self.fig = ax.figure
         self.range = None
-        data_lines = list(ax.get_lines())
+        data_lines = snapshot_data_lines(ax)
         self.line = line if line is not None else (data_lines[-1] if data_lines else None)
         self._pickable_lines = data_lines
         self.fig.canvas.mpl_connect("pick_event", self._on_pick)

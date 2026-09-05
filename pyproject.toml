@@ -47,6 +47,11 @@ sidecar = ["sidecar"]
 # escape.fit_gui attaches an interactive lmfit fitting panel to a matplotlib
 # Axes; raises a clear ImportError (not silent fallback) if absent.
 fit = ["lmfit"]
+# escape.freq_gui's wavelet-scalogram method needs PyWavelets (scipy dropped
+# its own cwt); periodogram/welch/lombscargle/spectrogram need only scipy,
+# already a core dependency. Raises a clear ImportError if absent and the
+# scalogram method is actually used -- not needed for the other methods.
+freq = ["PyWavelets"]
 # datastorage.datastorage-based dict<->HDF5 round-tripping is one legacy
 # storage format among several for DataSet non-Array entries
 # (esc_type="datastorage"); not on conda-forge, so kept optional. Raises a

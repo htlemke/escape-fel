@@ -58,6 +58,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, SpanSelector, TextBox
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from ._axes_selection import snapshot_data_lines
+
 try:
     import lmfit
     import lmfit.models as _lmfit_models
@@ -226,11 +228,12 @@ class _FitEngine:
     """Holds fit state and does the actual work; no widgets of its own.
 
     All three UI front-ends wrap one of these and call into it. It also owns
-    picking the target line (captured once, at construction, *before* any UI
-    creates its own artists -- an interactive ``SpanSelector`` adds ``Line2D``
-    edge handles to the same axes, so re-querying ``ax.get_lines()`` later
-    risks picking up a widget-internal line instead of data) and drawing the
-    fit overlay onto ``ax``, which is common to every backend.
+    picking the target line (via a shared, axes-cached snapshot -- see
+    :func:`escape._axes_selection.snapshot_data_lines` -- taken before any
+    widget creates its own artists on the axes, since an interactive
+    ``SpanSelector`` adds ``Line2D`` edge-handle artists that a fresh
+    ``ax.get_lines()`` call could otherwise pick up as if they were data)
+    and drawing the fit overlay onto ``ax``, which is common to every backend.
     """
 
     def __init__(self, ax, line=None, model_expr="gaussian, linear"):
@@ -247,7 +250,7 @@ class _FitEngine:
         self._x_fit = None
         self._y_fit = None
 
-        data_lines = list(ax.get_lines())
+        data_lines = snapshot_data_lines(ax)
         self.line = line if line is not None else (data_lines[-1] if data_lines else None)
         self._pickable_lines = data_lines
         self._pick_cid = self.fig.canvas.mpl_connect("pick_event", self._on_pick)
