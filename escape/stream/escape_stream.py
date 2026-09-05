@@ -704,7 +704,14 @@ class Stream:
 
     def centerPerc(self, perc=68.3):
         pervals = [50 - perc / 2.0, 50 + perc / 2.0]
-        return [np.percentile(td, pervals, axis=0) for td in self.data]
+        # np.percentile raises IndexError on an empty step (unlike mean/median/std,
+        # which just emit a RuntimeWarning and return nan) -- match their behavior
+        # so one still-empty scan step doesn't blow up a whole-array caller such as
+        # Plot._getplotData().
+        return [
+            np.percentile(td, pervals, axis=0) if len(td) else np.full(2, np.nan)
+            for td in self.data
+        ]
 
     # ------------------------------------------------------------------
     # Array-mirroring API: filtering and categorisation

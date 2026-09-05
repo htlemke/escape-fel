@@ -2,22 +2,29 @@
 Live-updating matplotlib plots for escape stream data.
 
 Improvements over the original plots.py:
-  - Drawing calls use fig.canvas.draw_idle() instead of plt.draw() / plt.draw_all().
-    draw_idle() schedules the redraw on the GUI thread, making it safe to call from
-    the background update thread.  Works correctly with Qt, Tk, and the ipympl
-    (%matplotlib widget) backends used in Jupyter.
+  - Periodic updates are driven by the GUI backend's own timer
+    (``fig.canvas.new_timer()``, e.g. a real ``QTimer`` under Qt, Tk's
+    ``after()`` under TkAgg) instead of a plain background ``threading.Thread``
+    calling ``replot()``/``draw_idle()`` directly.  GUI toolkits require
+    widgets to be touched only from the thread running their event loop;
+    driving updates from an arbitrary Python thread violates that and — under
+    Qt in particular — silently fails to repaint on its own, only catching up
+    when some unrelated event (a resize, a window move) forces Qt to repaint
+    anyway.  A backend timer callback runs on the correct thread by
+    construction, so redraws happen every tick, independently, without ever
+    blocking the GUI's own event loop (the callback itself is a fast, plain
+    numpy + matplotlib update — no I/O, no waiting). Data accumulation
+    continues to happen on the separate ``EventWorker`` background thread,
+    untouched by this.
   - Each plot connects to matplotlib's 'close_event' so that:
-      a) the background update thread stops automatically, and
+      a) the update timer stops automatically, and
       b) the EscData object(s) stop accumulating.
     This fulfils the "stop acquisition when figure is destroyed" requirement.
   - Plots expose start() / stop() and a StreamContext through .context so the user
     can also drive acquisition lifetime manually or tie several plots to one context.
-  - If the inline backend is detected a helpful warning is printed (live updates from
-    background threads require an interactive backend such as ipympl / widget).
+  - If the inline backend is detected a helpful warning is printed (live updates
+    require an interactive backend such as ipympl / widget, Qt, or Tk).
 """
-
-import threading
-import time
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -29,7 +36,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 def _draw_safe(fig):
-    """Schedule a redraw on the GUI thread without blocking the caller."""
+    """Schedule a redraw. Safe to call from a backend timer callback (GUI thread)."""
     try:
         fig.canvas.draw_idle()
     except Exception:
@@ -55,17 +62,14 @@ class _LivePlotBase:
     # Subclasses must set self.fig before calling _connect_close_event().
     # They must implement plot() and replot().
 
-    _min_sleep = 0.01
-
     def __init__(self, escdata_list, axes=None, update_interval=0.5):
         self._escdata = list(escdata_list)
         self.axes = axes
         self.fig = axes.get_figure() if axes is not None else None
         self.update_interval = update_interval
         self.isUpdating = False
-        self._update_thread = None
+        self._timer = None
         self.drawn = None
-        self._last_draw_dur = 0.0
         self.autoscale = True
 
     # ------------------------------------------------------------------
@@ -82,40 +86,48 @@ class _LivePlotBase:
             ed.accumulate(False)
 
     # ------------------------------------------------------------------
-    # Update thread
+    # Update timer
     # ------------------------------------------------------------------
+    #
+    # Driven by fig.canvas.new_timer(), a backend-native timer (QTimer under
+    # Qt, Tk's after() under TkAgg, ...) that fires on the GUI event loop
+    # itself.  This is the only thread-safe way to touch a live figure
+    # repeatedly: Qt/Tk widgets may only be accessed from the thread running
+    # their event loop, and a plain background thread calling replot()/
+    # draw_idle() silently fails to trigger a real repaint under Qt (it only
+    # catches up when some unrelated GUI event forces one). On a
+    # non-interactive backend (e.g. Agg) new_timer().start() is a documented
+    # no-op, which is correct there -- there is no window to refresh.
 
-    def _update_loop(self):
-        while self.isUpdating:
-            t0 = time.time()
-            try:
-                self.replot()
-            except Exception as exc:
-                print(f"Live plot update error: {exc}")
-            elapsed = time.time() - t0
-            self._last_draw_dur = elapsed
-            sleep_t = max(self.update_interval - elapsed, self._min_sleep)
-            time.sleep(sleep_t)
+    def _on_timer(self):
+        try:
+            self.replot()
+        except Exception as exc:
+            print(f"Live plot update error: {exc}")
+        # Returning None (not 0/False) keeps the timer's callback registered.
 
     def start(self, interval=None):
-        """Start the background update thread."""
+        """Start periodic updates via the GUI backend's own timer."""
         if interval is not None:
             self.update_interval = interval
-        if self.isUpdating:
+        if self.fig is None or self.fig.canvas is None:
             return
+        if self._timer is None:
+            self._timer = self.fig.canvas.new_timer(interval=int(self.update_interval * 1000))
+            self._timer.add_callback(self._on_timer)
+        else:
+            self._timer.interval = int(self.update_interval * 1000)
         self.isUpdating = True
-        self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
-        self._update_thread.start()
+        self._timer.start()
 
     # Back-compat alias used by EscData.plot_* helpers.
     updateContinuously = start  # noqa: N815
 
     def stop(self):
-        """Stop the background update thread."""
+        """Stop periodic updates."""
         self.isUpdating = False
-        t = self._update_thread
-        if t is not None and t.is_alive():
-            t.join(timeout=2.0)
+        if self._timer is not None:
+            self._timer.stop()
 
     # ------------------------------------------------------------------
     # Context / StreamContext integration

@@ -332,6 +332,15 @@ class DataHubLocalEventHandler:
         except ValueError:
             pass
 
+    def get_all_source_ids(self):
+        """No discovery API for a direct sender; rely on live event keys instead.
+
+        ``EventWorker._last_event_keys`` (populated from received events) is
+        the accurate source of truth for a local stream and is what
+        ``StreamSession.available()`` prefers; this is only the fallback.
+        """
+        return []
+
     def context_manager(self):
         """Connect to ``host:port`` and stream all channels."""
         url = f"{self.host}:{self.port}"
@@ -560,6 +569,18 @@ class MultiSourceEventHandler:
             self.source_ids.remove(source_id)
         except ValueError:
             pass
+
+    def get_all_source_ids(self):
+        """Union of every sub-handler's discoverable channels."""
+        ids = []
+        for h in self.handlers:
+            try:
+                for sid in h.get_all_source_ids():
+                    if sid not in ids:
+                        ids.append(sid)
+            except Exception as exc:
+                _logger.warning("get_all_source_ids failed for %s: %s", type(h).__name__, exc)
+        return ids
 
     def context_manager(self):
         return MultiSourceContext(self)
