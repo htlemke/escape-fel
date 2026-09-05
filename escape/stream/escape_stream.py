@@ -136,6 +136,35 @@ class StreamContext:
 # ---------------------------------------------------------------------------
 
 class Scan:
+    """Partitions a live Stream's events into steps keyed by one or more parameters.
+
+    ``parameters`` is normally one or more other ``Stream`` objects (e.g. from
+    ``key_stream.digitize(bins).categorize(other)``), but each parameter only
+    needs to duck-type ``.name`` and ``._getEventData()`` — it does not have to
+    be a real bsread-backed ``Stream``. A small hand-written object with a
+    mutable ``.value`` returned from ``_getEventData()`` works today as a way
+    to bin live data by an *externally driven* state (e.g. "which step of an
+    external scan loop is currently open") rather than by another channel's
+    live value::
+
+        class StepIndexSource:
+            name = "step_index"
+            def __init__(self):
+                self.value = 0
+            def _getEventData(self):
+                return self.value
+
+        step_src = StepIndexSource()
+        shared_scan = Scan(parameters=[step_src])   # open, dynamic bins
+        binned = Stream(source=raw_stream._source, scan=shared_scan)
+        # elsewhere: step_src.value = next_step_index
+
+    Multiple ``Stream``s may safely share one such open-ended, growing
+    ``Scan`` (each gets its own ``DataManager``, which grows its own per-step
+    buffers to match the shared step index regardless of which Stream's data
+    reaches a given step first).
+    """
+
     def __init__(self, parameters=None, values=None, precision=None, sortValues=True):
         self._parameters = parameters
         self._sortValues = sortValues
@@ -231,11 +260,19 @@ class DataManager:
         self._lastEventId = eventId
         if index is None:
             doappend, index = self.scan._append()
-        if doappend is None:
-            return
-        if doappend:
-            self._data.append(deque(maxlen=self._data[0].maxlen if self._data else 1000))
-            self._eventIds.append(deque(maxlen=self._eventIds[0].maxlen if self._eventIds else 1000))
+            if doappend is None:  # invalid/NaN parameter values this event
+                return
+        # Grow *this* DataManager's own lists to cover `index`, rather than
+        # trusting `doappend` (whether the *shared* scan._values grew) -- when
+        # multiple Streams share one growing Scan, whichever Stream's data
+        # reaches a new step first grows scan._values on behalf of all of
+        # them, so a later Stream would see doappend=False for a step its own
+        # _data/_eventIds haven't been extended to yet, and index it out of
+        # range.
+        maxlen = self._data[0].maxlen if self._data else 1000
+        while len(self._data) <= index:
+            self._data.append(deque(maxlen=maxlen))
+            self._eventIds.append(deque(maxlen=maxlen))
         self._data[index].append(data)
         self._eventIds[index].append(eventId)
 
@@ -360,6 +397,7 @@ class EventWorker:
         self._last_event_keys = []       # channel names seen in the last event
         self._restart_timer = None
         self._restart_lock = threading.Lock()
+        self._callback_failures = {}     # cb -> {"count": int, "last_log": float}
 
         if make_default:
             globals()["eventworker"] = self
@@ -411,6 +449,51 @@ class EventWorker:
         self.stopEventLoop()
         self.startEventLoop()
 
+    # Consecutive failures of one callback before it's auto-removed from
+    # eventCallbacks (equivalent to that Stream calling accumulate(False)).
+    _CALLBACK_FAILURE_LIMIT = 20
+    # Minimum seconds between repeated log lines for the *same* callback,
+    # once it has already logged once.
+    _CALLBACK_LOG_INTERVAL = 5.0
+
+    @staticmethod
+    def _callback_label(cb):
+        """Best-effort human-readable label for a failing eventCallbacks entry."""
+        owner = getattr(cb, "__self__", None)
+        name = getattr(owner, "name", None)
+        if name is not None:
+            return repr(name)
+        return repr(cb)
+
+    def _handle_callback_error(self, cb, exc):
+        """Log a callback exception, identified and rate-limited per-callback.
+
+        Unbounded, unidentified ``print()`` spam here is what let a data-loss
+        bug in a single Stream's callback hide as unreadable console noise
+        instead of a diagnosable failure — see the escape.stream bug reports.
+        """
+        state = self._callback_failures.setdefault(cb, {"count": 0, "last_log": 0.0})
+        state["count"] += 1
+        now = time.time()
+        label = self._callback_label(cb)
+        if state["count"] == 1 or (now - state["last_log"]) >= self._CALLBACK_LOG_INTERVAL:
+            print(
+                f"EventWorker: callback for {label} failed "
+                f"(x{state['count']} so far): {exc}"
+            )
+            state["last_log"] = now
+        if state["count"] >= self._CALLBACK_FAILURE_LIMIT:
+            print(
+                f"EventWorker: callback for {label} failed "
+                f"{state['count']} times in a row -- removing it from "
+                f"eventCallbacks (equivalent to that Stream's accumulate(False))."
+            )
+            try:
+                self.eventCallbacks.remove(cb)
+            except ValueError:
+                pass
+            self._callback_failures.pop(cb, None)
+
     def eventLoop(self):  # noqa: N802
         backoff = 1.0
         while not self._stop_event.is_set():
@@ -432,8 +515,9 @@ class EventWorker:
                             for cb in list(self.eventCallbacks):
                                 try:
                                     cb()
+                                    self._callback_failures.pop(cb, None)
                                 except Exception as exc:
-                                    print(f"EventWorker callback error: {exc}")
+                                    self._handle_callback_error(cb, exc)
                         time.sleep(0.001)
             except Exception as exc:
                 if self._stop_event.is_set():
@@ -796,6 +880,11 @@ class Stream:
 
         Mirrors ``escape.Array.categorize()``.  Returns a new Stream that
         accumulates *other_stream*'s data using *self*'s scan step assignments.
+
+        Multiple Streams may share the same ``Scan`` this way — including one
+        built against a hand-written, non-bsread parameter source for
+        externally driven categorization (see the :class:`Scan` docstring) —
+        each safely keeps its own accumulated data in step with the others.
 
         Parameters
         ----------

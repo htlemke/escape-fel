@@ -18,7 +18,6 @@ import sys
 import inspect
 from scipy.stats import skew
 from scipy.interpolate import interp1d
-import scipy
 
 
 units = {
@@ -894,8 +893,46 @@ def bin_ids_from_source(index, bin_source):
 ##########
 
 
-def peakAna(x, y, nb=3, plotpoints=False):
-    """nb = number of point (on each side) to use as background"""
+def ana_peak_step(x, y, nb=3, plotpoints=False):
+    """Characterize a peak or a step in ``y(x)`` by interpolation, not fitting.
+
+    Auto-detects which of the two ``y`` looks like (comparing the skewness of
+    ``y`` itself against the skewness of its derivative -- a peak skews the
+    former, a step skews the latter), linearly interpolates a background
+    from the first/last ``nb`` points, and returns the feature's center and
+    width:
+
+    - **Peak**: width is the FWHM, found by linearly interpolating the two
+      half-max crossings of the background-subtracted ``y``.
+    - **Step**: width is the 12%-88% rise/fall distance, found the same way
+      but on levels estimated from the flat regions on either side of the
+      step (via a running-``std`` walk out from each edge to find where the
+      step's transition ends) rather than a fitted sigmoid.
+
+    Parameters
+    ----------
+    x, y : array-like
+        The data. ``x`` need not be uniformly spaced.
+    nb : int
+        Number of points at each end of the array used to estimate the
+        background level (peak case) or the step's low/high plateaus
+        (step case).
+    plotpoints : bool
+        If ``True``, overlay the background, half-max/edge levels, and the
+        interpolated center/width points onto the current axes.
+
+    Returns
+    -------
+    CEN : float
+        Interpolated center (peak center, or step midpoint).
+    FWHM : float
+        Interpolated width (peak FWHM, or step 12%-88% rise/fall distance).
+        ``nan`` if the step-edge levels couldn't be resolved.
+    PEAK : float
+        Location of the extremum used to distinguish/background-subtract
+        the feature -- ``y``'s max for a peak, or the location of steepest
+        rise/fall (max of ``diff(y)``) for a step.
+    """
     ## get background
     xb = np.hstack((x[0:nb], x[-(nb):]))
     yb = np.hstack((y[0:nb], y[-(nb):]))
@@ -943,29 +980,28 @@ def peakAna(x, y, nb=3, plotpoints=False):
     if plotpoints and ispeak is True:
         # plot the found points for center and FWHM edges
         plt.ion()
-        plt.hold(True)
         plt.plot(x, b, "g--")
         plt.plot(x, b + ywmax, "g--")
-        plt.plot([xhm1, xhm1], polyval(a, xhm1) + [0, ywmax], "g--")
-        plt.plot([xhm2, xhm2], polyvfal(a, xhm2) + [0, ywmax], "g--")
-        plt.plot([CEN, CEN], polyval(a, CEN) + [0, ywmax], "g--")
-        plt.plot([xhm1, xhm2], [polyval(a, xhm1), polyval(a, xhm2)] + ywmax / 2, "gx")
+        plt.plot([xhm1, xhm1], np.polyval(a, xhm1) + [0, ywmax], "g--")
+        plt.plot([xhm2, xhm2], np.polyval(a, xhm2) + [0, ywmax], "g--")
+        plt.plot([CEN, CEN], np.polyval(a, CEN) + [0, ywmax], "g--")
+        plt.plot([xhm1, xhm2], [np.polyval(a, xhm1), np.polyval(a, xhm2)] + ywmax / 2, "gx")
         plt.draw()
 
     if not ispeak:
         try:
-            # findings start of step coming from left.
-            std0 = scipy.std(y[0:nb])
+            # find start of step coming from the left.
+            std0 = np.std(y[0:nb])
             nt = nb
-            while (scipy.std(y[0:nt]) < (2 * std0)) and (nt < len(y)):
+            while (np.std(y[0:nt]) < (2 * std0)) and (nt < len(y)):
                 nt = nt + 1
-            lev0 = scipy.mean(y[0:nt])
-            # findings start of step coming from right.
-            std0 = scipy.std(y[-nb:])
+            lev0 = np.mean(y[0:nt])
+            # find start of step coming from the right.
+            std0 = np.std(y[-nb:])
             nt = nb
-            while (scipy.std(y[-nt:]) < (2 * std0)) and (nt < len(y)):
+            while (np.std(y[-nt:]) < (2 * std0)) and (nt < len(y)):
                 nt = nt + 1
-            lev1 = scipy.mean(y[-nt:])
+            lev1 = np.mean(y[-nt:])
             gg = np.abs(y - ((lev0 + lev1) / 2)).argmin()
             ftx = y[gg - 2 : gg + 2]
             fty = x[gg - 2 : gg + 2]
@@ -980,28 +1016,21 @@ def peakAna(x, y, nb=3, plotpoints=False):
             if ftx[-1] < ftx[0]:
                 ftx = ftx[::-1]
                 fty = fty[::-1]
-            # print " %f %f %f %f %f" % (ftx[0],ftx[1],fty[0],fty[1],lev1+(lev0-lev1)*0.1195)
             ip = interp1d(ftx, fty, kind="linear")
-            H1 = ip((lev1 + (lev0 - lev1) * 0.1195))
-            # print "H1=%f" % H1
+            H1 = ip(lev1 + (lev0 - lev1) * 0.1195)
 
             gg = np.abs(y - (lev0 + (lev1 - lev0) * 0.1195)).argmin()
-
             ftx = y[gg - 2 : gg + 2]
             fty = x[gg - 2 : gg + 2]
-
             if ftx[-1] < ftx[0]:
                 ftx = ftx[::-1]
                 fty = fty[::-1]
-            #    print " %f %f %f %f %f" % (ftx[0],ftx[1],fty[0],fty[1],lev0+(lev1-lev0)*0.1195)
             ip = interp1d(ftx, fty, kind="linear")
-            H2 = ip((lev0 + (lev1 - lev0) * 0.1195))
-            # print "H2=%f" % abs(H2-H1)
+            H2 = ip(lev0 + (lev1 - lev0) * 0.1195)
             FWHM = abs(H2 - H1)
             if plotpoints is True:
                 # plot the found points for center and FWHM edges
                 plt.ion()
-                # plt.hold(True)
                 plt.plot([x.min(), x.max()], [lev0, lev0], "g--")
                 plt.plot([x.min(), x.max()], [lev1, lev1], "g--")
                 plt.plot([H2, H2], [lev0, lev1], "g--")
@@ -1017,7 +1046,7 @@ def peakAna(x, y, nb=3, plotpoints=False):
                     "gx",
                 )
                 plt.draw()
-        except:
+        except Exception:
             CEN = np.nan
             FWHM = np.nan
             PEAK = np.nan

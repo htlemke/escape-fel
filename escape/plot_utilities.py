@@ -1255,7 +1255,127 @@ def _suppress_inline_redisplay(obj):
     obj._ipython_display_ = lambda: None
 
 
-def nfigure(num=_AUTO_NAME, *, detached=False, title=None, **kwargs):
+def _detect_plot_backend():
+    """"qt", "ipympl", or ``None`` (no toolbar worth attaching to)."""
+    backend = plt.get_backend().lower()
+    if "qt" in backend:
+        return "qt"
+    if "ipympl" in backend:
+        return "ipympl"
+    return None
+
+
+def _track_active_axes(fig):
+    """Remember whichever axes in ``fig`` was last clicked, in
+    ``fig._escape_active_ax`` -- ``plt.gca()`` doesn't reliably reflect this
+    for a multi-axes figure (it tracks the last axes *created*, not clicked),
+    which the fit button (see :func:`attach_fit_button`) needs to know which
+    of possibly several subplots to act on."""
+    if getattr(fig, "_escape_active_ax_cid", None) is not None:
+        return
+
+    def _on_click(event):
+        if event.inaxes is not None:
+            fig._escape_active_ax = event.inaxes
+
+    fig._escape_active_ax_cid = fig.canvas.mpl_connect("button_press_event", _on_click)
+    fig._escape_active_ax = fig.axes[0] if fig.axes else None
+
+
+def _get_active_axes(fig):
+    ax = getattr(fig, "_escape_active_ax", None)
+    if ax is not None and ax in fig.axes:
+        return ax
+    return fig.axes[0] if fig.axes else None
+
+
+def _run_fit_button(fig):
+    """The Fit toolbar button's click handler, shared by the Qt/ipympl
+    attachments below. Importing ``escape.fit_gui`` (and so ``lmfit``) is
+    deferred to here -- the click -- rather than done at attach time, so
+    attaching the button costs nothing up front even without lmfit
+    installed."""
+    ax = _get_active_axes(fig)
+    if ax is None:
+        print("[escape] no axes to fit in this figure.")
+        return
+    try:
+        from escape.fit_gui import AxesFitter
+    except ImportError as e:
+        print(f"[escape] the Fit button needs the optional 'lmfit' dependency: {e}")
+        return
+    AxesFitter(ax)
+
+
+def _attach_fit_button_qt(fig):
+    toolbar = getattr(fig.canvas.manager, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "addAction"):
+        return  # no toolbar (e.g. rcParams['toolbar'] == 'None') -- nothing to attach to
+
+    icon = None
+    try:
+        import qtawesome as qta
+
+        icon = qta.icon("mdi.chart-bell-curve")
+    except Exception:
+        pass
+
+    def _on_click(checked=False):
+        _run_fit_button(fig)
+
+    toolbar.addSeparator()
+    action = toolbar.addAction(icon, "Fit", _on_click) if icon is not None else toolbar.addAction("Fit", _on_click)
+    action.setToolTip("Attach an interactive lmfit fitting panel to the active axes")
+
+
+def _attach_fit_button_ipympl(fig):
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "toolitems"):
+        return
+
+    def _on_click():
+        _run_fit_button(fig)
+
+    # a plain function assigned as an *instance* attribute stays unbound (no
+    # implicit self) -- exactly the zero-arg callable handle_toolbar_button
+    # looks up via getattr(toolbar, method_name)().
+    toolbar.escape_fit_button = _on_click
+    toolbar.toolitems = list(toolbar.toolitems) + [
+        ("Fit", "Attach an interactive lmfit fitting panel to the active axes", "line-chart", "escape_fit_button")
+    ]
+
+
+def attach_fit_button(fig):
+    """Attach a "Fit" button to ``fig``'s toolbar, opening an interactive
+    lmfit panel (:func:`escape.fit_gui.AxesFitter`) on whichever of its axes
+    was last clicked (the first axes, if none has been clicked yet) --
+    Qt and ipympl (``%matplotlib widget``) backends only.
+
+    A no-op, not an error, anywhere this doesn't apply: other backends
+    (inline, plain ``Agg``, ...) have no interactive toolbar to attach to,
+    and any failure while attaching (an unexpected toolbar shape, a
+    ``rcParams['toolbar'] == 'None'`` figure, ...) is swallowed with a
+    printed note rather than raised -- this is a convenience layered onto
+    figure creation and should never be the reason a plot call fails.
+    Idempotent: attaching twice to the same figure is a no-op the second time.
+    """
+    if getattr(fig, "_escape_fit_attached", False):
+        return
+    try:
+        backend = _detect_plot_backend()
+        if backend is None:
+            return
+        _track_active_axes(fig)
+        if backend == "qt":
+            _attach_fit_button_qt(fig)
+        else:
+            _attach_fit_button_ipympl(fig)
+        fig._escape_fit_attached = True
+    except Exception as e:
+        print(f"[escape] couldn't attach the Fit button: {e}")
+
+
+def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, **kwargs):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
     instead of being reused/added to (matplotlib's default when ``num``
@@ -1282,6 +1402,11 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, **kwargs):
     title : str, optional
         Sidecar panel title. Defaults to ``str(num)`` -- the figure's own
         name effectively doubles as its title.
+    fit_button : bool
+        Attach a "Fit" toolbar button (see :func:`attach_fit_button`) --
+        Qt/ipympl backends only, a harmless no-op elsewhere. Defaults to
+        ``True``: attaching it costs nothing (no ``lmfit`` import) unless
+        actually clicked.
     **kwargs
         Forwarded to ``plt.figure``.
     """
@@ -1292,13 +1417,15 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, **kwargs):
     plt.close(num)
     _close_sidecar(num)
     fig = plt.figure(num=num, **kwargs)
+    if fit_button:
+        attach_fit_button(fig)
     if detached:
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig
 
 
 def nsubplots(
-    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, **kwargs
+    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, fit_button=True, **kwargs
 ):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
@@ -1316,6 +1443,9 @@ def nsubplots(
         (see :func:`nfigure`).
     title : str, optional
         Sidecar panel title. Defaults to ``str(num)``.
+    fit_button : bool
+        Attach a "Fit" toolbar button (see :func:`attach_fit_button`) to the
+        figure. Defaults to ``True`` (see :func:`nfigure`).
     **kwargs
         Forwarded to ``plt.subplots``.
     """
@@ -1326,12 +1456,14 @@ def nsubplots(
     plt.close(num)
     _close_sidecar(num)
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+    if fit_button:
+        attach_fit_button(fig)
     if detached:
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig, ax
 
 
-def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, **kwargs):
+def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_button=True, **kwargs):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
     when omitted).
@@ -1348,6 +1480,9 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, **kwargs)
         (see :func:`nfigure`).
     title : str, optional
         Sidecar panel title. Defaults to ``str(num)``.
+    fit_button : bool
+        Attach a "Fit" toolbar button (see :func:`attach_fit_button`) to the
+        figure. Defaults to ``True`` (see :func:`nfigure`).
     **kwargs
         Forwarded to ``plt.subplot_mosaic``.
     """
@@ -1358,6 +1493,8 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, **kwargs)
     plt.close(num)
     _close_sidecar(num)
     fig, axd = plt.subplot_mosaic(*args, num=num, **kwargs)
+    if fit_button:
+        attach_fit_button(fig)
     if detached:
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig, axd
