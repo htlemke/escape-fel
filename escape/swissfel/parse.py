@@ -2,6 +2,7 @@ from asyncio import run
 import pickle
 import re
 import shutil
+import time
 from unicodedata import name
 
 import numpy as np
@@ -166,6 +167,100 @@ def interpret_raw_data_definition(
         return metadata_files
 
 
+def _wait_for_data_files_on_disk(
+    metadata_file,
+    search_paths=["./", "./scan_data/", "../scan_data"],
+    exclude_from_files=[],
+    poll_interval=10,
+    timeout=None,
+    verbose=True,
+):
+    """Block until every raw data file referenced by a scan-info JSON exists.
+
+    Repeatedly re-reads ``metadata_file`` and checks each file referenced in
+    its ``scan_files`` against ``search_paths``, using the same path
+    resolution rules as the parsers (e.g.
+    :func:`~escape.swissfel.cluster.parseScanEcoV01`). Returns as soon as
+    every file for every scan step is present on disk. This only gates
+    *finishing* the dataset — the parsers themselves already tolerate
+    parsing whatever files are available while some are still missing.
+
+    Parameters
+    ----------
+    metadata_file : str or Path
+        Path to the scan-info JSON file.
+    search_paths : list of str, optional
+        Local directories searched for raw HDF5 data files referenced by the
+        metadata JSON, same semantics as ``load_dataset_from_scan``.
+    exclude_from_files : list of str, optional
+        Channel names or file patterns to skip, same as elsewhere.
+    poll_interval : float, optional
+        Seconds to sleep between filesystem re-checks. Defaults to ``10``.
+    timeout : float or None, optional
+        Give up and raise ``TimeoutError`` after this many seconds of
+        waiting. ``None`` (default) waits indefinitely.
+    verbose : bool, optional
+        Print how many of the referenced files are present on each poll.
+
+    Returns
+    -------
+    dict
+        The scan-info JSON (``s``) as last read, once every referenced file
+        is present.
+    """
+    metadata_file = Path(metadata_file)
+    start = time.monotonic()
+    run_root_directory = None
+    if metadata_file.parent.stem == "aux":
+        run_root_directory = metadata_file.parent.parent
+
+    while True:
+        s, scan_info_filepath = readScanEcoJson_v01(
+            metadata_file, exclude_from_files=exclude_from_files
+        )
+
+        missing = []
+        n_total = 0
+        for files_step in s["scan_files"]:
+            searchpaths = None
+            for fina in files_step:
+                n_total += 1
+                fp = Path(fina)
+                if (not fp.is_absolute()) and run_root_directory:
+                    fp = run_root_directory / fp
+                fn = Path(fp.name)
+                if not searchpaths:
+                    searchpaths = [fp.parent] + [
+                        scan_info_filepath.parent / Path(tp.format(fp.parent.name))
+                        for tp in search_paths
+                    ]
+                if not any((path / fn).exists() for path in searchpaths):
+                    missing.append(fp)
+
+        if not missing:
+            if verbose:
+                print(
+                    f"All {n_total} data file(s) referenced in {metadata_file.name} are present."
+                )
+            return s
+
+        if verbose:
+            print(
+                f"Waiting for data files: {n_total - len(missing)}/{n_total} present "
+                f"({len(missing)} missing) in {metadata_file.name} ..."
+            )
+
+        if timeout is not None and (time.monotonic() - start) > timeout:
+            raise TimeoutError(
+                f"Timed out after {timeout}s waiting for {len(missing)} data file(s) "
+                f"referenced by {metadata_file} (still missing, e.g. "
+                f"{[m.as_posix() for m in missing[:5]]}"
+                f"{', ...' if len(missing) > 5 else ''})"
+            )
+
+        time.sleep(poll_interval)
+
+
 def load_dataset_from_scan(
     metadata_file=None,
     run_number=None,
@@ -202,6 +297,9 @@ def load_dataset_from_scan(
     verbose=0,
     perm_result_file='g+rw',
     parse_version=3,
+    wait_for_data_files=False,
+    wait_poll_interval=10,
+    wait_timeout=None,
 ):
     """Load detector and scan-parameter data from one or more SwissFEL scan runs.
 
@@ -316,6 +414,22 @@ def load_dataset_from_scan(
         speeds up parsing scans with many files of the same instrument
         configuration.  Pass ``1`` or ``2`` to fall back to the older
         parsers if ``3`` ever misbehaves for a given beamline's file layout.
+    wait_for_data_files : bool, optional
+        If ``True``, block (per metadata file, polling every
+        ``wait_poll_interval`` seconds) until every raw data file referenced
+        by that run's scan-info JSON exists on disk — e.g. for a scan that
+        is still acquiring — before parsing it for real and folding it into
+        the returned :class:`~escape.storage.DataSet`.  Files already on
+        disk may be parsed while waiting; only the final ``DataSet`` is
+        gated on completeness.  Defaults to ``False`` (parse whatever is
+        currently on disk, same as before this option existed).
+    wait_poll_interval : float, optional
+        Seconds between filesystem re-checks when ``wait_for_data_files`` is
+        ``True``.  Defaults to ``10``.
+    wait_timeout : float or None, optional
+        Give up and raise ``TimeoutError`` after this many seconds of
+        waiting per metadata file when ``wait_for_data_files`` is ``True``.
+        ``None`` (default) waits indefinitely.
 
     Returns
     -------
@@ -420,6 +534,16 @@ def load_dataset_from_scan(
         s_collection = []
 
         for file_idx, metadata_file in enumerate(metadata_files):
+            if wait_for_data_files:
+                _wait_for_data_files_on_disk(
+                    metadata_file,
+                    search_paths=search_paths,
+                    exclude_from_files=exclude_from_files,
+                    poll_interval=wait_poll_interval,
+                    timeout=wait_timeout,
+                    verbose=True,
+                )
+
             td, s = _parser(
                 metadata_file,
                 search_paths=search_paths,

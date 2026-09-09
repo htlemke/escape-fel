@@ -57,6 +57,11 @@ freq = ["PyWavelets"]
 # (esc_type="datastorage"); not on conda-forge, so kept optional. Raises a
 # clear ImportError (not silent fallback) if used without it installed.
 legacy = ["datastorage"]
+# escape.stream.graph.build_graph()/draw() reconstruct a Stream's computation
+# graph as a networkx.DiGraph; raises a clear ImportError (not silent
+# fallback) if used without networkx installed. escape.stream itself is not
+# part of the stable API (see CLAUDE.md) so this stays independently optional.
+stream_graph = ["networkx"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"

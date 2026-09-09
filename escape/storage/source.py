@@ -2,7 +2,18 @@ import pickle
 from distributed.protocol import serialize, deserialize
 import inspect
 
-SOURCETYPES = ["factory", "dataset", "status", "array_map_index_blocks"]
+SOURCETYPES = [
+    "factory",
+    "dataset",
+    "status",
+    "array_map_index_blocks",
+    # A leaf Array with no real data, standing in for data to be supplied
+    # later (see escape.storage.graph.placeholder) -- and the recorded
+    # result of an operation applied to one (see .../graph.py's record_op) --
+    # both unbound until escape.storage.graph.bind() supplies real data.
+    "placeholder",
+    "symbolic_op",
+]
 
 
 class Source:
@@ -15,6 +26,10 @@ class Source:
         base_dataset=None,
         iargout=None,
         name_dataset=None,
+        role=None,
+        shape=None,
+        dtype=None,
+        func_name=None,
     ):
         if type not in SOURCETYPES:
             raise ValueError(f'Type "{type}" not in {SOURCETYPES}!')
@@ -33,6 +48,17 @@ class Source:
             self.base_dataset = Source("dataset", name_dataset=base_dataset.name)
         elif type == "dataset":
             self.name_dataset = name_dataset
+        elif type == "placeholder":
+            self.role = role
+            self.shape = shape
+            self.dtype = dtype
+        elif type == "symbolic_op":
+            # func_name resolves via escape.storage.graph's registry, not a
+            # live function reference -- see that module's docstring for why
+            # (this needs to survive being reloaded in a different process).
+            self.func_name = func_name
+            self.args = args
+            self.kwargs = kwargs
 
     @classmethod
     def from_group(cls, group):

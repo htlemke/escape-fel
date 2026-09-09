@@ -1192,26 +1192,41 @@ def _auto_cell_name(prefix="cell"):
     Prefers the frontend's persistent per-cell id (JupyterLab/Notebook 7 and
     VS Code notebooks report one; it only changes if the cell is deleted and
     recreated). Falls back to a hash of the executing cell's source, which
-    is available in any IPython shell (e.g. a plain terminal) even without a
-    notebook frontend reporting a cell id -- note this means editing the
-    cell's code changes the name. Returns None if there's no IPython session
-    at all (e.g. a plain script), so callers can use their own default.
+    is available in any *kernel-backed* IPython shell (e.g. a Jupyter
+    console) even without a notebook frontend reporting a cell id -- note
+    this means editing the cell's code changes the name.
+
+    A plain terminal IPython session (``TerminalInteractiveShell``) has
+    neither: it isn't driven by kernel messages at all, so it has no
+    ``get_parent()`` to ask. There each input line is its own one-off
+    "cell" anyway, so we fall back to the shell's ``execution_count``
+    (unique and incrementing per call) -- this makes a bare, no-``num``
+    call create a fresh figure every time, same as always getting a new
+    cell in a notebook. Returns None if there's no IPython session at all
+    (e.g. a plain script), so callers can use their own default.
     """
     ip = get_ipython()
     if ip is None:
         return None
-    parent = ip.get_parent() or {}
-    metadata = parent.get("metadata", {}) or {}
-    cell_id = metadata.get("cellId") or metadata.get("cell_id")
-    if not cell_id and isinstance(metadata.get("vscode"), dict):
-        cell_id = metadata["vscode"].get("cellId")
-    if cell_id:
-        return f"{prefix}-{cell_id}"
 
-    code = (parent.get("content", {}) or {}).get("code")
-    if code:
-        digest = hashlib.sha1(code.encode("utf-8")).hexdigest()[:10]
-        return f"{prefix}-{digest}"
+    get_parent = getattr(ip, "get_parent", None)
+    if get_parent is not None:
+        parent = get_parent() or {}
+        metadata = parent.get("metadata", {}) or {}
+        cell_id = metadata.get("cellId") or metadata.get("cell_id")
+        if not cell_id and isinstance(metadata.get("vscode"), dict):
+            cell_id = metadata["vscode"].get("cellId")
+        if cell_id:
+            return f"{prefix}-{cell_id}"
+
+        code = (parent.get("content", {}) or {}).get("code")
+        if code:
+            digest = hashlib.sha1(code.encode("utf-8")).hexdigest()[:10]
+            return f"{prefix}-{digest}"
+
+    execution_count = getattr(ip, "execution_count", None)
+    if execution_count is not None:
+        return f"{prefix}-term-{execution_count}"
 
     return None
 
@@ -1289,6 +1304,82 @@ def _get_active_axes(fig):
     return fig.axes[0] if fig.axes else None
 
 
+def _gui_is_alive(widget):
+    """Whether a previously-created panel (Qt widget or ipywidgets widget)
+    is still usable. Qt: calling any method on a widget whose underlying
+    C++ object was destroyed raises ``RuntimeError``. ipywidgets: ``.comm``
+    becomes ``None`` once the widget is ``.close()``-d."""
+    if hasattr(widget, "comm"):
+        return widget.comm is not None
+    try:
+        widget.isVisible()
+        return True
+    except RuntimeError:
+        return False
+
+
+def _raise_gui(widget):
+    """Bring an existing Qt panel back to the front; a no-op for ipywidgets
+    (there's no separate window to raise -- it's already inline/in its
+    Sidecar tab)."""
+    if hasattr(widget, "comm"):
+        return
+    try:
+        widget.show()
+        widget.raise_()
+        widget.activateWindow()
+    except RuntimeError:
+        pass
+
+
+def _get_or_create_axes_gui(ax, attr_name, factory):
+    """Reuse a previously-created interactive panel for ``ax`` (cached on
+    the axes as ``attr_name``) across repeated toolbar-button clicks,
+    instead of building a fresh one every time.
+
+    This matters for two reasons: it's what keeps whatever the user already
+    typed into the panel (model expression, parameter edits, ...) across
+    clicks rather than discarding it every time, and -- for the Qt
+    backend specifically -- it fixes a real bug: a standalone ``QWidget``
+    with no Python reference kept anywhere is eligible for garbage
+    collection at any point, which silently destroys the underlying window.
+    A discarded return value from the panel's constructor was exactly that;
+    caching it here is what keeps it alive.
+    """
+    existing = getattr(ax, attr_name, None)
+    if existing is not None and _gui_is_alive(existing):
+        _raise_gui(existing)
+        return existing
+    gui = factory()
+    setattr(ax, attr_name, gui)
+    return gui
+
+
+# attribute names _get_or_create_axes_gui caches interactive panels under --
+# listed here so _close_axes_guis can find and close all of them at once.
+_AXES_GUI_ATTRS = ("_escape_fit_gui",)
+
+
+def _close_axes_guis(fig):
+    """Close any escape interactive panel (Fit, ...) cached on ``fig``'s
+    axes -- call this on a figure just before discarding it (see
+    ``nfigure``/``nsubplots``/``nsubplot_mosaic`` replacing a same-named
+    figure). Without this, a panel referencing axes whose figure is about
+    to be thrown away doesn't get cleaned up on its own -- it isn't
+    reachable from the new figure, but it's exactly what's keeping the old,
+    now-orphaned axes/figure alive, so it just lingers as a stray,
+    non-functional window instead of either disappearing or continuing to
+    work."""
+    for ax in getattr(fig, "axes", []):
+        for attr in _AXES_GUI_ATTRS:
+            gui = getattr(ax, attr, None)
+            if gui is not None:
+                try:
+                    gui.close()
+                except Exception:
+                    pass
+
+
 def _run_fit_button(fig):
     """The Fit toolbar button's click handler, shared by the Qt/ipympl
     attachments below. Importing ``escape.fit_gui`` (and so ``lmfit``) is
@@ -1304,7 +1395,7 @@ def _run_fit_button(fig):
     except ImportError as e:
         print(f"[escape] the Fit button needs the optional 'lmfit' dependency: {e}")
         return
-    AxesFitter(ax)
+    _get_or_create_axes_gui(ax, "_escape_fit_gui", lambda: AxesFitter(ax))
 
 
 def _attach_fit_button_qt(fig):
@@ -1375,7 +1466,7 @@ def attach_fit_button(fig):
         print(f"[escape] couldn't attach the Fit button: {e}")
 
 
-def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, **kwargs):
+def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, close_previous=True, **kwargs):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
     instead of being reused/added to (matplotlib's default when ``num``
@@ -1407,25 +1498,39 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, **kw
         Qt/ipympl backends only, a harmless no-op elsewhere. Defaults to
         ``True``: attaching it costs nothing (no ``lmfit`` import) unless
         actually clicked.
+    close_previous : bool
+        If ``True`` (the default, and currently the only behavior this
+        function has ever had), a pre-existing figure of the same ``num``
+        is closed and a fresh one created -- the "clean slate on cell
+        re-run" behavior described above. If ``False``, an existing figure
+        is returned as-is instead: same ``Figure``, same axes, whatever was
+        already plotted on it untouched -- which also means any panel
+        attached to it (e.g. via the Fit button) just keeps working,
+        without the cleanup :func:`_close_axes_guis` exists for. Ignored
+        (there is nothing to reuse) if no figure with this ``num`` exists yet.
     **kwargs
-        Forwarded to ``plt.figure``.
+        Forwarded to ``plt.figure`` when a new figure is actually created
+        (ignored when an existing one is reused).
     """
     if num is _AUTO_NAME:
         num = _auto_cell_name() or "no name"
-    if num in plt.get_figlabels():
+    exists = num in plt.get_figlabels()
+    if exists and close_previous:
         Warning('Figure of name "{num}" exists and is closed.')
-    plt.close(num)
-    _close_sidecar(num)
-    fig = plt.figure(num=num, **kwargs)
+        _close_axes_guis(plt.figure(num))
+        plt.close(num)
+        exists = False
+    fig = plt.figure(num) if exists else plt.figure(num=num, **kwargs)
     if fit_button:
         attach_fit_button(fig)
     if detached:
+        _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig
 
 
 def nsubplots(
-    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, fit_button=True, **kwargs
+    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, fit_button=True, close_previous=True, **kwargs
 ):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
@@ -1446,24 +1551,43 @@ def nsubplots(
     fit_button : bool
         Attach a "Fit" toolbar button (see :func:`attach_fit_button`) to the
         figure. Defaults to ``True`` (see :func:`nfigure`).
+    close_previous : bool
+        If ``False``, reuse a pre-existing figure of the same ``num`` as-is
+        (same figure, same axes, same ``nrows``/``ncols`` as when it was
+        first created -- passing different ones here has no effect on it)
+        instead of closing and recreating it (see :func:`nfigure`).
     **kwargs
-        Forwarded to ``plt.subplots``.
+        Forwarded to ``plt.subplots`` when a new figure is actually created.
     """
     if num is _AUTO_NAME:
         num = _auto_cell_name() or "no name"
-    if num in plt.get_figlabels():
+    exists = num in plt.get_figlabels()
+    if exists and close_previous:
         Warning('Figure of name "{num}" exists and is closed.')
-    plt.close(num)
-    _close_sidecar(num)
-    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+        _close_axes_guis(plt.figure(num))
+        plt.close(num)
+        exists = False
+    if exists:
+        fig = plt.figure(num)
+        cached = getattr(fig, "_escape_nsubplots_axes", None)
+        if cached is None:
+            raise RuntimeError(
+                f"close_previous=False but figure {num!r} wasn't created by nsubplots() "
+                "-- no cached axes layout to reuse."
+            )
+        ax = cached
+    else:
+        fig, ax = plt.subplots(nrows=nrows, ncols=ncols, num=num, **kwargs)
+        fig._escape_nsubplots_axes = ax
     if fit_button:
         attach_fit_button(fig)
     if detached:
+        _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig, ax
 
 
-def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_button=True, **kwargs):
+def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_button=True, close_previous=True, **kwargs):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
     when omitted).
@@ -1483,19 +1607,37 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
     fit_button : bool
         Attach a "Fit" toolbar button (see :func:`attach_fit_button`) to the
         figure. Defaults to ``True`` (see :func:`nfigure`).
+    close_previous : bool
+        If ``False``, reuse a pre-existing figure of the same ``num`` as-is
+        (same figure, same mosaic layout as when it was first created)
+        instead of closing and recreating it (see :func:`nfigure`).
     **kwargs
-        Forwarded to ``plt.subplot_mosaic``.
+        Forwarded to ``plt.subplot_mosaic`` when a new figure is actually created.
     """
     if num is _AUTO_NAME:
         num = _auto_cell_name() or "no name"
-    if num in plt.get_figlabels():
+    exists = num in plt.get_figlabels()
+    if exists and close_previous:
         Warning('Figure of name "{num}" exists and is closed.')
-    plt.close(num)
-    _close_sidecar(num)
-    fig, axd = plt.subplot_mosaic(*args, num=num, **kwargs)
+        _close_axes_guis(plt.figure(num))
+        plt.close(num)
+        exists = False
+    if exists:
+        fig = plt.figure(num)
+        cached = getattr(fig, "_escape_mosaic_axd", None)
+        if cached is None:
+            raise RuntimeError(
+                f"close_previous=False but figure {num!r} wasn't created by nsubplot_mosaic() "
+                "-- no cached axes layout to reuse."
+            )
+        axd = cached
+    else:
+        fig, axd = plt.subplot_mosaic(*args, num=num, **kwargs)
+        fig._escape_mosaic_axd = axd
     if fit_button:
         attach_fit_button(fig)
     if detached:
+        _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig, axd
 
@@ -2539,14 +2681,21 @@ class StackViewer(widgets.VBox):
             plt.close(self.trend_fig)
 
 
-def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, **kwargs):
+def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=None, **kwargs):
     """Plot a line with a shaded error band (a lighter-weight
     ``fill_between``-style alternative to matplotlib's ``errorbar``).
+
+    Also used by ``escape.stream``'s live plots (``Plot``, ``HistPlot``,
+    ``ValueHistPlot`` in ``escape/stream/plots.py``) for the same
+    step-histogram-with-band look -- kept as parallel, dependency-light
+    implementations there rather than importing this module directly, since
+    ``escape.plot_utilities`` pulls in ``ipywidgets``/``dask``/``IPython``
+    that ``escape.stream`` deliberately doesn't require.
 
     Parameters
     ----------
     x, y : array-like
-        Line coordinates.
+        Line (or step) coordinates.
     yerr : array-like, optional
         Either a 1-D array of symmetric errors, or a 2-D ``(2, N)`` array of
         ``(lower, upper)`` errors for an asymmetric band. Omit for a plain
@@ -2555,23 +2704,44 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, **kwa
         Accepted for interface symmetry with ``errorbar`` but not currently
         used -- no horizontal error shading is drawn.
     fmt : str, optional
-        Matplotlib format string for the line (e.g. ``"o-"``).
+        Matplotlib format string for the line (e.g. ``"o-"``). Ignored when
+        *step* is given (a step plot has no marker/linestyle format string).
     axis : matplotlib.axes.Axes, optional
         Axes to plot into. Defaults to the current axes.
     falpha : float
         Alpha (transparency) of the shaded error band.
+    step : {None, 'pre', 'post', 'mid'}, optional
+        If given, draws a step plot (``axis.step(..., where=step)``) with a
+        matching stepped error band (``axis.fill_between(..., step=step)``)
+        instead of a smooth line/polygon -- the natural style for a
+        histogram-like quantity (one value per bin, held constant across
+        it). ``'mid'`` is the usual choice when *x* holds bin centers.
     **kwargs
-        Forwarded to ``axis.plot`` for the line itself.
+        Forwarded to ``axis.step``/``axis.plot`` for the line itself.
 
     Returns
     -------
     lh : matplotlib.lines.Line2D
         The plotted line.
-    fh : matplotlib.patches.Polygon or None
+    fh : matplotlib.patches.Polygon or matplotlib.collections.PolyCollection or None
         The shaded error band, or ``None`` if ``yerr`` wasn't given.
     """
     if not axis:
         axis = plt.gca()
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    if step is not None:
+        lh = axis.step(x, y, where=step, **kwargs)[0]
+        if yerr is None:
+            return lh, None
+        yerr = np.atleast_1d(yerr)
+        lo, hi = (y - yerr, y + yerr) if yerr.ndim == 1 else (y - yerr[0, :], y + yerr[1, :])
+        fh = axis.fill_between(
+            x, lo, hi, step=step, alpha=falpha, color=lh.get_color(), lw=0,
+            zorder=lh.get_zorder() - 0.1,
+        )
+        return lh, fh
 
     args = [x, y]
     if fmt is not None:
@@ -2582,18 +2752,16 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, **kwa
         yerr = np.atleast_1d(yerr)
         if yerr.ndim == 1:
             fh = axis.fill(
-                np.hstack([np.asarray(x), np.asarray(x)[::-1]]),
-                np.hstack([np.asarray(y) - yerr, np.asarray(y)[::-1] + yerr[::-1]]),
+                np.hstack([x, x[::-1]]),
+                np.hstack([y - yerr, y[::-1] + yerr[::-1]]),
                 alpha=falpha,
                 color=lh.get_color(),
                 zorder=lh.get_zorder() - 0.1,
             )
         if yerr.ndim == 2:
             fh = axis.fill(
-                np.hstack([np.asarray(x), np.asarray(x)[::-1]]),
-                np.hstack(
-                    [np.asarray(y) - yerr[0, :], np.asarray(y)[::-1] + yerr[1, ::-1]]
-                ),
+                np.hstack([x, x[::-1]]),
+                np.hstack([y - yerr[0, :], y[::-1] + yerr[1, ::-1]]),
                 alpha=falpha,
                 color=lh.get_color(),
                 zorder=lh.get_zorder() - 0.1,

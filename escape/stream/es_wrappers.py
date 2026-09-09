@@ -230,3 +230,73 @@ class LocalEventHandler:
         return EventSourceContext(self)
 
     create_event_generator = None
+
+
+# ---------------------------------------------------------------------------
+# Direct-address event handler (e.g. a cam_server pipeline's raw output stream)
+# ---------------------------------------------------------------------------
+
+class DirectStreamEventHandler:
+    """EventHandler that connects directly to a raw ``tcp://host:port`` bsread
+    stream via PUB/SUB, bypassing the SwissFEL dispatcher entirely.
+
+    Distinct from :class:`LocalEventHandler` (which is tuned for the
+    synthetic ``TestStream``'s PUSH/PULL sender): a cam_server pipeline's
+    output is published PUB-style, matching how
+    ``cam_server.PipelineClient.get_instance_message`` itself reads it
+    (``bsread.source(host, port, mode=SUB)``) -- confirmed against the real
+    Bernina cam_server (see ``escape/stream/example_pipeline_offload.ipynb``).
+
+    All fields the stream publishes arrive together in every message, just
+    like :class:`LocalEventHandler` -- there is no per-field subscription to
+    register; a Stream just names which field to read via ``getFromSource``.
+
+    Parameters
+    ----------
+    host : str
+    port : int
+    mode : str
+        Passed straight to ``bsread.Source`` -- ``"SUB"`` (default) for a
+        PUB-publishing sender such as a cam_server pipeline; ``"PULL"`` for
+        a PUSH-publishing one.
+
+    See Also
+    --------
+    Stream.from_tcp : the ``Stream``-level constructor built on this handler.
+    """
+
+    _needs_restart_on_register = False  # receives all fields; no restart needed
+
+    def __init__(self, host, port, mode="SUB"):
+        self.host = host
+        self.port = int(port)
+        self.mode = mode
+        self.source = None
+        self.source_ids = []
+
+    def register_source(self, source_id):
+        if source_id not in self.source_ids:
+            self.source_ids.append(source_id)
+
+    def remove_source(self, source_id):
+        try:
+            self.source_ids.remove(source_id)
+        except ValueError:
+            pass
+
+    def get_all_source_ids(self):
+        """No discovery API for a direct stream; rely on live event keys
+        instead (see LocalEventHandler.get_all_source_ids)."""
+        return []
+
+    def context_manager(self):
+        from bsread import Source, SUB, PULL
+        self.source = Source(
+            host=self.host,
+            port=self.port,
+            mode=SUB if self.mode == "SUB" else PULL,
+            receive_timeout=500,  # ms; lets stopEventLoop() exit cleanly
+        )
+        return EventSourceContext(self)
+
+    create_event_generator = None

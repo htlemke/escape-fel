@@ -43,6 +43,34 @@ def _draw_safe(fig):
         pass
 
 
+def _draw_step_band(ax, x, y, yerr, label=None, alpha=0.3, y_floor=0.0):
+    """Step line (``ax.step(..., where='mid')``) + matching stepped error
+    band (``ax.fill_between(..., step='mid')``) -- shared by HistPlot and
+    ValueHistPlot, which are otherwise near-identical. Same underlying
+    matplotlib idiom as ``escape.plot_utilities.errortube(..., step='mid')``;
+    kept as a separate, dependency-light copy here rather than importing
+    that module, since ``escape.plot_utilities`` pulls in
+    ``ipywidgets``/``dask``/``IPython`` that ``escape.stream`` doesn't
+    otherwise require. Returns ``dict(line=..., err=...)`` for ``replot()``.
+    """
+    line = ax.step(x, y, where="mid", label=label)[0]
+    color = line.get_color()
+    lo = np.maximum(y - yerr, y_floor) if y_floor is not None else y - yerr
+    err = ax.fill_between(x, y + yerr, lo, color=color, alpha=alpha, step="mid", lw=0)
+    return {"line": line, "err": err}
+
+
+def _redraw_step_band(ax, drawn, x, y, yerr, alpha=0.3, y_floor=0.0):
+    """In-place update counterpart to :func:`_draw_step_band` for ``replot()``."""
+    color = drawn["err"].get_facecolor()
+    drawn["err"].remove()
+    lo = np.maximum(y - yerr, y_floor) if y_floor is not None else y - yerr
+    drawn["err"] = ax.fill_between(x, y + yerr, lo, color=color, alpha=alpha, step="mid", lw=0)
+    drawn["line"].set_xdata(x)
+    drawn["line"].set_ydata(y)
+    return drawn
+
+
 def _warn_inline():
     backend = matplotlib.get_backend()
     if "inline" in backend.lower():
@@ -195,7 +223,11 @@ class HistPlot(_LivePlotBase):
         # No-scan case: scan[0] returns a 0-d / None array — return empty.
         if x.dtype == object or (x.ndim == 1 and len(x) == 1 and x[0] is None):
             return np.array([]), np.array([]), np.array([])
-        y = np.asarray(self.data.lens(), dtype=float)
+        # True, uncapped event count per step -- NOT lens() (samples currently
+        # retained), which is bounded by each step's deque maxlen (1000 by
+        # default) and so plateaus at maxlen instead of showing the real count
+        # once any step receives more events than that.
+        y = np.asarray(self.data.counts(), dtype=float)
         yerr = np.sqrt(y)
         if len(x) == 0:
             return x, y, yerr
@@ -206,22 +238,11 @@ class HistPlot(_LivePlotBase):
         x, y, yerr = self._getplotData()
         if len(x) == 0:
             return
-        line = self.axes.step(x, y, where="mid", label=self.label)[0]
-        color = line.get_color()
-        err = self.axes.fill_between(
-            x,
-            y + yerr,
-            np.maximum(y - yerr, 0),
-            color=color,
-            alpha=self.alpha,
-            step="mid",
-            lw=0,
-        )
-        self.drawn = dict(err=err, line=line)
+        self.drawn = _draw_step_band(self.axes, x, y, yerr, label=self.label, alpha=self.alpha)
         if self.autosetAxlabel and self.data.scan._parameters:
             par = self.data.scan._parameters[self.scanVariable]
             self.axes.set_xlabel(f"{par.name} / {par.unit}")
-            self.axes.set_ylabel(f"{self.data.name} / {self.data.unit}")
+            self.axes.set_ylabel("event count")
         _draw_safe(self.fig)
 
     def replot(self):
@@ -230,19 +251,7 @@ class HistPlot(_LivePlotBase):
         x, y, yerr = self._getplotData()
         if len(x) == 0:
             return
-        color = self.drawn["err"].get_facecolor()
-        self.drawn["err"].remove()
-        self.drawn["err"] = self.axes.fill_between(
-            x,
-            y + yerr,
-            np.maximum(y - yerr, 0),
-            color=color,
-            alpha=self.alpha,
-            step="mid",
-            lw=0,
-        )
-        self.drawn["line"].set_xdata(x)
-        self.drawn["line"].set_ydata(y)
+        self.drawn = _redraw_step_band(self.axes, self.drawn, x, y, yerr, alpha=self.alpha)
         self._autoscale()
         _draw_safe(self.fig)
 
@@ -391,6 +400,7 @@ class PlotCorrelation(_LivePlotBase):
         label=None,
         autosetAxlabel=True,
         update_interval=0.5,
+        flatten_arrays=False,
     ):
         if axes is None:
             fig, axes = plt.subplots()
@@ -401,6 +411,11 @@ class PlotCorrelation(_LivePlotBase):
         self.Nlast = Nlast
         self.label = label if label is not None else data_y.name
         self.autosetAxlabel = autosetAxlabel
+        # When both Streams are array-valued (same shape), a genuine
+        # element-by-element correlation plot doesn't exist in 2D -- instead,
+        # pool every element of every matched event together into one dense
+        # scatter (rendered with low alpha; see plot()/replot()).
+        self.flatten_arrays = flatten_arrays
         self._connect_close_event()
 
     def _getplotData(self):  # noqa: N802
@@ -431,11 +446,18 @@ class PlotCorrelation(_LivePlotBase):
 
         xd = xd[np.argsort(xi)]
         yd = yd[np.argsort(yi)]
+        if self.flatten_arrays:
+            # xd/yd are (n_matched_events, *array_shape) here -- both operands
+            # were checked to share array_shape before this mode is used, so
+            # a plain elementwise ravel keeps (x_element, y_element) paired.
+            xd = xd.reshape(-1)
+            yd = yd.reshape(-1)
         return xd, yd
 
     def plot(self):
         x, y = self._getplotData()
-        line = self.axes.plot(x, y, ".", label=self.label)[0]
+        style = dict(alpha=0.15, ms=2) if self.flatten_arrays else {}
+        line = self.axes.plot(x, y, ".", label=self.label, **style)[0]
         self.drawn = dict(line=line)
         if self.autosetAxlabel:
             self.axes.set_xlabel(f"{self.data_x.name} / {self.data_x.unit}")
@@ -509,18 +531,7 @@ class ValueHistPlot(_LivePlotBase):
         x, y, yerr = self._getplotData()
         if len(x) == 0:
             return
-        line = self.axes.step(x, y, where="mid", label=self.label)[0]
-        color = line.get_color()
-        err = self.axes.fill_between(
-            x,
-            np.maximum(y - yerr, 0),
-            y + yerr,
-            color=color,
-            alpha=self.alpha,
-            step="mid",
-            lw=0,
-        )
-        self.drawn = dict(err=err, line=line)
+        self.drawn = _draw_step_band(self.axes, x, y, yerr, label=self.label, alpha=self.alpha)
         self.axes.set_xlabel(f"{self.data.name} / {self.data.unit}")
         self.axes.set_ylabel("counts")
         _draw_safe(self.fig)
@@ -532,19 +543,180 @@ class ValueHistPlot(_LivePlotBase):
         if len(x) == 0:
             return
         # Bin count stays fixed (n_bins) but edges shift as data range grows —
-        # remove and recreate fill_between; update step line data directly.
-        color = self.drawn["err"].get_facecolor()
-        self.drawn["err"].remove()
-        self.drawn["err"] = self.axes.fill_between(
-            x,
-            np.maximum(y - yerr, 0),
-            y + yerr,
-            color=color,
-            alpha=self.alpha,
-            step="mid",
-            lw=0,
-        )
+        # _redraw_step_band() removes and recreates the fill_between for us.
+        self.drawn = _redraw_step_band(self.axes, self.drawn, x, y, yerr, alpha=self.alpha)
+        self._autoscale()
+        _draw_safe(self.fig)
+
+
+# ---------------------------------------------------------------------------
+# TracePlot — generic "current value, redrawn periodically" plot
+# ---------------------------------------------------------------------------
+
+class TracePlot(_LivePlotBase):
+    """Live view of a Stream's current value(s) -- works for scalar or
+    array-valued data, and ignores scan structure entirely.
+
+    For an **array-valued** Stream (e.g. a derived per-event waveform/trace,
+    or a boolean event-code set), plots the single latest sample as a line,
+    x = array index -- exactly "just redraw the current value periodically".
+
+    For a **scalar** Stream, plots a rolling trend of the last ``n_history``
+    samples, x = recent event index -- a live trend recorder.
+
+    Parameters
+    ----------
+    data : Stream
+    axes : matplotlib.axes.Axes, optional
+    label : str, optional
+    n_history : int
+        Scalar case only: how many recent samples to show as a trend.
+    """
+
+    def __init__(
+        self,
+        data,
+        axes=None,
+        label=None,
+        n_history=200,
+        autosetAxlabel=True,
+        update_interval=1.0,
+    ):
+        if axes is None:
+            fig, axes = plt.subplots()
+            fig.suptitle(f"{data.name}  (live)")
+        super().__init__([data], axes=axes, update_interval=update_interval)
+        self.data = data
+        self.label = label if label is not None else data.name
+        self.n_history = n_history
+        self.autosetAxlabel = autosetAxlabel
+        self._connect_close_event()
+
+    def _flat(self):
+        return [v for step in self.data.data for v in step]
+
+    def _getplotData(self):  # noqa: N802
+        flat = self._flat()
+        if not flat:
+            return None, None, False
+        latest = np.asarray(flat[-1])
+        if latest.ndim >= 1 and latest.size > 1:
+            return np.arange(latest.size), latest.astype(float), True
+        window = np.asarray(flat[-self.n_history:], dtype=float)
+        start = len(flat) - len(window)
+        return np.arange(start, start + len(window)), window, False
+
+    def plot(self):
+        x, y, is_array = self._getplotData()
+        if x is None:
+            return
+        style = "-" if is_array else ".-"
+        line = self.axes.plot(x, y, style, label=self.label)[0]
+        self.drawn = dict(line=line, is_array=is_array)
+        if self.autosetAxlabel:
+            self.axes.set_xlabel("array index" if is_array else "recent event #")
+            self.axes.set_ylabel(f"{self.data.name} / {self.data.unit}")
+        _draw_safe(self.fig)
+
+    def replot(self):
+        if self.drawn is None:
+            return
+        x, y, is_array = self._getplotData()
+        if x is None:
+            return
         self.drawn["line"].set_xdata(x)
         self.drawn["line"].set_ydata(y)
         self._autoscale()
+        _draw_safe(self.fig)
+
+
+# ---------------------------------------------------------------------------
+# WaterfallPlot — 2D live view of an array-valued Stream's recent history
+# ---------------------------------------------------------------------------
+
+class WaterfallPlot(_LivePlotBase):
+    """2D image of an array-valued Stream's recent history: one row per
+    event (most recent ``N_acc``), one column per array element.
+
+    This is the array-valued equivalent of ``HistPlot`` -- ``plot_hist()``
+    routes here automatically once it discovers the data is array-shaped.
+
+    With ``x_stream`` given (e.g. ``pulse_id``/``lab_time``, or any other
+    scalar Stream), rows are ordered/labeled by that stream's live values
+    instead of plain arrival order -- this is also what ``plot_corr()`` uses
+    to represent "array Stream vs. scalar Stream" correlation, since a
+    per-element scatter isn't meaningful there.
+
+    Parameters
+    ----------
+    data : Stream
+        Array-valued Stream to display.
+    x_stream : Stream, optional
+        Scalar Stream whose per-event value labels each row (e.g. time).
+    N_acc : int
+        Number of most recent events (rows) to keep.
+    axes : matplotlib.axes.Axes, optional
+    cmap : str
+    """
+
+    def __init__(
+        self,
+        data,
+        x_stream=None,
+        N_acc=100,
+        axes=None,
+        cmap="viridis",
+        autosetAxlabel=True,
+        update_interval=0.5,
+    ):
+        if axes is None:
+            fig, axes = plt.subplots()
+            fig.suptitle(f"{data.name}  (live, last {N_acc} events)")
+        escdata = [data] if x_stream is None else [data, x_stream]
+        super().__init__(escdata, axes=axes, update_interval=update_interval)
+        self.data = data
+        self.x_stream = x_stream
+        self.N_acc = N_acc
+        self.cmap = cmap
+        self.autosetAxlabel = autosetAxlabel
+        self._connect_close_event()
+
+    def _rows(self):
+        flat = [v for step in self.data.data for v in step]
+        rows = np.asarray(flat[-self.N_acc:], dtype=float) if flat else np.empty((0, 0))
+        if self.x_stream is None or rows.size == 0:
+            return rows, None
+        xflat = [v for step in self.x_stream.data for v in step]
+        xvals = np.asarray(xflat[-self.N_acc:], dtype=float) if xflat else None
+        if xvals is None or len(xvals) != len(rows):
+            xvals = None  # event counts of the two Streams diverged -- fall back to plain order
+        return rows, xvals
+
+    def plot(self):
+        rows, xvals = self._rows()
+        if rows.size == 0:
+            return
+        extent = [0, rows.shape[1], rows.shape[0], 0]
+        im = self.axes.imshow(rows, aspect="auto", origin="upper", cmap=self.cmap, extent=extent)
+        cbar = self.fig.colorbar(im, ax=self.axes, label=f"{self.data.name} / {self.data.unit}")
+        self.drawn = dict(im=im, cbar=cbar, xvals=xvals)
+        if self.autosetAxlabel:
+            self.axes.set_xlabel("array index")
+            if self.x_stream is not None:
+                self.axes.set_ylabel(f"{self.x_stream.name} / {self.x_stream.unit} (row order)")
+            else:
+                self.axes.set_ylabel(f"recent event # (0 = oldest of last {self.N_acc})")
+        _draw_safe(self.fig)
+
+    def replot(self):
+        if self.drawn is None:
+            return
+        rows, xvals = self._rows()
+        if rows.size == 0:
+            return
+        im = self.drawn["im"]
+        if rows.shape != im.get_array().shape:
+            im.set_extent([0, rows.shape[1], rows.shape[0], 0])
+        im.set_data(rows)
+        im.set_clim(np.nanmin(rows), np.nanmax(rows))
         _draw_safe(self.fig)

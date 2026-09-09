@@ -136,6 +136,102 @@ for s in [ratio, i_on, i_off]:
 
 ---
 
+## Selecting one element of an array-valued channel
+
+Some channels are arrays rather than scalars — e.g. `SAR-CVME-TIFALL5:EvtSet`,
+a 256-element boolean event-code set. `stream[i]` (or `stream.element(i)`)
+returns a new *live* scalar Stream of just that element, updated every
+event — not a one-off snapshot. Because it's a normal Stream, it can be used
+as a filter mask on another Stream directly:
+
+```python
+evtset = Stream('SAR-CVME-TIFALL5:EvtSet', ew)
+
+laser_on = evtset[25]           # live Stream of just bit 25
+i0_laser_on = i0[laser_on]      # downselect another Stream by it
+
+i0_laser_on.accumulate(True)    # auto-subscribes both real channels --
+                                 # evtset and i0 -- no separate accumulate()
+                                 # calls on evtset/laser_on needed
+```
+
+Accumulating any derived Stream (arithmetic, `filter()`/`[mask]`, `element()`/
+`[i]`, `categorize()`, ...) transitively subscribes every real channel the
+computation depends on, however deeply nested.
+
+---
+
+## Running statistics
+
+`Stream.running_mean()` / `running_std()` / `running_median()` / `running_mad()`
+(plus `running_nanmean()` / `running_nanstd()` / `running_nanmedian()` /
+`running_nanmad()`) return a new live Stream: the current windowed statistic,
+recomputed every event, over the last `N_acc` samples. Works for scalar
+*or* array-valued channels — an array-valued channel's running mean is itself
+an array of the same shape (reduced only over the event/window axis), e.g.
+a running-averaged waveform or the per-bit "on fraction" of a boolean
+event-code-set array.
+
+```python
+rm  = i0.running_mean(N_acc=200)     # windowed mean, last 200 events
+rs  = i0.running_std(N_acc=200)
+rmed = i0.running_median(N_acc=200)
+rmad = i0.running_mad(N_acc=200)     # median absolute deviation, unscaled
+
+rm.accumulate(True)
+```
+
+**`N_acc` can be changed at any time, mid-run**, without recreating or
+interrupting the stream — it's a plain, freely reassignable attribute on the
+*returned* Stream, read fresh on every event:
+
+```python
+rm.N_acc = 50   # shrinks (or grows) the window from the next event onward
+```
+
+**Weighting** by another live Stream (`sum(w*x)/sum(w)` for mean/std; a
+cumulative-weight-crossing weighted median for median/mad) — accumulating the
+result auto-subscribes both channels' dependencies, per the previous section:
+
+```python
+rmw = i0.running_mean(N_acc=200, weights=pump_intensity)
+```
+
+The `nan*` variants ignore NaN samples — for a weighted stat, a pair is
+skipped if *either* the value or its weight is NaN.
+
+For a running statistic not covered here (e.g. a true cumulative all-time
+average, or an exponential moving average), the same underlying pattern
+these are built on is available directly: wrap a small **stateful callable**
+with `wrapFunc_singleOutput` (the same machinery `escaped()`-style functions
+use in `escape.storage`). The callable's own instance state persists across
+calls, since `wrapFunc_singleOutput` gives back one derived Stream driven by
+one shared callable instance — not a fresh one per event — and `ProcObj`
+dedups by pulse ID, so it runs exactly once per real event:
+
+```python
+from escape.stream import wrapFunc_singleOutput
+
+class ExpMovingAvg:
+    """Exponential moving average with smoothing factor alpha."""
+    def __init__(self, alpha=0.1):
+        self.alpha, self.value = alpha, None
+    def __call__(self, value):
+        self.value = value if self.value is None else \
+            self.alpha * value + (1 - self.alpha) * self.value
+        return self.value
+
+i0_ema = wrapFunc_singleOutput(ExpMovingAvg(0.05), name='i0_ema', unit=i0.unit)(i0)
+i0_ema.accumulate(True)
+```
+
+`wrapFunc_singleOutput` (like `running_*()`) always uses a fresh no-scan
+`Scan()` for the result — one statistic over the whole accumulation, not per
+scan step; pass `scan=i0.scan` inside a custom `ProcObj(...)` call directly
+instead for one running statistic *per scan step*.
+
+---
+
 ## Binning by a scan parameter
 
 ```python
@@ -159,11 +255,60 @@ hp = i0.plot_hist(update=0.5, n_bins=40)
 # Median vs. scan parameter
 mp = ratio_vs_t.plot_med(update=0.5)
 
-# Scatter correlation
+# Scatter correlation, defaults to lab_time on the x-axis if omitted (see below)
 cp = i.plot_corr(i0, Npoints=400, update=0.5)
 
 # Stop a live plot
 hp.stop()
+```
+
+### `pulse_id` / `lab_time` — always-available pseudo-channels
+
+Every event already carries a pulse ID and a wall-clock timestamp, regardless
+of which real channels were requested — `EventWorker.pulse_id` /
+`.lab_time` (cached per worker) save typing `Stream('pulse_id', ew)` by hand:
+
+```python
+pid = ew.pulse_id     # or: from escape.stream import pulse_id; pulse_id(ew)
+lt  = ew.lab_time      # or: lab_time(ew)  -- both fall back to the module
+                        # default EventWorker if none is passed
+```
+
+`plot_corr()` uses this: with no `xVar`, it defaults to a live `lab_time`
+Stream — i.e. `i0.plot_corr()` alone is a live "value vs time" trend plot.
+Pass `default_x='pulse_id'` to default to pulse ID instead.
+
+### Array-valued channels (e.g. `SAR-CVME-TIFALL5:EvtSet`)
+
+`plot_hist()` and `plot_corr()` auto-detect array-valued data (once data is
+available) and route to a 2D live image instead of a value/count histogram
+or point scatter — neither of those is meaningful per array element:
+
+```python
+evtset = Stream('SAR-CVME-TIFALL5:EvtSet', ew)   # 256-element boolean array
+
+evtset.plot_hist(N_acc=100)          # WaterfallPlot: rows = last 100 events,
+                                      # columns = array index
+
+evtset.plot_corr(i0, N_acc=100)      # array vs scalar -> same WaterfallPlot,
+                                      # rows ordered by i0's live value
+
+evtset.plot_corr(evtset2)            # array vs array, same shape -> every
+                                      # element of the last Npoints matched
+                                      # events pooled into one dense scatter
+                                      # (there's no 2D representation of a
+                                      # true element-by-element correlation)
+```
+
+For anything else — a derived per-event trace, or just "show me the current
+value" — `Stream.plot(rate_Hz=1)` is the generic fallback: the latest array
+snapshot as a line, or a rolling trend for a scalar Stream, redrawn at
+`rate_Hz`. Ignores scan structure entirely, so it works on any derived
+Stream, including chained ones:
+
+```python
+isref = evtset[25]
+(array[~isref] / array[isref].running_mean(N_acc=50)).plot(rate_Hz=1)
 ```
 
 ---
@@ -201,6 +346,36 @@ i0.plot_hist(axes=ax, update=0.5)
 
 For the full architecture diagram and design proposals see the
 [stream design review](https://claude.ai/code/artifact/cd017151-c247-442e-a358-79066e3283a2).
+
+---
+
+## Developing against real data: `dev_proxy`
+
+`escape/stream/dev_proxy.py` is a dev-only helper (not part of the public
+API) for debugging `escape.stream` against **real** SwissFEL channels from a
+machine that isn't itself on the PSI network, given a SOCKS-mode SSH tunnel
+into one that is:
+
+```bash
+ssh -D 8787 -N your_user@saresb-cons-05
+```
+
+```python
+from escape.stream.dev_proxy import enable_socks_proxy
+enable_socks_proxy(port=8787)   # routes both the dispatcher HTTP lookup and
+                                 # the raw bsread/mflow ZMQ data socket
+
+from escape.stream import EventWorker, DataHubEventHandler
+ew = EventWorker(DataHubEventHandler(backend='bsread'))
+ew.registerSource('SAROP21-PBPS103:INTENSITY')
+```
+
+Call `disable_socks_proxy()` before going back to local-only testing with
+`TestStream`/`LocalEventHandler` — while enabled, "localhost" means the
+tunnel endpoint's loopback, not this machine's. See the module docstring for
+why two separate mechanisms are needed (an HTTP(S) proxy env var for the
+dispatcher lookup via `requests`, plus a `zmq.Context.socket` patch for the
+raw data socket, since ZMQ bypasses Python's own socket/HTTP stack).
 
 ---
 

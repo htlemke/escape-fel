@@ -31,7 +31,7 @@ class TestData:
     def __init__(self, tstart=-1, tend=10):
         self.tstart = tstart
         self.tend = tend
-        self.pump_drops = 5        # inverse probability of pump being on
+        self.pump_drops = 5  # inverse probability of pump being on
         self.pump_frac = 0.05
         self.pump_noise = 0.1
         self.pulseId = -1
@@ -60,20 +60,21 @@ class TestData:
         else:
             while pid > self._drift_nodes[2]:
                 self._drift_nodes = np.hstack(
-                    [self._drift_nodes[1:],
-                     poisson(self.driftTimescale) + self._drift_nodes[-1]]
+                    [
+                        self._drift_nodes[1:],
+                        poisson(self.driftTimescale) + self._drift_nodes[-1],
+                    ]
                 )
                 self._drift_data = np.hstack([self._drift_data[1:], randn(1)])
                 self._drift_itp = PchipInterpolator(self._drift_nodes, self._drift_data)
 
     def generateData(self, pulse_id):
         self.pulseId = float(pulse_id)
+        self.lab_time = pulse_id * 0.01
         self._update_drift()
 
         drift = float(self._drift_itp(pulse_id))
-        t = float(
-            -(self.tstart - self.tend) * np.random.random_sample() + self.tstart
-        )
+        t = float(-(self.tstart - self.tend) * np.random.random_sample() + self.tstart)
 
         i0 = float(np.random.gamma(2.3, 1))
         sig = 1.0 - np.cos(2 * np.pi / 0.7 * t) * np.exp(-t / 2)
@@ -105,6 +106,7 @@ class TestData:
             "pump_on": self.pump_on,
             "pulse_id": float(pulse_id),
             "drift": drift,
+            "lab_time": self.lab_time,
         }
 
     def getPar(self, pulse_id, parameter=None):
@@ -114,7 +116,7 @@ class TestData:
 
 
 # Names of channels the test stream broadcasts.
-CHANNEL_NAMES = ["i0", "i", "t", "i_pump", "pump_on", "pulse_id", "drift"]
+CHANNEL_NAMES = ["i0", "i", "t", "i_pump", "pump_on", "pulse_id", "drift", "lab_time"]
 
 
 def createStream(port=9999, interval=0.01):
@@ -164,6 +166,7 @@ class StreamReader:
 
     def __init__(self, host="localhost", port=9999):
         from bsread import Source
+
         self.source = Source(host=host, port=port, all_channels=True)
         self.source.connect()
 

@@ -428,7 +428,19 @@ class Array:
         --------
         >>> time_bins = sig.get_index_array(N_index_aggregation=1000)
         >>> i0_rebinned = time_bins.categorize(i0)
+
+        If *self* or *other_array* is an ``escape.storage.graph.placeholder()``
+        -- no real data yet -- this records the call as a graph node instead
+        of executing it, exactly like ``escaped()``-wrapped calls and
+        ``map_index_blocks()`` do (see that module); ``categorize`` doesn't
+        go through ``escaped()`` itself, so it needs this check directly.
         """
+        from . import graph as _graph
+
+        if _graph.is_placeholder(self) or _graph.is_placeholder(other_array):
+            return _graph.record_op(
+                _graph.resolve("Array.categorize"), [self, other_array], {}
+            )
         return match_arrays(self, other_array)[1]
 
     def __getitem__(self, *args, **kwargs):
@@ -757,7 +769,33 @@ class Array:
         Notes
         -----
         Formerly called ``map_event_blocks`` in older versions of ``escape``.
+
+        If *self* (or any of *args*/*kwargs*) is an
+        ``escape.storage.graph.placeholder()`` -- no real data yet -- this
+        records the call as a graph node instead of executing it, exactly
+        like ``escaped()``-wrapped calls do (see that module). *foo* itself
+        then also has to be registered
+        (``@escape.storage.graph.register()``) since it's recorded as a
+        value, not executed.
         """
+        from . import graph as _graph
+
+        if (
+            _graph.is_placeholder(self)
+            or any(_graph.is_placeholder(a) for a in args)
+            or any(_graph.is_placeholder(v) for v in kwargs.values())
+        ):
+            return _graph.record_op(
+                _graph.resolve("Array.map_index_blocks"),
+                [self, foo, *args],
+                {
+                    **kwargs,
+                    "drop_axis": drop_axis,
+                    "new_axis": new_axis,
+                    "new_element_size": new_element_size,
+                    "event_dim": event_dim,
+                },
+            )
 
         # Test: creating Source instance for origin tracking
         src = Source(
@@ -1106,6 +1144,17 @@ class Array:
         return hdat, hbins
 
     def __repr__(self, bare=False):
+        # An escape.storage.graph placeholder/recorded-op Array has no real
+        # data by design (see that module) -- the ordinary repr below would
+        # touch .shape/.data and raise. Short-circuit to something printable
+        # instead; real Arrays (source.type not placeholder/symbolic_op)
+        # are completely unaffected by this check.
+        src_type = getattr(self.source, "type", None) if self.source is not None else None
+        if src_type == "placeholder":
+            return f"<placeholder Array role={self.source.role!r}>"
+        if src_type == "symbolic_op":
+            return f"<unbound Array, recorded op={self.source.func_name!r}>"
+
         s = "<%s.%s object at %s>" % (
             self.__class__.__module__,
             self.__class__.__name__,
@@ -1699,6 +1748,18 @@ def escaped(func, convertOutput2EscData="auto"):
     def wrapped(
         *args, escSorter="first", convertOutput2EscData=convertOutput2EscData, **kwargs
     ):
+        # Recording: if any operand is an escape.storage.graph placeholder
+        # (no real data yet -- see that module), record this call as a graph
+        # node instead of executing it. Gated on an explicit check so every
+        # ordinary real-data call below is completely unaffected -- same
+        # branch shape as escape.stream's ProcObj recording.
+        from . import graph as _graph
+
+        if any(_graph.is_placeholder(a) for a in args) or any(
+            _graph.is_placeholder(v) for v in kwargs.values()
+        ):
+            return _graph.record_op(func, args, kwargs)
+
         args = [ta for ta in args]
         kwargs = {tk: tv for tk, tv in kwargs.items()}
         argsIsEsc = [(n, arg) for n, arg in enumerate(args) if isinstance(arg, Array)]
@@ -1969,6 +2030,13 @@ for opSing, symbol in _operatorsSingle:
         "__%s__" % opSing.__name__.strip("_"),
         escaped(opSing, convertOutput2EscData=[0]),
     )
+
+# Register the same operator table above with escape.storage.graph, so
+# arithmetic on placeholder Arrays (i0 - i, etc.) is recordable with no
+# extra step -- see that module.
+from . import graph as _graph
+
+_graph._register_operator_table()
 
 
 def match_scans(a0, a1, parameters=[]):

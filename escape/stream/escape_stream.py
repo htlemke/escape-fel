@@ -252,6 +252,14 @@ class DataManager:
         else:
             self._data = data
             self._eventIds = eventIds
+        # True, uncapped per-step event counts -- deliberately tracked separately
+        # from len(self._data[step]), which is bounded by each deque's maxlen and
+        # so silently stops growing (reporting a flat "maxlen" plateau) once a step
+        # has received more than maxlen events. lens() below is the "how many
+        # samples are currently retained for stats" view (matches what mean()/
+        # median()/centerPerc() actually average over); counts() is the "how many
+        # events has this step *ever* received" view that HistPlot needs.
+        self._counts = [0] * len(self._data)
         self._lastEventId = None
 
     def append(self, data, eventId, index=None):
@@ -273,8 +281,10 @@ class DataManager:
         while len(self._data) <= index:
             self._data.append(deque(maxlen=maxlen))
             self._eventIds.append(deque(maxlen=maxlen))
+            self._counts.append(0)
         self._data[index].append(data)
         self._eventIds[index].append(eventId)
+        self._counts[index] += 1
 
     def _getDataShape(self):
         lens = self.lens()
@@ -287,6 +297,13 @@ class DataManager:
         return sum(self.lens())
 
     def lens(self):
+        """Number of samples currently retained per step (bounded by maxlen).
+
+        This is the sample count actually behind mean()/median()/centerPerc()
+        -- once a step exceeds maxlen events, older samples are evicted and
+        this stays capped at maxlen. For the true, uncapped per-step event
+        count, use counts() instead.
+        """
         result = []
         for n, (te, td) in enumerate(zip(self._eventIds, self._data)):
             if len(te) == len(td):
@@ -295,6 +312,10 @@ class DataManager:
                 print(f"DataManager: mismatch in step {n}")
                 result.append(min(len(te), len(td)))
         return result
+
+    def counts(self):
+        """True, uncapped number of events ever appended to each step."""
+        return list(self._counts)
 
     data = property(lambda self: self._data)
     eventIds = property(lambda self: self._eventIds)
@@ -327,9 +348,15 @@ class FilteredEventSource:
     subscribed; for LocalEventHandler all channels are always received).
     """
 
-    def __init__(self, source, mask_stream):
+    def __init__(self, source, mask_stream, inner_stream=None):
         self._inner = source
         self._mask = mask_stream
+        # The Stream `source` was taken from, when known (Stream.filter() always
+        # passes it) -- kept alongside the raw `_inner` Source so graph.py can
+        # walk the *Stream* graph (picking up e.g. its _graph_parent) instead of
+        # just the raw channel(s) `_inner` ultimately resolves to. Optional/None
+        # for FilteredEventSource instances built by hand from a bare Source.
+        self._inner_stream = inner_stream
         # Include mask name in channel label for clarity
         self.name = f"{source.name}[{mask_stream.name}]"
         self.unit = source.unit
@@ -356,12 +383,52 @@ class ProcSource:
     def getEventData(self):  # noqa: N802
         if self.procObj.getEventData():
             self.procObj.updateChildren(self)
+        # ret_values is still None before the very first successful compute
+        # (e.g. its own dependencies were invalid/None on every event so far,
+        # as with a running_mean over a not-yet-True filter mask) -- report
+        # "no data yet" the same way any other source does, rather than
+        # crashing on ret_values[self.returnIndex].
+        if self.procObj.ret_values is None:
+            return None
         return self.procObj.ret_values[self.returnIndex]
 
 
 class FileSource:
     """Placeholder for indexed file sources."""
     pass
+
+
+def _collect_source_channels(source, seen=None):
+    """Recursively collect the real, subscribable channel names a Source
+    ultimately depends on.
+
+    A plain :class:`EventSource`'s ``.name`` *is* a real channel. A
+    :class:`FilteredEventSource` or :class:`ProcSource`'s ``.name`` is a
+    synthetic display string (e.g. ``"i[pump_on]"`` or
+    ``"SAR-CVME-TIFALL5:EvtSet[25]"``), not something the transport can
+    subscribe to -- registering it as a channel would ask the dispatcher for
+    a channel that doesn't exist. Those recurse into whatever real channel(s)
+    actually feed them instead, so ``derived.accumulate(True)`` correctly
+    subscribes every real channel the computation depends on, however deep.
+    """
+    if seen is None:
+        seen = []
+    if isinstance(source, EventSource):
+        if source.name not in seen:
+            seen.append(source.name)
+    elif isinstance(source, FilteredEventSource):
+        _collect_source_channels(source._inner, seen)
+        _collect_source_channels(source._mask._source, seen)
+    elif isinstance(source, ProcSource):
+        proc = source.procObj
+        for arg, is_esc in zip(proc.args, proc.args_is_esc):
+            if is_esc:
+                _collect_source_channels(arg._source, seen)
+        for key, val in proc.kwargs.items():
+            if proc.kwargs_is_esc.get(key):
+                _collect_source_channels(val._source, seen)
+    # FileSource / anything else: nothing registerable.
+    return seen
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +465,8 @@ class EventWorker:
         self._restart_timer = None
         self._restart_lock = threading.Lock()
         self._callback_failures = {}     # cb -> {"count": int, "last_log": float}
+        self._pulse_id_stream = None     # lazily-created, cached -- see .pulse_id
+        self._lab_time_stream = None     # lazily-created, cached -- see .lab_time
 
         if make_default:
             globals()["eventworker"] = self
@@ -536,6 +605,35 @@ class EventWorker:
         if self.loopThread is not None and self.loopThread.is_alive():
             self.loopThread.join(timeout=5.0)
 
+    # ------------------------------------------------------------------
+    # pulse_id / lab_time -- always-available pseudo-channels
+    # ------------------------------------------------------------------
+    #
+    # Every bsread/datahub event already carries a pulse ID and a wall-clock
+    # timestamp regardless of which real channels were requested -- see
+    # EventSource.getEventData() -> Event_SFEL.getFromSource()/DataHubEvent.
+    # getFromSource(), which special-case "pulse_id"/"lab_time". These
+    # properties just save typing Stream('pulse_id', ew) by hand and, more
+    # importantly, cache the result per EventWorker so repeated use (e.g. as
+    # plot_corr()'s default x-axis) shares one Stream/accumulation rather
+    # than creating a new one -- and duplicating it does not need a separate
+    # accumulate(True): both pseudo-channels ride along with any other
+    # channel already being received, no dispatcher subscription needed.
+
+    @property
+    def pulse_id(self):
+        """Cached live Stream of each event's integer pulse ID."""
+        if self._pulse_id_stream is None:
+            self._pulse_id_stream = Stream("pulse_id", self)
+        return self._pulse_id_stream
+
+    @property
+    def lab_time(self):
+        """Cached live Stream of each event's wall-clock time (seconds since epoch)."""
+        if self._lab_time_stream is None:
+            self._lab_time_stream = Stream("lab_time", self)
+        return self._lab_time_stream
+
 
 # ---------------------------------------------------------------------------
 # StreamBinning — returned by Stream.digitize(), applied via .categorize()
@@ -575,7 +673,21 @@ class StreamBinning:
         Stream
         """
         scan = digitizeScan(self.key_stream, self.bins)
-        return Stream(source=target_stream._source, scan=scan)
+        result = Stream(source=target_stream._source, scan=scan)
+        # `result._source is target_stream._source` (identical object -- the
+        # data is untouched, only the scan grouping differs), so a graph walk
+        # based on `_source` alone would silently treat `result` as if it
+        # independently recomputed target_stream's whole upstream chain,
+        # rather than as "target_stream's data, regrouped by key_stream/bins".
+        # `_graph_parent` records that relationship explicitly; see
+        # escape.stream.graph.build_graph(), which treats its presence as
+        # authoritative over the (otherwise misleading, in this one case)
+        # `_source`-based node it would build by default.
+        result._graph_parent = (
+            "categorize",
+            {"data": target_stream, "key": self.key_stream, "bins": self.bins},
+        )
+        return result
 
     def __repr__(self):
         return (
@@ -583,6 +695,156 @@ class StreamBinning:
             f"n_bins={len(self.bins)-1}, "
             f"range=[{self.bins[0]:.3g}, {self.bins[-1]:.3g}])"
         )
+
+
+# ---------------------------------------------------------------------------
+# Running (windowed, live) statistics -- Stream.running_mean() et al.
+# ---------------------------------------------------------------------------
+
+def _broadcast_weight(w, vals):
+    """Reshape a per-event scalar weight vector (N,) to broadcast against
+    per-event *array*-valued samples of shape (N, *event_shape)."""
+    if vals.ndim > 1:
+        return w.reshape((-1,) + (1,) * (vals.ndim - 1))
+    return w
+
+
+def _weighted_mean(vals, w, skipnan=False):
+    """vals: (N, *event_shape); w: (N,). Returns an array of shape event_shape
+    (or a scalar when event_shape is ()) -- reduces along axis 0 only, so this
+    works the same whether each sample is a scalar or an array."""
+    w_eff = np.broadcast_to(_broadcast_weight(w, vals), vals.shape).astype(float)
+    if skipnan:
+        # A NaN weight is just as invalid as a NaN value -- if only vals were
+        # masked, w_eff would still carry the NaN weight into the sum below
+        # (nan * True == nan), silently poisoning the whole reduction.
+        valid = ~np.isnan(vals) & ~np.isnan(w_eff)
+        w_eff = np.where(valid, w_eff, 0.0)
+        vals = np.where(valid, vals, 0.0)
+    wsum = np.sum(w_eff, axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = np.sum(w_eff * vals, axis=0) / wsum
+    return np.where(wsum > 0, out, np.nan)
+
+
+def _weighted_std(vals, w, skipnan=False):
+    w_eff = np.broadcast_to(_broadcast_weight(w, vals), vals.shape).astype(float)
+    if skipnan:
+        valid = ~np.isnan(vals) & ~np.isnan(w_eff)
+        w_eff = np.where(valid, w_eff, 0.0)
+        vals = np.where(valid, vals, 0.0)
+    wsum = np.sum(w_eff, axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = np.sum(w_eff * vals, axis=0) / wsum
+        var = np.sum(w_eff * (vals - mean) ** 2, axis=0) / wsum
+    return np.where(wsum > 0, np.sqrt(var), np.nan)
+
+
+def _weighted_median(vals, w, skipnan=False):
+    """Weighted median via cumulative-weight crossing of the 50% mark, computed
+    independently per element position when vals is array-valued (axis 0 is
+    the event/window axis; any trailing axes are the per-event array shape).
+
+    Not interpolated (picks the crossing sample itself) -- a simple, standard
+    enough definition for a live monitoring statistic; exact tie-breaking
+    conventions vary across "weighted median" definitions in the literature.
+    """
+    w_eff = np.broadcast_to(_broadcast_weight(w, vals), vals.shape).astype(float)
+    if skipnan:
+        valid = ~np.isnan(vals) & ~np.isnan(w_eff)
+        w_eff = np.where(valid, w_eff, 0.0)
+        vals = np.where(valid, vals, np.inf)  # sort invalid entries to the end per position
+    order = np.argsort(vals, axis=0)
+    v_sorted = np.take_along_axis(vals, order, axis=0)
+    w_sorted = np.take_along_axis(w_eff, order, axis=0)
+    cw = np.cumsum(w_sorted, axis=0)
+    total = cw[-1]
+    with np.errstate(invalid="ignore"):
+        idx = np.sum(cw < total / 2.0, axis=0)
+    idx = np.clip(idx, 0, vals.shape[0] - 1)
+    out = np.take_along_axis(v_sorted, np.expand_dims(np.asarray(idx), axis=0), axis=0)[0]
+    return np.where(total > 0, out, np.nan)
+
+
+class _RunningStat:
+    """Stateful callable behind Stream.running_mean()/running_std()/etc.
+
+    Holds its own bounded buffer of the last up to *N_acc* (value[, weight])
+    pairs, recomputing the requested statistic on every call -- one call per
+    real event, via wrapFunc_singleOutput/ProcObj's per-pulse-ID dedup. Unlike
+    a plain deque(maxlen=...), the window is *not* fixed at construction: the
+    owning Stream's writable ``.N_acc`` attribute is read fresh on every call,
+    so it can be changed at any time (grown or shrunk) without recreating
+    anything or losing already-buffered samples -- see Stream.running_mean().
+    """
+
+    _UNWEIGHTED_FUNCS = {
+        "mean": (np.mean, np.nanmean),
+        "std": (np.std, np.nanstd),
+        "median": (np.median, np.nanmedian),
+    }
+
+    def __init__(self, stat, skipnan=False):
+        self.stat = stat
+        self.skipnan = skipnan
+        self.owner = None  # wired up after the result Stream is created
+        self._values = deque()
+        self._weights = deque()
+
+    def __call__(self, value, weight=None):
+        self._values.append(value)
+        if weight is not None:
+            self._weights.append(weight)
+        n_acc = max(int(self.owner.N_acc), 1) if self.owner is not None else len(self._values)
+        while len(self._values) > n_acc:
+            self._values.popleft()
+        while len(self._weights) > n_acc:
+            self._weights.popleft()
+        return self._compute()
+
+    def _compute(self):
+        # vals: (N, *event_shape) -- N is the current window length, event_shape
+        # is whatever shape each individual sample has (empty for a scalar
+        # channel, e.g. (256,) for an array-valued one like an EvtSet or a
+        # waveform). Every reduction below is explicitly axis=0 so only the
+        # window/event axis collapses -- an array-valued channel's running
+        # mean/std/median/mad is itself an array of that same shape, not a
+        # single number.
+        vals = np.asarray(self._values, dtype=float)
+        w = np.asarray(self._weights, dtype=float) if self._weights else None
+
+        if self.stat == "mad":
+            if w is None:
+                med_func = np.nanmedian if self.skipnan else np.median
+                med = med_func(vals, axis=0)
+                return med_func(np.abs(vals - med), axis=0)
+            med = _weighted_median(vals, w, skipnan=self.skipnan)
+            return _weighted_median(np.abs(vals - med), w, skipnan=self.skipnan)
+
+        if w is None:
+            plain, nan = self._UNWEIGHTED_FUNCS[self.stat]
+            func = nan if self.skipnan else plain
+            return func(vals, axis=0)
+
+        if self.stat == "mean":
+            return _weighted_mean(vals, w, skipnan=self.skipnan)
+        if self.stat == "std":
+            return _weighted_std(vals, w, skipnan=self.skipnan)
+        return _weighted_median(vals, w, skipnan=self.skipnan)
+
+    def _graph_label(self):
+        """Human-readable op label for escape.stream.graph.build_graph().
+
+        `N_acc` lives on the *result* Stream (``self.owner``), not as a
+        ProcObj arg/kwarg -- deliberately, so it stays live-tunable without
+        rebuilding anything (see running_mean's docstring). That means it is
+        invisible to a walk over ProcObj.args/kwargs; this hook is read by
+        the graph walker instead, at build time, so the label always shows
+        the *current* window size rather than a stale snapshot.
+        """
+        label = ("nan" if self.skipnan else "") + self.stat
+        n_acc = self.owner.N_acc if self.owner is not None else "?"
+        return f"running_{label}(N_acc={n_acc})"
 
 
 # ---------------------------------------------------------------------------
@@ -676,6 +938,86 @@ class Stream:
         self._lastEventId = None
 
     # ------------------------------------------------------------------
+    # Alternate constructors
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_dispatcher(cls, channel_name, eventworker=None, unit="a.u."):
+        """Explicit-name spelling of the short constructor, ``Stream(channel_name, ew)``.
+
+        A named channel is *already* dispatcher-sourced whenever *eventworker*
+        uses a dispatcher-backed handler (``EventHandler_SFEL``,
+        ``DataHubEventHandler``) -- this classmethod adds no new behavior,
+        it exists for symmetry with :meth:`from_tcp` so example code can say
+        which kind of source it means without the reader having to know
+        which handler *eventworker* was built with.
+
+        Parameters
+        ----------
+        channel_name : str
+        eventworker : EventWorker, optional
+            Falls back to the module-level default, same as the short
+            constructor.
+        unit : str
+        """
+        return cls(channel_name, eventworker, unit=unit)
+
+    @classmethod
+    def from_tcp(cls, address, field, unit="a.u.", mode="SUB"):
+        """Read one field of a raw ``tcp://host:port`` bsread stream as a Stream.
+
+        For a source that isn't a dispatcher channel *name* at all -- most
+        notably a cam_server pipeline's output (``ratio.to_pipeline_server(...)``
+        returns exactly such an address) -- rather than a named channel the
+        dispatcher can resolve. Opens its **own** dedicated
+        :class:`EventWorker`/background thread pointed at that one address
+        (``make_default=False`` -- it must not replace whatever default
+        EventWorker the rest of your session is using for dispatcher
+        channels); calling this more than once for the same address opens a
+        separate connection each time rather than sharing one.
+
+        Parameters
+        ----------
+        address : str
+            ``"tcp://host:port"`` (or ``"host:port"``), e.g. the
+            *stream_address* returned by ``to_pipeline_server()`` or
+            ``cam_server.PipelineClient.create_instance_from_config``.
+        field : str
+            Which key of the stream's (possibly multi-field) message to read
+            -- e.g. the *name*/*output_name* a ``to_pipeline_server()`` call
+            published under. A pipeline publishing several fields needs one
+            ``from_tcp(address, field=...)`` call per field; they'll share
+            nothing (see above) unless you pass the same *eventworker*
+            explicitly to each -- pass ``eventworker=`` (positional slot
+            after *unit* isn't exposed; construct once via
+            ``DirectStreamEventHandler`` and reuse it, or accept one
+            connection per field for simplicity).
+        unit : str
+        mode : str
+            ``"SUB"`` (default) for a PUB-publishing sender -- correct for a
+            cam_server pipeline output. ``"PULL"`` for a PUSH-publishing one.
+
+        Examples
+        --------
+        ::
+
+            instance_id, stream_address = ratio.to_pipeline_server("test_htlemke_ratio")
+            result = Stream.from_tcp(stream_address, "test_htlemke_ratio")
+            result.plot()   # or .accumulate(True), like any other Stream
+
+        See Also
+        --------
+        DirectStreamEventHandler : the handler this builds on
+            (``escape.stream.es_wrappers``).
+        """
+        from .es_wrappers import DirectStreamEventHandler
+
+        addr = address.split("//")[-1]  # strip an optional "tcp://" prefix
+        host, port = addr.rsplit(":", 1)
+        ew = EventWorker(DirectStreamEventHandler(host, port, mode=mode), make_default=False)
+        return cls(field, ew, unit=unit)
+
+    # ------------------------------------------------------------------
     # Data access
     # ------------------------------------------------------------------
 
@@ -683,7 +1025,12 @@ class Stream:
         return self._dataManager._getDataShape()
 
     def lens(self):
+        """Samples currently retained per scan step (see DataManager.lens)."""
         return self._dataManager.lens()
+
+    def counts(self):
+        """True, uncapped event count per scan step (see DataManager.counts)."""
+        return self._dataManager.counts()
 
     def __len__(self):
         return len(self._dataManager)
@@ -713,14 +1060,24 @@ class Stream:
     # ------------------------------------------------------------------
 
     def accumulate(self, do_accumulate=None):
-        """Start or stop accumulation.  Toggle with no argument."""
+        """Start or stop accumulation.  Toggle with no argument.
+
+        For a derived Stream (arithmetic, :meth:`filter`/``[mask]``,
+        :meth:`element`/``[i]``, :meth:`categorize`, ...) this transparently
+        subscribes every *real* channel the computation ultimately depends
+        on -- there is no need to separately ``accumulate(True)`` a mask
+        stream or an upstream operand just so a derived Stream built from it
+        receives data.
+        """
         if do_accumulate is None:
             do_accumulate = not self._is_accumulating()
             print(f"Toggling accumulation {'ON' if do_accumulate else 'OFF'} for {self.name!r}")
 
         ew = self._source.eventWorker
         if do_accumulate:
-            ew.registerSource(self._source.name)
+            channels = _collect_source_channels(self._source)
+            if channels:
+                ew.registerSources(*channels)
             if self._appendEventData not in ew.eventCallbacks:
                 ew.eventCallbacks.append(self._appendEventData)
         else:
@@ -728,7 +1085,11 @@ class Stream:
                 ew.eventCallbacks.remove(self._appendEventData)
             except ValueError:
                 pass
-            ew.removeSource(self._source.name)
+            # Only unregister for a plain, directly-named channel -- a derived
+            # source's dependencies may still be in use by sibling Streams, and
+            # _collect_source_channels doesn't reference-count consumers.
+            if isinstance(self._source, EventSource):
+                ew.removeSource(self._source.name)
 
     def _is_accumulating(self):
         return self._appendEventData in self._source.eventWorker.eventCallbacks
@@ -773,6 +1134,69 @@ class Stream:
                     rows.append({"event": ev_idx, "scan_step": step_idx, "scan_value": step_val, self.name: v})
         return pd.DataFrame(rows)
 
+    def to_array(self, index="pulse_id", name=None, unit=None):
+        """Snapshot this Stream's currently accumulated data as a static ``escape.Array``.
+
+        A one-shot conversion of whatever has been accumulated *so far* --
+        not a live link back to this Stream -- bridging into the
+        escape.storage ecosystem (index-aligned arithmetic, HDF5/zarr
+        persistence, ``DataSet``, ...). Uses the same per-step "step/hist"
+        data access ``HistPlot``/``ValueHistPlot``/:meth:`to_frame` already
+        go through (``self.data``, ``self.lens()``, ``self.eventIds``) --
+        including their caveat: a step beyond ``maxlen`` samples only has its
+        *retained* (not full historical) samples included, same as
+        :meth:`lens`.
+
+        Parameters
+        ----------
+        index : "pulse_id" or array-like
+            Per-event index for the resulting Array. ``"pulse_id"``
+            (default) uses this Stream's own already-recorded event IDs
+            (``self.eventIds``) -- ``DataManager.append()`` stores the event
+            ID (bsread's pulse ID; see ``Event_SFEL.getEventId()``)
+            alongside every sample already, for *every* accumulating
+            Stream. There is no separate ``pulse_id`` Stream to build or
+            accumulate for this, and nothing gets freshly (re-)subscribed
+            from the dispatcher to produce it -- it's already there,
+            unconditionally, the moment this Stream accumulates anything.
+            Pass an explicit array only to override it (length must match
+            this Stream's total accumulated sample count).
+        name, unit : str, optional
+            Default to this Stream's own ``.name``/``.unit``.
+
+        Returns
+        -------
+        escape.Array
+            With ``step_lengths``/``parameter`` set from this Stream's scan
+            structure if it has one (mirroring ``escape.storage.Scan``'s
+            ``{param_name: {"values": [...]}}`` shape) -- a single implicit
+            step otherwise.
+        """
+        from escape import Array
+
+        data = np.asarray([v for step in self.data for v in step])
+        if isinstance(index, str) and index == "pulse_id":
+            idx = np.asarray([v for step in self.eventIds for v in step])
+        else:
+            idx = np.asarray(index)
+            if len(idx) != len(data):
+                raise ValueError(
+                    f"to_array: explicit index has {len(idx)} entries, but "
+                    f"{len(data)} samples are currently accumulated."
+                )
+
+        name = name or self.name
+        unit = unit or self.unit
+        if self.scan._parameters is None:
+            return Array(data=data, index=idx, name=name, unit=unit)
+
+        step_lengths = self.lens()
+        parameter = {p: {"values": list(self.scan[p])} for p in self.scan.keys()}
+        return Array(
+            data=data, index=idx, step_lengths=step_lengths, parameter=parameter,
+            name=name, unit=unit,
+        )
+
     # ------------------------------------------------------------------
     # Statistics
     # ------------------------------------------------------------------
@@ -798,6 +1222,100 @@ class Stream:
         ]
 
     # ------------------------------------------------------------------
+    # Live running statistics
+    # ------------------------------------------------------------------
+
+    def _running_stat(self, stat, N_acc, weights, skipnan):
+        engine = _RunningStat(stat, skipnan=skipnan)
+        label = ("nan" if skipnan else "") + stat
+        args = [self] if weights is None else [self, weights]
+        name = f"{self.name}_running_{label}"
+        if weights is not None:
+            name += f"_weighted_by_{weights.name}"
+        p = ProcObj(
+            engine,
+            args=args,
+            returns_is_esc=[True],
+            returns_names=[name],
+            returns_units=[self.unit],
+            # A running stat spans the whole accumulation window, not a scan
+            # step -- like wrapFunc_singleOutput(), it deliberately does not
+            # inherit self.scan.
+            scan=Scan(),
+        )
+        result = p.createChildren()[0]
+        result.N_acc = N_acc  # plain, freely reassignable attribute -- see _RunningStat
+        engine.owner = result
+        return result
+
+    def running_mean(self, N_acc=100, weights=None):
+        """Live windowed mean, recomputed every event over the last ``N_acc`` samples.
+
+        Returns a new Stream whose data is the current running mean -- one
+        value per pulse, not a one-off snapshot. The window size is read from
+        the *returned* Stream's ``.N_acc`` attribute on every event, so it can
+        be changed at any time, mid-run, without recreating anything::
+
+            rm = i0.running_mean(N_acc=200)
+            rm.accumulate(True)
+            ...
+            rm.N_acc = 50   # takes effect from the next event onward
+
+        Parameters
+        ----------
+        N_acc : int
+            Window size: number of most recent samples averaged over.
+        weights : Stream, optional
+            Per-event weight stream (same window). If given, computes a
+            weighted mean ``sum(w*x)/sum(w)`` over the window instead of a
+            plain mean. Accumulating the result auto-subscribes both this
+            Stream's and *weights*' real channel(s) (see :meth:`accumulate`).
+
+        See Also
+        --------
+        running_nanmean, running_std, running_median, running_mad
+        """
+        return self._running_stat("mean", N_acc, weights, skipnan=False)
+
+    def running_nanmean(self, N_acc=100, weights=None):
+        """Like :meth:`running_mean`, but ignores nan-valued samples in the window."""
+        return self._running_stat("mean", N_acc, weights, skipnan=True)
+
+    def running_std(self, N_acc=100, weights=None):
+        """Live windowed standard deviation (population, ddof=0), analogous to :meth:`running_mean`."""
+        return self._running_stat("std", N_acc, weights, skipnan=False)
+
+    def running_nanstd(self, N_acc=100, weights=None):
+        """Like :meth:`running_std`, but ignores nan-valued samples in the window."""
+        return self._running_stat("std", N_acc, weights, skipnan=True)
+
+    def running_median(self, N_acc=100, weights=None):
+        """Live windowed median, analogous to :meth:`running_mean`.
+
+        With *weights*, uses a cumulative-weight-crossing weighted median
+        (see the module-level ``_weighted_median`` helper) rather than the
+        plain unweighted ``numpy.median``.
+        """
+        return self._running_stat("median", N_acc, weights, skipnan=False)
+
+    def running_nanmedian(self, N_acc=100, weights=None):
+        """Like :meth:`running_median`, but ignores nan-valued samples in the window."""
+        return self._running_stat("median", N_acc, weights, skipnan=True)
+
+    def running_mad(self, N_acc=100, weights=None):
+        """Live windowed median absolute deviation, analogous to :meth:`running_mean`.
+
+        ``median(abs(x - median(x)))`` over the window (unscaled -- multiply
+        by ~1.4826 for a normal-consistent std estimate). With *weights*,
+        both medians involved are weighted.
+        """
+        return self._running_stat("mad", N_acc, weights, skipnan=False)
+
+    def running_nanmad(self, N_acc=100, weights=None):
+        """Like :meth:`running_mad`, but ignores nan-valued samples in the window."""
+        return self._running_stat("mad", N_acc, weights, skipnan=True)
+
+    # ------------------------------------------------------------------
     # Array-mirroring API: filtering and categorisation
     # ------------------------------------------------------------------
 
@@ -820,16 +1338,62 @@ class Stream:
 
         Note
         ----
-        For SwissFEL dispatcher-based connections, make sure the mask channel is
-        subscribed (call ``mask_stream.accumulate(True)`` or register it
-        separately).  With LocalEventHandler all channels are always received.
+        Calling ``.accumulate(True)`` on the *returned* filtered Stream (or on
+        anything built from it) automatically subscribes both *mask_stream*'s
+        and the filtered channel's real underlying channels -- there's no need
+        to separately call ``mask_stream.accumulate(True)``.
 
         See Also
         --------
         Stream.__getitem__ : ``i[pump]`` is shorthand for ``i.filter(pump)``.
         """
-        filtered_src = FilteredEventSource(self._source, mask_stream)
+        filtered_src = FilteredEventSource(self._source, mask_stream, inner_stream=self)
         return Stream(source=filtered_src)
+
+    def element(self, index):
+        """Select a single element from this Stream's per-event array value.
+
+        For an array-valued channel (e.g. a boolean event-code set such as
+        ``SAR-CVME-TIFALL5:EvtSet``), returns a new scalar-valued Stream whose
+        data is ``raw_value[index]`` for each event -- live, not a one-off
+        snapshot. The result is a normal Stream, so it can itself be used as
+        a filter mask on another Stream: ``other[evtset.element(25)]`` (or
+        the ``evtset[25]`` shorthand via :meth:`__getitem__`) accumulates
+        *other*'s events only where bit 25 of the event set is set.
+
+        Calling ``.accumulate(True)`` on the result (or on anything built from
+        it, e.g. ``other[evtset[25]]``) automatically subscribes the real
+        underlying channel (``evtset``'s) -- there's no need to separately
+        call ``evtset.accumulate(True)``.
+
+        Parameters
+        ----------
+        index : int
+            Index into the per-event array. Ordinary numpy indexing rules
+            apply (negative indices count from the end).
+
+        Returns
+        -------
+        Stream
+        """
+        # `index` is passed as an explicit (non-esc) ProcObj arg rather than
+        # closed over in the lambda, so it shows up as a real constant node
+        # to anything walking the ProcObj graph (see escape.stream.graph) --
+        # a value baked into a closure is otherwise invisible to that walk.
+        index_func = lambda arr, idx: arr[idx]
+        # Opt into escape.stream.pipeline_codegen: given the already-computed
+        # source expressions for [arr, idx], return the equivalent Python
+        # expression for this op.
+        index_func._graph_codegen = lambda arg_exprs: f"{arg_exprs[0]}[{arg_exprs[1]}]"
+        p = ProcObj(
+            index_func,
+            args=[self, index],
+            returns_is_esc=[True],
+            returns_names=[f"{self.name}[{index}]"],
+            returns_units=[self.unit],
+            scan=self.scan,
+        )
+        return p.createChildren()[0]
 
     def __getitem__(self, key):
         """Index a Stream.
@@ -842,15 +1406,24 @@ class Stream:
         key : slice
             Returns accumulated data as a numpy array.  ``s[:100]`` gives the
             first 100, ``s[-200:]`` the last 200, across all scan steps.
+        key : int
+            Returns ``self.element(key)`` -- a new live Stream of that single
+            element from this Stream's per-event array value. Only meaningful
+            when this Stream's raw value is itself an array (e.g. an
+            event-code-set channel); the slice form above is for accumulated
+            *sample* access on any Stream and is a different operation.
         """
         if isinstance(key, Stream):
             return self.filter(key)
         if isinstance(key, slice):
             all_data = [v for step in self.data for v in step]
             return np.array(all_data[key])
+        if isinstance(key, (int, np.integer)):
+            return self.element(key)
         raise TypeError(
-            f"Stream index must be a Stream (for filtering) or a slice "
-            f"(for data access), not {type(key).__name__}"
+            f"Stream index must be a Stream (for filtering), a slice (for "
+            f"data access), or an int (to select one element of a per-event "
+            f"array value), not {type(key).__name__}"
         )
 
     def digitize(self, bins):
@@ -894,7 +1467,15 @@ class Stream:
         -------
         Stream
         """
-        return Stream(source=other_stream._source, scan=self.scan)
+        result = Stream(source=other_stream._source, scan=self.scan)
+        # See the identical note in StreamBinning.categorize() -- `_source` is
+        # shared with other_stream, so `_graph_parent` is what actually
+        # records the "regrouped by self's scan" relationship for graph.py.
+        result._graph_parent = (
+            "categorize_scan",
+            {"data": other_stream, "scan_from": self},
+        )
+        return result
 
     def categorizeBy(self, key_stream, binning_def, side="left"):
         """Bin *self* by the value of *key_stream* (legacy method).
@@ -910,7 +1491,167 @@ class Stream:
             s = digitizeScan(key_stream, binning_def)
         else:
             raise ValueError("binning_def must be a float or an iterable of edges")
-        return Stream(source=self._source, scan=s)
+        result = Stream(source=self._source, scan=s)
+        # See the identical note in StreamBinning.categorize().
+        result._graph_parent = (
+            "categorizeBy",
+            {"data": self, "key": key_stream, "binning": binning_def},
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Pipeline offload
+    # ------------------------------------------------------------------
+
+    def to_pipeline_server(
+        self, name, pipeline_client=None, output_name=None,
+        additional_config=None, redeploy=True,
+    ):
+        """Run this Stream's computation on the PSI pipeline server (``cam_server``)
+        instead of in this client, and publish the result as a new bsread stream.
+
+        Walks this Stream's computation graph (:func:`escape.stream.graph.build_graph`),
+        auto-generates the equivalent ``process(data, pulse_id, timestamp,
+        parameters)`` script
+        (:func:`escape.stream.pipeline_codegen.generate_process_script`), and
+        deploys it as a ``pipeline_type: "stream"`` instance on cam_server,
+        subscribed to exactly the real channels this Stream depends on. This
+        is the automated version of the manual workflow demonstrated in
+        ``example_pipeline_offload.ipynb`` -- validated against the real
+        Bernina cam_server; read that notebook first if any of this is
+        surprising.
+
+        Requires the optional ``cam_server`` package (``pip install
+        cam_server``) and ``networkx`` (see :mod:`escape.stream.graph`) --
+        both imported lazily, so merely importing ``escape.stream`` needs
+        neither.
+
+        Parameters
+        ----------
+        name : str
+            The pipeline instance id *and* (unless *output_name* is given)
+            the key under which the result is published in the output
+            stream. Keep this short and unambiguous -- e.g. prefixed
+            ``test_<you>_...`` for anything experimental -- since it is a
+            real, visible name on a server shared with other beamline work.
+        pipeline_client : cam_server.PipelineClient, optional
+            An existing client to reuse (e.g. already pointed at a
+            non-default server address). Defaults to a fresh
+            ``PipelineClient()`` (``http://sf-daqsync-01:8889/`` unless
+            overridden).
+        output_name : str, optional
+            Output field name, if different from *name*.
+        additional_config : dict, optional
+            Extra keys merged into the instance config (e.g.
+            ``dispatcher_url``) -- see ``cam_server/pipeline/utils.py``'s
+            ``connect_to_stream()`` for what a ``"stream"``-type instance
+            understands.
+        redeploy : bool
+            If an instance named *name* is already running, stop it first
+            and create a fresh one (default). This is the only redeploy
+            strategy implemented right now -- cam_server also supports a
+            cheaper in-place hot-reload (``set_function_script`` /
+            ``reload=True``) when only the script body changed and the
+            channel wiring didn't, but that path isn't wired up here yet.
+
+        Returns
+        -------
+        (instance_id, stream_address)
+            *stream_address* is a raw ``tcp://host:port`` bsread address --
+            **not** a dispatcher-registered channel name. Read it directly:
+            ``bsread.Source(host=..., port=...)`` (see
+            ``cam_server_client.utils.get_host_port_from_stream_address`` to
+            parse it, and Part 4 of the example notebook to read it). There
+            is currently no automatic way to wrap that address back into a
+            client-side ``Stream`` (the existing ``EventSource`` only knows
+            how to subscribe to dispatcher channel *names*, not raw
+            addresses) -- a natural next piece, not yet built.
+
+        What can and can't be translated
+        ---------------------------------
+        Covers exactly what was validated live: real channels, constants,
+        arithmetic operators, ``element()``/indexing, opposite-mask
+        ``filter()``/``[mask]`` pairs (all stateless, recomputed fresh every
+        event), and the plain (unweighted, non-nan-skipping)
+        ``running_mean``/``running_std``/``running_median``/``running_mad``
+        family (the one *stateful* op, translated to an explicit
+        module-level ``deque`` since cam_server's ``"stream"`` pipeline type
+        gives ``process()`` no ``init``/state argument of its own -- unlike
+        its ``"custom"`` type, see the mapping table in the example
+        notebook). Anything else -- ``categorize()``/``digitize()`` (a
+        scan-step concept with no meaning in a stateless per-event server
+        script), weighted or nan-skipping running stats, or a function this
+        module doesn't recognize -- raises ``NotImplementedError`` naming
+        exactly what's missing, rather than silently deploying code that
+        doesn't match what this Stream actually computes.
+
+        Making a custom function pipeline-compatible
+        ----------------------------------------------
+        If you write your own derived-Stream constructor (like ``element()``)
+        and want ``to_pipeline_server()`` to handle it, give the function you
+        pass to ``ProcObj`` a ``_graph_codegen`` attribute -- a callable that
+        takes the already-generated source expression for each *positional*
+        ``ProcObj`` arg (in order, constants included, rendered as their
+        ``repr()``) and returns the Python expression computing this node's
+        value from them, as plain text. This only works for **stateless**
+        ops -- computed fresh every event from this event's own inputs, nothing
+        remembered across calls. ``element()``'s own implementation is the
+        template::
+
+            index_func = lambda arr, idx: arr[idx]
+            index_func._graph_codegen = lambda arg_exprs: f"{arg_exprs[0]}[{arg_exprs[1]}]"
+            p = ProcObj(index_func, args=[self, index], ...)
+
+        ``generate_process_script`` wraps the returned expression in a
+        ``None``-propagation guard automatically (if any *Stream-valued* arg
+        is ``None`` this event, the whole node is ``None`` too) -- your
+        ``_graph_codegen`` callable only needs to return the "happy path"
+        expression, not handle ``None`` itself.
+
+        If your op needs to remember something **across** events (a window,
+        a counter, an EMA, ...) that's a fundamentally different, harder
+        case -- ``_graph_codegen`` alone can't express it, since it only
+        emits one expression, not a persistent module-level variable plus an
+        update rule. There's no generic protocol for that yet; the only
+        stateful op supported today (``_RunningStat``, behind
+        ``running_mean``/etc.) is special-cased directly in
+        ``pipeline_codegen._emit_running_stat`` rather than going through a
+        generic hook -- follow that function as the template if you need a
+        second stateful op, or write the ``process()`` script for that
+        Stream by hand instead of calling ``to_pipeline_server()`` on it.
+
+        Examples
+        --------
+        ::
+
+            isref = evtset.element(5)
+            ratio = i[~isref] / i[isref].running_mean(N_acc=5)
+            instance_id, stream_address = ratio.to_pipeline_server("test_htlemke_ratio")
+            ...
+            pipeline_client.stop_instance(instance_id)   # always clean up
+        """
+        from .pipeline_codegen import generate_process_script
+
+        if pipeline_client is None:
+            from cam_server import PipelineClient
+            pipeline_client = PipelineClient()
+
+        script = generate_process_script(self, output_name=output_name or name)
+        channels = _collect_source_channels(self._source)
+
+        config = {
+            "pipeline_type": "stream",
+            "function": f"{name}.py",
+            "bsread_channels": channels,
+        }
+        if additional_config:
+            config.update(additional_config)
+
+        if redeploy and pipeline_client.is_instance_running(name):
+            pipeline_client.stop_instance(name)
+
+        pipeline_client.set_user_script(config["function"], script)
+        return pipeline_client.create_instance_from_config(config, instance_id=name)
 
     # ------------------------------------------------------------------
     # Live plots
@@ -923,26 +1664,38 @@ class Stream:
                 raise TimeoutError(f"Timed out waiting for data from {self.name!r}.")
             time.sleep(0.05)
 
-    def plot_hist(self, update=0.5, axes=None, timeout=5, n_bins=50):
+    def _peek_shape(self):
+        """Shape of the most recently accumulated raw sample, () if scalar
+        or if no data has arrived yet."""
+        for step in self.data:
+            if len(step):
+                return np.shape(step[-1])
+        return ()
+
+    def plot_hist(self, update=0.5, axes=None, timeout=5, n_bins=50, N_acc=100):
         """Value-distribution or scan-count histogram with live updates.
 
-        Routes to :class:`ValueHistPlot` (no scan) or :class:`HistPlot` (scan).
+        Routes to :class:`ValueHistPlot` (no scan) or :class:`HistPlot` (scan)
+        for a scalar Stream. For an **array-valued** Stream (e.g. a per-event
+        waveform or an event-code-set channel), routes instead to
+        :class:`~escape.stream.plots.WaterfallPlot` -- a 2D live image, rows =
+        the last *N_acc* events, columns = array index -- since neither a
+        value histogram nor a scan-step-count histogram is meaningful
+        per array element.
         """
         self.accumulate(True)
-        has_scan = self.scan._parameters is not None
         if axes is None:
             fig, axes = plt.subplots()
-            title = (
-                f"{self.name}  histogram"
-                if has_scan
-                else f"{self.name}  value distribution"
-            )
-            axes.figure.suptitle(title)
-        self._wait_for_data(timeout)
-        if has_scan:
-            hp = plots.HistPlot(self, axes=axes)
         else:
-            hp = plots.ValueHistPlot(self, axes=axes, n_bins=n_bins)
+            fig = axes.figure
+        self._wait_for_data(timeout)
+        if np.prod(self._peek_shape(), dtype=int) > 1:
+            fig.suptitle(f"{self.name}  (live, last {N_acc} events)")
+            hp = plots.WaterfallPlot(self, N_acc=N_acc, axes=axes, update_interval=update or 0.5)
+        else:
+            has_scan = self.scan._parameters is not None
+            fig.suptitle(f"{self.name}  histogram" if has_scan else f"{self.name}  value distribution")
+            hp = plots.HistPlot(self, axes=axes) if has_scan else plots.ValueHistPlot(self, axes=axes, n_bins=n_bins)
         hp.plot()
         if update:
             hp.start(interval=update)
@@ -963,15 +1716,103 @@ class Stream:
         self._medPlot = mp
         return mp
 
-    def plot_corr(self, xVar, Npoints=300, update=0.5, axes=None, timeout=5):
-        """Scatter-plot correlation against *xVar* with live updates."""
+    def plot(self, rate_Hz=1.0, n_history=200, axes=None, timeout=5):
+        """Live view of the current value, redrawn at *rate_Hz*.
+
+        The generic fallback live plot: ignores scan structure entirely,
+        always shows the most recently accumulated sample(s) -- exactly what
+        you want for a derived, no-scan Stream such as a live-normalized
+        detector trace (``(a[~mask] / a[mask].running_mean(N_acc=50)).plot()``).
+
+        For an **array-valued** Stream shows the single latest snapshot as a
+        line (x = array index). For a **scalar** Stream shows a rolling trend
+        of the last *n_history* samples (x = recent event index). See
+        :class:`~escape.stream.plots.TracePlot`.
+
+        Parameters
+        ----------
+        rate_Hz : float
+            Redraw rate in Hz (``rate_Hz=1`` -> once per second). ``0``/
+            ``None`` draws once and does not start live updates.
+        n_history : int
+            Scalar Streams only: how many recent samples to show as a trend.
+        """
+        self.accumulate(True)
+        if axes is None:
+            fig, axes = plt.subplots()
+        self._wait_for_data(timeout)
+        interval = 1.0 / rate_Hz if rate_Hz else 1.0
+        tp = plots.TracePlot(self, axes=axes, n_history=n_history, update_interval=interval)
+        tp.plot()
+        if rate_Hz:
+            tp.start(interval=interval)
+        self._tracePlot = tp
+        return tp
+
+    def plot_corr(self, xVar=None, Npoints=300, update=0.5, axes=None, timeout=5,
+                  default_x="lab_time", N_acc=100):
+        """Correlation / trend plot against *xVar*, live-updating.
+
+        With no *xVar*, defaults to a live ``lab_time`` Stream (wall-clock
+        seconds) bound to this Stream's own EventWorker -- i.e. a live "value
+        vs time" trend plot with no arguments needed. Pass
+        ``default_x='pulse_id'`` to default to pulse ID instead, or an
+        explicit Stream for *xVar* to correlate against any other channel.
+
+        The representation is chosen automatically once data is available:
+
+        - scalar vs scalar -> the classic matched-by-pulse-ID scatter
+          (:class:`~escape.stream.plots.PlotCorrelation`).
+        - array vs scalar (either side) -> a 2D history image
+          (:class:`~escape.stream.plots.WaterfallPlot`), rows ordered by the
+          scalar Stream's live value (e.g. array-valued channel vs time).
+        - array vs array, same shape -> every element of the last *Npoints*
+          matched events, pooled into one dense scatter -- a true
+          element-by-element correlation isn't otherwise representable as a
+          single 2D plot.
+        - array vs array, different shape -> raises ``ValueError``; not
+          representable.
+        """
+        ew = self._source.eventWorker
+        if xVar is None:
+            if default_x == "pulse_id":
+                xVar = ew.pulse_id
+            elif default_x == "lab_time":
+                xVar = ew.lab_time
+            else:
+                raise ValueError("default_x must be 'lab_time' or 'pulse_id'")
+
         self.accumulate(True)
         xVar.accumulate(True)
         if axes is None:
             fig, axes = plt.subplots()
-            fig.suptitle(f"{self.name}  vs  {xVar.name}")
+        else:
+            fig = axes.figure
         self._wait_for_data(timeout)
-        cp = plots.PlotCorrelation(xVar, self, Nlast=Npoints, axes=axes)
+        xVar._wait_for_data(timeout)
+
+        y_arr = np.prod(self._peek_shape(), dtype=int) > 1
+        x_arr = np.prod(xVar._peek_shape(), dtype=int) > 1
+
+        if y_arr and not x_arr:
+            fig.suptitle(f"{self.name}  vs  {xVar.name}  (live)")
+            cp = plots.WaterfallPlot(self, x_stream=xVar, N_acc=N_acc, axes=axes, update_interval=update or 0.5)
+        elif x_arr and not y_arr:
+            fig.suptitle(f"{xVar.name}  vs  {self.name}  (live)")
+            cp = plots.WaterfallPlot(xVar, x_stream=self, N_acc=N_acc, axes=axes, update_interval=update or 0.5)
+        elif y_arr and x_arr:
+            y_shape, x_shape = self._peek_shape(), xVar._peek_shape()
+            if y_shape != x_shape:
+                raise ValueError(
+                    f"plot_corr: {self.name!r} (shape {y_shape}) and {xVar.name!r} "
+                    f"(shape {x_shape}) are both array-valued with different "
+                    f"shapes -- element-by-element correlation isn't defined."
+                )
+            fig.suptitle(f"{self.name}  vs  {xVar.name}  (live, pooled elements)")
+            cp = plots.PlotCorrelation(xVar, self, Nlast=Npoints, axes=axes, flatten_arrays=True)
+        else:
+            fig.suptitle(f"{self.name}  vs  {xVar.name}")
+            cp = plots.PlotCorrelation(xVar, self, Nlast=Npoints, axes=axes)
         cp.plot()
         if update:
             cp.start(interval=update)
@@ -1112,6 +1953,37 @@ def initStreamInstances(eventWorker=None):  # noqa: N802
 # backward-compatible alias
 def initEscDataInstances(eventWorker=None):  # noqa: N802
     return initStreamInstances(eventWorker)
+
+
+def _resolve_eventworker(eventworker, func_name):
+    if eventworker is not None:
+        return eventworker
+    eventworker = globals().get("eventworker")
+    if eventworker is None:
+        raise RuntimeError(
+            f"No default EventWorker registered; pass one explicitly: {func_name}(ew)."
+        )
+    return eventworker
+
+
+def pulse_id(eventworker=None):
+    """Module-level shorthand for ``eventworker.pulse_id`` -- a cached live
+    Stream of each event's integer pulse ID.
+
+    Uses the module-default EventWorker (the last one created with
+    ``make_default=True``) if *eventworker* is omitted.
+    """
+    return _resolve_eventworker(eventworker, "pulse_id").pulse_id
+
+
+def lab_time(eventworker=None):
+    """Module-level shorthand for ``eventworker.lab_time`` -- a cached live
+    Stream of each event's wall-clock time (seconds since epoch).
+
+    Uses the module-default EventWorker (the last one created with
+    ``make_default=True``) if *eventworker* is omitted.
+    """
+    return _resolve_eventworker(eventworker, "lab_time").lab_time
 
 
 # ---------------------------------------------------------------------------
