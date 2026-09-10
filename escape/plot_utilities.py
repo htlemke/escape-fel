@@ -3205,6 +3205,32 @@ def _monotonic_segments(x1):
     return [(a, b) for a, b in zip(boundaries[:-1], boundaries[1:]) if b > a]
 
 
+def _interp_linear_extrap(query, xp, fp):
+    """Like ``numpy.interp``, but linearly extrapolates past the ends of
+    ``xp`` (using the boundary segment's slope) instead of clamping.
+
+    ``Axes.secondary_xaxis`` evaluates the forward/inverse functions on the
+    *current view limits* of the primary axis (see
+    ``SecondaryAxis._set_lims``), which routinely extend past the actual
+    x1/step data range -- e.g. a 2-D histogram/pcolormesh pads its x-axis by
+    half a bin width on each side so every column is centered on its step.
+    ``numpy.interp``'s clamping collapses that overhang onto the boundary
+    tick value, and matplotlib then stretches it back out over the padded
+    pixel range -- pulling the "0"/"N-1" secondary-axis ticks away from
+    their true, bin-centered x1 positions. Linear extrapolation keeps the
+    mapping (and its inverse) consistent outside the sampled range too.
+    """
+    query = np.asarray(query, dtype=float)
+    out = np.interp(query, xp, fp)
+    dx_lo = xp[1] - xp[0]
+    dx_hi = xp[-1] - xp[-2]
+    lo_slope = (fp[1] - fp[0]) / dx_lo if dx_lo != 0 else 0.0
+    hi_slope = (fp[-1] - fp[-2]) / dx_hi if dx_hi != 0 else 0.0
+    out = np.where(query < xp[0], fp[0] + (query - xp[0]) * lo_slope, out)
+    out = np.where(query > xp[-1], fp[-1] + (query - xp[-1]) * hi_slope, out)
+    return out
+
+
 def _make_forward_inverse(x1_seg, step_seg):
     """Build (forward, inverse) callables between a monotonic x1 segment and
     its step indices, for use with ``Axes.secondary_xaxis``."""
@@ -3214,10 +3240,10 @@ def _make_forward_inverse(x1_seg, step_seg):
         x1_asc, step_asc = x1_seg[::-1], step_seg[::-1]
 
     def forward(x1_query):
-        return np.interp(np.asarray(x1_query, dtype=float), x1_asc, step_asc)
+        return _interp_linear_extrap(x1_query, x1_asc, step_asc)
 
     def inverse(step_query):
-        return np.interp(np.asarray(step_query, dtype=float), step_seg, x1_seg)
+        return _interp_linear_extrap(step_query, step_seg, x1_seg)
 
     return forward, inverse
 
