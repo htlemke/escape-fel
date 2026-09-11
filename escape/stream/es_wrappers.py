@@ -126,6 +126,13 @@ class EventHandler_SFEL:
         self.source = None
         self.source_ids = []
 
+    def clone(self):
+        """Return a fresh, independent handler with the same configuration
+        (no channels registered yet, no connection) -- used by
+        ``EventWorker``'s make-before-break restart to build and connect a
+        replacement before tearing down the current connection."""
+        return EventHandler_SFEL(**self._source_kwargs)
+
     # ------------------------------------------------------------------
     # Source registration
     # ------------------------------------------------------------------
@@ -196,6 +203,10 @@ class LocalEventHandler:
         self.all_channels = all_channels
         self.source = None
         self.source_ids = []
+
+    def clone(self):
+        """See ``EventHandler_SFEL.clone``."""
+        return LocalEventHandler(host=self.host, port=self.port, all_channels=self.all_channels)
 
     def register_source(self, source_id):
         if source_id not in self.source_ids:
@@ -273,6 +284,10 @@ class DirectStreamEventHandler:
         self.mode = mode
         self.source = None
         self.source_ids = []
+
+    def clone(self):
+        """See ``EventHandler_SFEL.clone``."""
+        return DirectStreamEventHandler(self.host, self.port, mode=self.mode)
 
     def register_source(self, source_id):
         if source_id not in self.source_ids:

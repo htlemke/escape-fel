@@ -216,6 +216,21 @@ class DataHubEventHandler:
         self.stream = None
         self.source_ids = []
 
+    def clone(self):
+        """Return a fresh, independent handler with the same configuration
+        (no channels registered yet, no connection) -- used by
+        ``EventWorker``'s make-before-break restart to build and connect a
+        replacement before tearing down the current connection. Deliberately
+        a *new* handler/stream object rather than reusing ``self.stream``:
+        the point is for the old and new connections to be fully
+        independent while both are briefly alive."""
+        return DataHubEventHandler(
+            backend=self.backend,
+            url=self.url,
+            receive_timeout=self.receive_timeout,
+            **self._stream_kwargs,
+        )
+
     # ------------------------------------------------------------------
     # Channel registration (called by EventWorker)
     # ------------------------------------------------------------------
@@ -321,6 +336,13 @@ class DataHubLocalEventHandler:
         self._stream_kwargs = stream_kwargs
         self.stream = None
         self.source_ids = []
+
+    def clone(self):
+        """See ``DataHubEventHandler.clone``."""
+        return DataHubLocalEventHandler(
+            host=self.host, port=self.port, receive_timeout=self.receive_timeout,
+            **self._stream_kwargs,
+        )
 
     def register_source(self, source_id):
         if source_id not in self.source_ids:

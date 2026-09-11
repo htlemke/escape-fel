@@ -445,9 +445,27 @@ class EventWorker:
     make_default : bool
         If True, register this instance in the module globals so that
         EventSource() objects can find it without an explicit reference.
+    restart_mode : "make_before_break" or "break_before_make"
+        How a channel-set change (see ``registerSource``/``removeSource``)
+        replaces the underlying connection. ``"make_before_break"``
+        (default) connects and warms up a replacement *before* tearing down
+        the current one -- no gap in received events, and the old
+        connection's teardown (which, for some handlers, is itself not
+        perfectly clean -- e.g. a known ordering bug in psi-datahub's
+        ``Bsread.close()``) happens only after the replacement is already
+        serving. This briefly holds two live connections open at once
+        (roughly the time to construct+enter the new one, typically well
+        under a second) -- pass ``"break_before_make"`` to opt out of that
+        entirely and go back to the old stop-then-start behavior (a real
+        gap in received events, but never more than one connection open).
+        Falls back to ``"break_before_make"`` automatically, per restart,
+        if the current handler doesn't support ``.clone()`` or the
+        replacement doesn't come up within ``connect_timeout``
+        (see ``_restart_make_before_break``) -- so this is safe to leave at
+        the default even for a handler that doesn't support cloning yet.
     """
 
-    def __init__(self, eventHandler=None, make_default=True):
+    def __init__(self, eventHandler=None, make_default=True, restart_mode="make_before_break"):
         if eventHandler is None:
             if _HAS_DATAHUB:
                 eventHandler = DataHubEventHandler(backend="bsread")
@@ -465,6 +483,7 @@ class EventWorker:
         self._restart_timer = None
         self._restart_lock = threading.Lock()
         self._callback_failures = {}     # cb -> {"count": int, "last_log": float}
+        self.restart_mode = restart_mode
         self._pulse_id_stream = None     # lazily-created, cached -- see .pulse_id
         self._lab_time_stream = None     # lazily-created, cached -- see .lab_time
 
@@ -482,22 +501,56 @@ class EventWorker:
         """
         return getattr(self._eventHandler, "_needs_restart_on_register", True)
 
+    def _source_ids_snapshot(self):
+        """``set`` of the handler's currently registered channel ids, or
+        ``None`` if the handler doesn't expose ``source_ids`` in a
+        comparable way (unknown handler type) -- see ``_changed``."""
+        ids = getattr(self._eventHandler, "source_ids", None)
+        return set(ids) if ids is not None else None
+
+    def _changed(self, before):
+        """Whether the handler's channel set actually differs from the
+        ``before`` snapshot -- used to skip a restart entirely when a
+        register/remove call was a no-op (e.g. re-registering an
+        already-subscribed channel, or removing one a sibling Stream still
+        needs). If the handler's channel set can't be introspected,
+        conservatively assumes it changed (matches the old, unconditional
+        behavior -- never a regression, just no new savings for that
+        handler type)."""
+        after = self._source_ids_snapshot()
+        if before is None or after is None:
+            return True
+        return before != after
+
     def registerSource(self, sourceID):  # noqa: N802
+        before = self._source_ids_snapshot()
         self._eventHandler.register_source(sourceID)
+        if not self._changed(before):
+            if not self.loopThread or not self.loopThread.is_alive():
+                self.startEventLoop()
+            return
         if self._needs_restart():
             self._schedule_restart()   # debounced: batches rapid channel additions
         elif not self.loopThread or not self.loopThread.is_alive():
             self.startEventLoop()
 
     def removeSource(self, sourceID):  # noqa: N802
+        before = self._source_ids_snapshot()
         self._eventHandler.remove_source(sourceID)
+        if not self._changed(before):
+            return
         if self._needs_restart():
             self._schedule_restart()
 
     def registerSources(self, *sourceIDs):  # noqa: N802
         """Register several sources in one stop/start cycle (no extra debounce needed)."""
+        before = self._source_ids_snapshot()
         for sid in sourceIDs:
             self._eventHandler.register_source(sid)
+        if not self._changed(before):
+            if not self.loopThread or not self.loopThread.is_alive():
+                self.startEventLoop()
+            return
         if self._needs_restart():
             self._schedule_restart()
         elif not self.loopThread or not self.loopThread.is_alive():
@@ -515,8 +568,114 @@ class EventWorker:
     def _do_restart(self):
         with self._restart_lock:
             self._restart_timer = None
+        if self.restart_mode == "make_before_break":
+            if self._restart_make_before_break():
+                return
+            # Handler doesn't support .clone(), or the replacement didn't
+            # come up in time -- fall back to the always-available path.
+        self._restart_break_before_make()
+
+    def _restart_break_before_make(self):
+        """Stop the current connection, then start a new one.
+
+        Simple and always available (no requirements on the handler), but
+        there is a real gap in received events between the two -- and the
+        old connection's teardown (whatever that costs for this handler --
+        see the ``restart_mode`` docstring) happens with nothing yet
+        replacing it.
+        """
         self.stopEventLoop()
         self.startEventLoop()
+
+    def _restart_make_before_break(self, connect_timeout=5.0):
+        """Connect a replacement connection *before* tearing down the
+        current one, then hand over sequentially (never both dispatching
+        events at once -- see ``_serve``'s ``active_event`` gate).
+
+        Returns True once the replacement is live and serving. Returns
+        False if make-before-break wasn't possible at all for this restart
+        (no usable ``.clone()``, or the replacement didn't come up in
+        time), so the caller (``_do_restart``) falls back to running
+        ``_restart_break_before_make`` itself.
+
+        Not possible when the current handler has no ``.clone()`` (unknown
+        handler type, or one -- like ``MultiSourceEventHandler`` -- that
+        doesn't support it yet). Falls back the same way if the replacement
+        doesn't finish connecting within ``connect_timeout``: holding a
+        stuck half-connected replacement open indefinitely would be worse
+        than just accepting the ordinary restart gap.
+
+        This does not, and cannot, avoid an exception a misbehaving
+        handler's own teardown raises on the *old* connection (e.g. the
+        known ordering bug in psi-datahub's ``Bsread.close()``, which
+        destroys its zmq context before joining its own background thread)
+        -- that happens on the old connection's own shutdown regardless of
+        whether a replacement was already ready. What this buys: no gap in
+        event reception up to the point the old connection is stopped (the
+        residual gap, while the old connection's thread actually exits, is
+        bounded by its shutdown latency -- typically its ``receive_timeout``
+        -- rather than a full reconnect), and the old connection's teardown
+        runs only after the replacement is already serving, not instead of
+        it.
+        """
+        old_handler = self._eventHandler
+        clone_fn = getattr(old_handler, "clone", None)
+        if clone_fn is None:
+            return False
+        try:
+            new_handler = clone_fn()
+        except Exception as exc:
+            print(
+                f"EventWorker: make-before-break clone() failed ({exc}); "
+                "falling back to break-before-make for this restart."
+            )
+            return False
+
+        for sid in list(getattr(old_handler, "source_ids", [])):
+            new_handler.register_source(sid)
+
+        new_stop_event = threading.Event()
+        active_event = threading.Event()
+        ready_event = threading.Event()
+
+        new_thread = threading.Thread(
+            target=self._serve,
+            args=(new_handler, new_stop_event),
+            kwargs=dict(active_event=active_event, ready_event=ready_event),
+            daemon=True,
+        )
+        new_thread.start()
+
+        if not ready_event.wait(timeout=connect_timeout):
+            new_stop_event.set()
+            new_thread.join(timeout=5.0)
+            print(
+                "EventWorker: make-before-break replacement connection did "
+                f"not come up within {connect_timeout}s; falling back to "
+                "break-before-make for this restart."
+            )
+            return False
+
+        # Replacement is live (connected -- see _serve's ready_event, set
+        # right after context_manager() is entered, not gated on having
+        # actually received a first event yet -- see its docstring for why).
+        # Swap references so any concurrent registerSource/removeSource call
+        # targets the right (new) handler from here on.
+        old_thread = self.loopThread
+        old_stop_event = self._stop_event
+        self._eventHandler = new_handler
+        self._stop_event = new_stop_event
+        self.loopThread = new_thread
+
+        # Stop the old connection and wait for its thread to actually exit
+        # BEFORE promoting the new one -- guarantees the two never dispatch
+        # events at the same time (which could otherwise double-process an
+        # overlapping pulse during the handover).
+        old_stop_event.set()
+        if old_thread is not None and old_thread.is_alive():
+            old_thread.join(timeout=5.0)
+        active_event.set()
+        return True
 
     # Consecutive failures of one callback before it's auto-removed from
     # eventCallbacks (equivalent to that Stream calling accumulate(False)).
@@ -564,13 +723,52 @@ class EventWorker:
             self._callback_failures.pop(cb, None)
 
     def eventLoop(self):  # noqa: N802
+        self._serve(self._eventHandler, self._stop_event)
+
+    def _serve(self, eventHandler, stop_event, active_event=None, ready_event=None):
+        """Connect *eventHandler* and dispatch events until *stop_event* is
+        set. This is ``eventLoop``'s actual implementation, generalized so
+        ``_restart_make_before_break`` can run a second, independent one
+        concurrently against a *different* handler/stop_event while the
+        primary loop (``self._eventHandler``/``self._stop_event``) keeps
+        running unaffected.
+
+        *active_event*, when given, starts this loop in "warm-up" mode: it
+        connects and, the moment the connection is live, sets *ready_event*
+        (if given) -- but does not touch ``self.event``/``self.eventCallbacks``
+        dispatch until *active_event* is set by the caller. Once set, it
+        stays set (dispatch is permanent from then on, including across any
+        later reconnect within this same call) -- this is what lets a
+        replacement connection be verified live *before* the old one is
+        torn down, without the two ever dispatching events at the same time
+        (which would double-process an overlapping pulse). When
+        *active_event* is ``None`` (the normal primary-loop case, via
+        ``eventLoop``), this gate is skipped entirely and behavior is
+        identical to before this method existed.
+
+        "Live", for *ready_event*, means *eventHandler.context_manager()*
+        was constructed and its context entered successfully -- not that a
+        first real event has actually been received yet. Waiting for an
+        actual event would be a stronger guarantee but risks hanging
+        indefinitely on a channel that's merely quiet right now; this is a
+        deliberate, documented tradeoff, not an oversight.
+        """
         backoff = 1.0
-        while not self._stop_event.is_set():
+        while not stop_event.is_set():
             try:
-                ctx = self._eventHandler.context_manager()
+                ctx = eventHandler.context_manager()
                 with ctx as s:
                     backoff = 1.0  # reset on successful connect
-                    while not self._stop_event.is_set():
+                    if ready_event is not None:
+                        ready_event.set()
+                    while not stop_event.is_set():
+                        if active_event is not None and not active_event.is_set():
+                            # Still warming up: stay connected (keeps the
+                            # subscription alive and ready) but don't touch
+                            # shared state or dispatch callbacks yet.
+                            s.get_event()
+                            time.sleep(0.001)
+                            continue
                         self.event = s.get_event()
                         now = time.time()
                         dt = now - self._lastTime
@@ -589,10 +787,10 @@ class EventWorker:
                                     self._handle_callback_error(cb, exc)
                         time.sleep(0.001)
             except Exception as exc:
-                if self._stop_event.is_set():
+                if stop_event.is_set():
                     break
                 print(f"EventWorker reconnecting in {backoff:.0f}s (error: {exc})")
-                self._stop_event.wait(timeout=backoff)
+                stop_event.wait(timeout=backoff)
                 backoff = min(backoff * 2, 30.0)
 
     def startEventLoop(self):  # noqa: N802
