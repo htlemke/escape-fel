@@ -1418,6 +1418,96 @@ def _run_fit_button(fig):
     _get_or_create_axes_gui(ax, "_escape_fit_gui", lambda: AxesFitter(ax))
 
 
+def _build_fit_icon(size=24):
+    """A small "scatter + fit line" QIcon for the Fit toolbar button, drawn
+    with QPainter instead of shipping a bitmap asset -- the standard icon
+    for this button everywhere it's attached (originally
+    ``eco.acquisition.counters.CounterValue``'s own icon, moved here so
+    every Fit button -- eco's and escape's own -- looks the same instead of
+    each side drawing/choosing its own)."""
+    from qtpy import QtCore, QtGui
+
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+    pen = QtGui.QPen(QtGui.QColor("black"))
+    pen.setWidthF(max(1.0, size / 10))
+    pen.setCapStyle(QtCore.Qt.RoundCap)
+    painter.setPen(pen)
+    painter.drawLine(
+        QtCore.QPointF(0.08 * size, 0.85 * size),
+        QtCore.QPointF(0.92 * size, 0.15 * size),
+    )
+
+    painter.setPen(QtCore.Qt.NoPen)
+    painter.setBrush(QtGui.QColor("black"))
+    dot_r = size * 0.06
+    dots = [
+        (0.10, 0.55), (0.14, 0.72), (0.18, 0.40), (0.22, 0.62), (0.26, 0.30),
+        (0.30, 0.50), (0.34, 0.68), (0.38, 0.35), (0.42, 0.55), (0.46, 0.25),
+        (0.54, 0.62), (0.58, 0.30), (0.62, 0.50), (0.66, 0.20),
+        (0.70, 0.40), (0.74, 0.58), (0.78, 0.28), (0.82, 0.45), (0.86, 0.15),
+        (0.90, 0.35), (0.20, 0.20), (0.60, 0.65), (0.35, 0.15),
+    ]
+    for fx, fy in dots:
+        painter.drawEllipse(QtCore.QPointF(fx * size, fy * size), dot_r, dot_r)
+
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def _build_peak_icon(size=24):
+    """A small "peak trace + FWHM bar" QIcon for the Peak toolbar button,
+    drawn with QPainter instead of shipping a bitmap asset -- same idea as
+    :func:`_build_fit_icon`: a jagged peak-shaped trace (dots joined by
+    lines) with a red horizontal bar (tick-capped, like an error bar)
+    marking the width at half maximum, the same visual vocabulary as the
+    overlay this button draws (:func:`_update_peak_overlay`)."""
+    from qtpy import QtCore, QtGui
+
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+    points = [
+        (0.05, 0.85), (0.30, 0.40), (0.50, 0.08), (0.68, 0.42), (0.95, 0.80),
+    ]
+
+    pen = QtGui.QPen(QtGui.QColor("black"))
+    pen.setWidthF(max(1.0, size / 10))
+    pen.setCapStyle(QtCore.Qt.RoundCap)
+    pen.setJoinStyle(QtCore.Qt.RoundJoin)
+    painter.setPen(pen)
+    painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(px * size, py * size) for px, py in points]))
+
+    painter.setPen(QtCore.Qt.NoPen)
+    painter.setBrush(QtGui.QColor("black"))
+    dot_r = size * 0.07
+    for px, py in points:
+        painter.drawEllipse(QtCore.QPointF(px * size, py * size), dot_r, dot_r)
+
+    # The FWHM bar: a horizontal line between the two "shoulder" points
+    # (roughly the half-max crossings of the peak trace above), with short
+    # vertical tick caps at each end -- the same crossing_1/crossing_2 +
+    # width-line vocabulary _update_peak_overlay draws on real data.
+    pen = QtGui.QPen(QtGui.QColor("crimson"))
+    pen.setWidthF(max(1.0, size / 7))
+    pen.setCapStyle(QtCore.Qt.RoundCap)
+    painter.setPen(pen)
+    y_bar = 0.42 * size
+    x_lo, x_hi = 0.30 * size, 0.68 * size
+    painter.drawLine(QtCore.QPointF(x_lo, y_bar), QtCore.QPointF(x_hi, y_bar))
+    tick = 0.12 * size
+    painter.drawLine(QtCore.QPointF(x_lo, y_bar - tick / 2), QtCore.QPointF(x_lo, y_bar + tick / 2))
+    painter.drawLine(QtCore.QPointF(x_hi, y_bar - tick / 2), QtCore.QPointF(x_hi, y_bar + tick / 2))
+
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
 def _attach_fit_button_qt(fig):
     toolbar = getattr(fig.canvas.manager, "toolbar", None)
     if toolbar is None or not hasattr(toolbar, "addAction"):
@@ -1425,9 +1515,7 @@ def _attach_fit_button_qt(fig):
 
     icon = None
     try:
-        import qtawesome as qta
-
-        icon = qta.icon("mdi.chart-bell-curve")
+        icon = _build_fit_icon()
     except Exception:
         pass
 
@@ -1483,12 +1571,19 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
     - Peak case: center/FWHM from linear interpolation of the half-maximum
       crossings on either side of the maximum -- the standard FWHM
       definition.
-    - Step case: center from the 50%-level crossing between the two
-      asymptotic levels (mean of the first/last ``n_bg`` points); "fwhm" is
-      the 10-90% rise/fall width instead, the step-equivalent of FWHM
-      (deliberately not a port of the original's unexplained empirical
-      ``0.1195`` constants -- this is the standard, easily-verified
-      definition instead).
+    - Step case: ``center`` is the 50%-level ("half-rise") crossing between
+      the two asymptotic levels (mean of the first/last ``n_bg`` points) on
+      the actual curve; ``fwhm`` is the width between the half-maximum
+      crossings of the *derivative* (already computed to classify
+      peak-vs-step in the first place) rather than an arbitrary 10-90%
+      level crossing on the raw curve -- a step is the integral of its own
+      derivative, so if that derivative is Gaussian-shaped, those crossings
+      are exactly the FWHM points of that Gaussian, the physically
+      meaningful width of the transition (deliberately not a port of the
+      original ``PeakAnalysis``'s unexplained empirical ``0.1195``
+      constants). ``center`` and the half-width of ``fwhm`` generally don't
+      coincide exactly (they come from different crossings), unlike the
+      peak case where they do by construction.
 
     Parameters
     ----------
@@ -1522,11 +1617,17 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
     to run on live, possibly-incomplete data should treat ``None`` as
     "nothing to show yet", not an error. Keys:
 
-    - ``center``, ``fwhm``, ``peak_x``, ``peak_y``, ``is_peak``: as before.
+    - ``center``, ``fwhm``, ``is_peak``: as above.
+    - ``peak_x``, ``peak_y`` : the peak/dip extremum's coordinates for a
+      peak; for a step, just ``center``'s coordinates again (there's no
+      single extremum point to mark there -- see
+      :func:`_update_peak_overlay`, which doesn't draw a point marker for
+      the step case).
     - ``crossing_1``, ``crossing_2`` : ``(x, y)`` tuples -- the two points
-      used to determine the width (the half-max crossings for a peak, the
-      10%/90%-level crossings for a step), in the original data's
-      coordinates, for plotting directly on top of the raw trace.
+      used to determine the width (the half-max crossings, on the curve
+      for a peak or on its derivative for a step -- see above), in the
+      original data's coordinates, for plotting directly on top of the raw
+      trace.
     - ``background`` : ``(x, y)`` arrays of the fitted/constant background
       that was subtracted before locating the peak, spanning the data --
       or ``None`` for a step (see ``levels`` instead).
@@ -1609,14 +1710,22 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
             frac = (level - y[gg]) / (y[j] - y[gg])
             return x[gg] + frac * (x[j] - x[gg])
 
-        level_lo = lev0 + 0.1 * (lev1 - lev0)
-        level_hi = lev0 + 0.9 * (lev1 - lev0)
-        lo = _level_crossing(level_lo)
-        hi = _level_crossing(level_hi)
-        fwhm = abs(hi - lo)
-        crossing_1, crossing_2 = (float(lo), float(level_lo)), (float(hi), float(level_hi))
+        # The half-rise point: where the actual curve crosses halfway
+        # between the two baselines -- distinct from xhm1/xhm2 above (the
+        # derivative's own FWHM crossings), though the two nearly coincide
+        # for a clean, symmetric step.
+        center = _level_crossing(lev0 + 0.5 * (lev1 - lev0))
+        # Width: xhm1/xhm2 (already computed above, in the derivative
+        # domain) rather than an arbitrary 10-90% level crossing on the raw
+        # curve -- a step is the integral of its own derivative, so a
+        # derivative shaped like a Gaussian makes those the FWHM points of
+        # that Gaussian, the physically meaningful width of the transition.
+        fwhm = abs(xhm2 - xhm1)
+        crossing_1 = (float(xhm1), float(np.interp(xhm1, x, y)))
+        crossing_2 = (float(xhm2), float(np.interp(xhm2, x, y)))
         background = None
         levels = (float(lev0), float(lev1))
+        peak_x, peak_y = float(center), float(np.interp(center, x, y))
     else:
         # xhm1/xhm2 live in the background-subtracted domain (half of the
         # subtracted peak's height, in the possibly sign-flipped working
@@ -1658,12 +1767,19 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
     ``x``/``y`` trace, removing whatever ``drawn`` (a previous call's
     return value) left behind first.
 
-    Draws, from :func:`find_peak`'s result: the center + FWHM reference
-    lines and a text readout (as before), the subtracted background curve
-    (peak case) or the two asymptotic levels (step case), the two
-    width-determining crossing points, and the peak/step point itself
-    labeled with its (x, y) coordinates -- a visual sanity check of every
-    quantity the analysis used, not just its answer.
+    Draws, from :func:`find_peak`'s result: a center reference line and a
+    text readout, plus, depending on ``is_peak`` -- a visual sanity check
+    of every quantity the analysis used, not just its answer:
+
+    - Peak case: the two FWHM crossing lines (at ``center +/- fwhm/2``, the
+      same points as ``crossing_1``/``crossing_2``), the subtracted
+      background curve, the crossing points themselves marked on the
+      curve, and the peak/dip point labeled with its (x, y) coordinates.
+    - Step case: the two asymptotic baseline levels, and the two
+      width-determining points (the derivative's own FWHM crossings, see
+      :func:`find_peak`) as vertical lines rather than points on the curve
+      -- there's no single "step point" to mark the way there's an
+      unambiguous extremum for a peak.
 
     ``n_bg``/``bg_model``/``fixed_offset``/``mode`` are the defaults used
     when nothing else overrides them; if a :class:`PeakAnalyzer` panel is
@@ -1699,38 +1815,49 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
     result = find_peak(x, y, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
     if result is None:
         return None
-    center, fwhm = result["center"], result["fwhm"]
-    kind = "peak" if result["is_peak"] else "step"
+    center, fwhm, is_peak = result["center"], result["fwhm"], result["is_peak"]
+    kind = "peak" if is_peak else "step"
     artists = [
         ax.axvline(center, color=_PEAK_OVERLAY_COLOR, ls="--", lw=1, alpha=0.8),
-        ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
-        ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
         ax.text(
             0.02, 0.98, f"{kind}: center={center:.4g}\nFWHM={fwhm:.4g}",
             transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
         ),
     ]
-    if result["background"] is not None:
+    if is_peak:
+        # center +/- fwhm/2 == crossing_1/2's x exactly (by construction --
+        # both come straight from the same half-max crossings), so either
+        # pair of vertical lines marks the same two points.
+        artists.append(ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
+        artists.append(ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
         bx, by = result["background"]
         artists.append(ax.plot(bx, by, "-.", color=_PEAK_OVERLAY_COLOR, lw=1, alpha=0.5)[0])
-    if result["levels"] is not None:
+        for cx, cy in (result["crossing_1"], result["crossing_2"]):
+            artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
+        artists.append(
+            ax.plot(
+                [result["peak_x"]], [result["peak_y"]], "o",
+                color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
+            )[0]
+        )
+        artists.append(
+            ax.annotate(
+                f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
+                xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
+                color=_PEAK_OVERLAY_COLOR, fontsize=8,
+            )
+        )
+    else:
+        # Step case: no single "step point" marker (there isn't one, the
+        # way there's an unambiguous peak/dip extremum for the peak case)
+        # -- just the two baselines and, as vertical lines rather than
+        # points on the curve, the half-rise center (above) and the two
+        # width points (crossing_1/2, the derivative's own FWHM crossings
+        # -- see find_peak).
         for lev in result["levels"]:
             artists.append(ax.axhline(lev, color=_PEAK_OVERLAY_COLOR, ls="-.", lw=1, alpha=0.5))
-    for cx, cy in (result["crossing_1"], result["crossing_2"]):
-        artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
-    artists.append(
-        ax.plot(
-            [result["peak_x"]], [result["peak_y"]], "o",
-            color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
-        )[0]
-    )
-    artists.append(
-        ax.annotate(
-            f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
-            xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
-            color=_PEAK_OVERLAY_COLOR, fontsize=8,
-        )
-    )
+        for cx, cy in (result["crossing_1"], result["crossing_2"]):
+            artists.append(ax.axvline(cx, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
     # Marked (rather than relying on color alone, which one missing
     # `color=` kwarg silently breaks -- see the peak-point marker's history)
     # so every "find the data line" scan elsewhere in escape (this module's
@@ -2097,9 +2224,7 @@ def _attach_peak_button_qt(fig):
 
     icon = None
     try:
-        import qtawesome as qta
-
-        icon = qta.icon("mdi.chart-gaussian")
+        icon = _build_peak_icon()
     except Exception:
         pass
 
@@ -2107,7 +2232,7 @@ def _attach_peak_button_qt(fig):
         _run_peak_button(fig)
 
     toolbar.addSeparator()
-    action = toolbar.addAction(icon, "Peak", _on_click) if icon is not None else toolbar.addAction("Peak", _on_click)
+    action = toolbar.addAction(icon, "", _on_click) if icon is not None else toolbar.addAction("Peak", _on_click)
     action.setToolTip("Toggle a peak-analysis overlay (center/FWHM) on the active axes")
 
 

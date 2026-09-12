@@ -114,8 +114,9 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
     existing ``_draw_step_band``/``escape.plot_utilities.errortube`` split.
     See ``escape.plot_utilities.find_peak`` for the full docstring on the
     method and parameters (linear/offset background subtraction, an
-    optional fixed offset, forced/auto peak-vs-step classification,
-    half-max or 10-90% crossing for the width).
+    optional fixed offset, forced/auto peak-vs-step classification, and
+    -- for the width -- half-max crossings of the curve for a peak, or of
+    its derivative for a step).
 
     Returns a dict (see ``escape.plot_utilities.find_peak`` for the full key
     list: ``center``/``fwhm``/``peak_x``/``peak_y``/``is_peak`` plus
@@ -197,14 +198,22 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
             frac = (level - y[gg]) / (y[j] - y[gg])
             return x[gg] + frac * (x[j] - x[gg])
 
-        level_lo = lev0 + 0.1 * (lev1 - lev0)
-        level_hi = lev0 + 0.9 * (lev1 - lev0)
-        lo = _level_crossing(level_lo)
-        hi = _level_crossing(level_hi)
-        fwhm = abs(hi - lo)
-        crossing_1, crossing_2 = (float(lo), float(level_lo)), (float(hi), float(level_hi))
+        # The half-rise point: where the actual curve crosses halfway
+        # between the two baselines -- distinct from xhm1/xhm2 above (the
+        # derivative's own FWHM crossings), though the two nearly coincide
+        # for a clean, symmetric step.
+        center = _level_crossing(lev0 + 0.5 * (lev1 - lev0))
+        # Width: xhm1/xhm2 (already computed above, in the derivative
+        # domain) rather than an arbitrary 10-90% level crossing on the raw
+        # curve -- a step is the integral of its own derivative, so a
+        # derivative shaped like a Gaussian makes those the FWHM points of
+        # that Gaussian, the physically meaningful width of the transition.
+        fwhm = abs(xhm2 - xhm1)
+        crossing_1 = (float(xhm1), float(np.interp(xhm1, x, y)))
+        crossing_2 = (float(xhm2), float(np.interp(xhm2, x, y)))
         background = None
         levels = (float(lev0), float(lev1))
+        peak_x, peak_y = float(center), float(np.interp(center, x, y))
     else:
         # xhm1/xhm2 live in the background-subtracted domain (half of the
         # subtracted peak's height, in the possibly sign-flipped working
@@ -237,10 +246,14 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
 
     Deliberately a duplicate of ``escape.plot_utilities._update_peak_overlay``
     (kept in sync by hand, same reasoning as :func:`find_peak` above) --
-    draws the center + FWHM reference lines and a text readout, the
-    subtracted background curve (peak case) or the two asymptotic levels
-    (step case), the two width-determining crossing points, and the
-    peak/step point itself labeled with its (x, y) coordinates.
+    draws a center reference line and a text readout, plus, depending on
+    ``is_peak``: for a peak, the two FWHM crossing lines, the subtracted
+    background curve, the crossing points marked on the curve, and the
+    peak/dip point labeled with its (x, y) coordinates; for a step, the two
+    asymptotic baseline levels and the two width-determining points (the
+    derivative's own FWHM crossings) as vertical lines -- no single "step
+    point" marker, there isn't one the way there's an unambiguous extremum
+    for a peak.
 
     ``n_bg``/``bg_model``/``fixed_offset``/``mode`` are the defaults used
     when nothing else overrides them; if a
@@ -276,38 +289,43 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
     result = find_peak(x, y, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
     if result is None:
         return None
-    center, fwhm = result["center"], result["fwhm"]
-    kind = "peak" if result["is_peak"] else "step"
+    center, fwhm, is_peak = result["center"], result["fwhm"], result["is_peak"]
+    kind = "peak" if is_peak else "step"
     artists = [
         ax.axvline(center, color=_PEAK_OVERLAY_COLOR, ls="--", lw=1, alpha=0.8),
-        ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
-        ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
         ax.text(
             0.02, 0.98, f"{kind}: center={center:.4g}\nFWHM={fwhm:.4g}",
             transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
         ),
     ]
-    if result["background"] is not None:
+    if is_peak:
+        # center +/- fwhm/2 == crossing_1/2's x exactly (by construction --
+        # both come straight from the same half-max crossings), so either
+        # pair of vertical lines marks the same two points.
+        artists.append(ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
+        artists.append(ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
         bx, by = result["background"]
         artists.append(ax.plot(bx, by, "-.", color=_PEAK_OVERLAY_COLOR, lw=1, alpha=0.5)[0])
-    if result["levels"] is not None:
+        for cx, cy in (result["crossing_1"], result["crossing_2"]):
+            artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
+        artists.append(
+            ax.plot(
+                [result["peak_x"]], [result["peak_y"]], "o",
+                color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
+            )[0]
+        )
+        artists.append(
+            ax.annotate(
+                f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
+                xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
+                color=_PEAK_OVERLAY_COLOR, fontsize=8,
+            )
+        )
+    else:
         for lev in result["levels"]:
             artists.append(ax.axhline(lev, color=_PEAK_OVERLAY_COLOR, ls="-.", lw=1, alpha=0.5))
-    for cx, cy in (result["crossing_1"], result["crossing_2"]):
-        artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
-    artists.append(
-        ax.plot(
-            [result["peak_x"]], [result["peak_y"]], "o",
-            color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
-        )[0]
-    )
-    artists.append(
-        ax.annotate(
-            f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
-            xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
-            color=_PEAK_OVERLAY_COLOR, fontsize=8,
-        )
-    )
+        for cx, cy in (result["crossing_1"], result["crossing_2"]):
+            artists.append(ax.axvline(cx, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
     # Marked (rather than relying on color alone) so escape.plot_utilities'
     # "find the data line" scans (Peak/Peak-params buttons, and via
     # escape._axes_selection.snapshot_data_lines, the Fit button) can
