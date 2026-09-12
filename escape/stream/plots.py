@@ -910,7 +910,23 @@ class GridPlot(_LivePlotBase):
 
     def _grid_data(self):
         values = getattr(self.grid.stream, self.stat)()
-        return self.grid.to_grid(values)
+        data = self.grid.to_grid(values)
+        if data.ndim != 2:
+            # to_grid() extends the shape by the per-cell value's own shape
+            # (see its docstring) -- an array-valued channel (e.g. a
+            # multi-ROI intensity channel) reduces to one array per cell,
+            # not one scalar, and a plain 2D heatmap can't show that
+            # directly. Fail loud with what to do instead, rather than a
+            # confusing matplotlib shape error (or, before this check
+            # existed, an all-NaN heatmap with no error at all).
+            raise ValueError(
+                f"{self.grid.stream.name}.{self.stat}() gives one "
+                f"{data.shape[len(self.grid.shape):]}-shaped value per grid "
+                f"cell, not a scalar -- GridPlot needs a scalar per cell. "
+                "Index into the channel first (e.g. stream[0] / .element(0) "
+                "for one ROI) before building the Grid."
+            )
+        return data
 
     def _extent(self):
         positions = self.grid.positions

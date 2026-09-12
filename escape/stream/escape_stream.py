@@ -2311,19 +2311,28 @@ class Grid:
         return) into an array of ``self.shape``, NaN-filled for any grid
         cell not discovered/visited yet.
 
-        Only scalar per-cell values are supported (a per-step reduction
-        like mean()/std()/sum()/... over a scalar channel) -- an
-        array-valued channel's per-step reduction isn't reshaped further.
+        A per-step value may itself be an array (e.g. reducing an
+        array-valued channel, such as a multi-ROI intensity channel, still
+        gives one array per step) -- the returned array's shape is then
+        ``self.shape + value_shape``, matching
+        ``escape.storage.Grid.to_grid()``'s own handling of this case
+        (confirmed directly: silently discarding non-scalar values here
+        used to leave the whole grid NaN with no error, for exactly a real
+        multi-ROI bs channel).
         """
         values = list(values)
-        grid_data = np.full(self.shape, np.nan, dtype=float)
+        if not values:
+            return np.full(self.shape, np.nan, dtype=float)
+        value_shape = np.shape(values[0])
+        grid_data = np.full(list(self.shape) + list(value_shape), np.nan, dtype=float)
         for value, index in zip(values, self.get_grid_indices()):
             try:
                 grid_data[index] = value
             except (IndexError, ValueError):
                 # index outside self.shape (e.g. shape given too small) or
-                # value isn't scalar -- skip rather than crash a live
-                # reduction call over one bad/unexpected cell.
+                # this value's shape doesn't match the first one's -- skip
+                # rather than crash a live reduction call over one bad/
+                # unexpected cell.
                 continue
         return grid_data
 
