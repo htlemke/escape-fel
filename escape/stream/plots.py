@@ -288,7 +288,7 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
     artists.append(
         ax.plot(
             [result["peak_x"]], [result["peak_y"]], "o",
-            mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
+            color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
         )[0]
     )
     artists.append(
@@ -298,6 +298,12 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
             color=_PEAK_OVERLAY_COLOR, fontsize=8,
         )
     )
+    # Marked (rather than relying on color alone) so escape.plot_utilities'
+    # "find the data line" scans (Peak/Peak-params buttons, and via
+    # escape._axes_selection.snapshot_data_lines, the Fit button) can
+    # reliably skip every artist this function draws.
+    for artist in artists:
+        artist._escape_overlay = True
     return {"artists": artists, "result": result}
 
 

@@ -1691,7 +1691,7 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
     artists.append(
         ax.plot(
             [result["peak_x"]], [result["peak_y"]], "o",
-            mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
+            color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
         )[0]
     )
     artists.append(
@@ -1701,6 +1701,14 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
             color=_PEAK_OVERLAY_COLOR, fontsize=8,
         )
     )
+    # Marked (rather than relying on color alone, which one missing
+    # `color=` kwarg silently breaks -- see the peak-point marker's history)
+    # so every "find the data line" scan elsewhere in escape (this module's
+    # own Peak/Peak-params buttons, and escape.fit_gui's/escape.freq_gui's
+    # shared escape._axes_selection.snapshot_data_lines) can reliably skip
+    # every artist this function draws, in either attachment order.
+    for artist in artists:
+        artist._escape_overlay = True
     return {"artists": artists, "result": result}
 
 
@@ -1731,7 +1739,7 @@ class _PeakEngine:
         live-updating plot redraws in place."""
         if self.line is not None and self.line in self.ax.get_lines():
             return self.line
-        data_lines = [l for l in self.ax.get_lines() if l.get_color() != _PEAK_OVERLAY_COLOR]
+        data_lines = [l for l in self.ax.get_lines() if not getattr(l, "_escape_overlay", False)]
         return data_lines[-1] if data_lines else None
 
     def params(self):
@@ -2025,7 +2033,7 @@ def _run_peak_button(fig):
         ax._escape_peak_overlay = None
         _draw_safe(fig)
         return
-    data_lines = [l for l in ax.get_lines() if l.get_color() != _PEAK_OVERLAY_COLOR]
+    data_lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
     if not data_lines:
         print("[escape] no data line found in the active axes to analyze.")
         return
@@ -2044,7 +2052,7 @@ def _run_peak_params_button(fig):
     if ax is None:
         print("[escape] no axes to analyze in this figure.")
         return
-    if not [l for l in ax.get_lines() if l.get_color() != _PEAK_OVERLAY_COLOR]:
+    if not [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]:
         print("[escape] no data line found in the active axes to analyze.")
         return
     _get_or_create_axes_gui(ax, "_escape_peak_gui", lambda: PeakAnalyzer(ax))

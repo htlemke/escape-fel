@@ -21,9 +21,16 @@ def snapshot_data_lines(ax):
     panel on one subplot) would re-scan ``ax.get_lines()`` and could pick up
     the first tool's span-handle artist as if it were the data line, instead
     of the line that was actually there before either tool attached.
+
+    Also excludes any artist marked ``_escape_overlay`` (set by
+    ``escape.plot_utilities._update_peak_overlay`` on everything it draws)
+    -- without this, taking the snapshot *after* a Peak/Peak-params overlay
+    is already on the axes would pick up one of its own reference lines or
+    markers as "the data line" instead of skipping straight past them,
+    regardless of which escape tool happened to attach first.
     """
     if not hasattr(ax, "_escape_data_lines"):
-        ax._escape_data_lines = list(ax.get_lines())
+        ax._escape_data_lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
     return ax._escape_data_lines
 
 
