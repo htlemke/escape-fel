@@ -43,6 +43,28 @@ def _draw_safe(fig):
         pass
 
 
+def _attach_escape_buttons_lazy(fig):
+    """Best-effort attach of escape's Fit/Peak/Peak-params toolbar buttons
+    (see ``escape.plot_utilities.attach_escape_buttons``) to a freshly
+    created live-plot figure.
+
+    Imported lazily, at call time, rather than at module level -- this
+    module (``escape.stream``) deliberately avoids a hard dependency on
+    ``escape.plot_utilities`` (which pulls in ipywidgets/dask/IPython) so
+    that just using streams doesn't pay for that; actually opening an
+    interactive plot window is a reasonable point to pay it. Any failure
+    (missing optional dependency, unsupported backend, ...) is swallowed --
+    these buttons are a convenience layered onto plot creation and should
+    never be the reason a live plot fails to open.
+    """
+    try:
+        from escape.plot_utilities import attach_escape_buttons
+
+        attach_escape_buttons(fig)
+    except Exception:
+        pass
+
+
 def _draw_step_band(ax, x, y, yerr, label=None, alpha=0.3, y_floor=0.0):
     """Step line (``ax.step(..., where='mid')``) + matching stepped error
     band (``ax.fill_between(..., step='mid')``) -- shared by HistPlot and
@@ -95,9 +117,11 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
     optional fixed offset, forced/auto peak-vs-step classification,
     half-max or 10-90% crossing for the width).
 
-    Returns a dict with keys ``center``, ``fwhm``, ``peak_x``, ``peak_y``,
-    ``is_peak``, or ``None`` if the trace is too short (< ``2 * n_bg + 3``
-    finite points) or flat to analyze.
+    Returns a dict (see ``escape.plot_utilities.find_peak`` for the full key
+    list: ``center``/``fwhm``/``peak_x``/``peak_y``/``is_peak`` plus
+    ``crossing_1``/``crossing_2``/``background``/``levels`` for drawing the
+    overlay's extra detail), or ``None`` if the trace is too short
+    (< ``2 * n_bg + 3`` finite points) or flat to analyze.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -169,64 +193,111 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
             frac = (level - y[gg]) / (y[j] - y[gg])
             return x[gg] + frac * (x[j] - x[gg])
 
-        lo = _level_crossing(lev0 + 0.1 * (lev1 - lev0))
-        hi = _level_crossing(lev0 + 0.9 * (lev1 - lev0))
+        level_lo = lev0 + 0.1 * (lev1 - lev0)
+        level_hi = lev0 + 0.9 * (lev1 - lev0)
+        lo = _level_crossing(level_lo)
+        hi = _level_crossing(level_hi)
         fwhm = abs(hi - lo)
+        crossing_1, crossing_2 = (float(lo), float(level_lo)), (float(hi), float(level_hi))
+        background = None
+        levels = (float(lev0), float(lev1))
+    else:
+        # xhm1/xhm2 live in the background-subtracted domain (half of the
+        # subtracted peak's height) -- add the background back at each
+        # crossing's x to place the marker on the original, visible curve.
+        y_hm = half + np.interp([xhm1, xhm2], x, b)
+        crossing_1, crossing_2 = (float(xhm1), float(y_hm[0])), (float(xhm2), float(y_hm[1]))
+        background = (x.copy(), b.copy())
+        levels = None
 
     return dict(
         center=float(center), fwhm=float(fwhm),
         peak_x=float(peak_x), peak_y=float(peak_y), is_peak=bool(is_peak),
+        crossing_1=crossing_1, crossing_2=crossing_2,
+        background=background, levels=levels,
     )
 
 
 _PEAK_OVERLAY_COLOR = "crimson"
 
 
-def _peak_overlay_params(ax, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
-    """The ``find_peak`` params to use for ``ax``'s overlay: whatever an
-    attached :class:`escape.plot_utilities.PeakAnalyzer` panel last set
-    (stashed on the axes as ``_escape_peak_params``) if there is one,
-    otherwise the given defaults -- so a live-streaming plot keeps
-    respecting the panel's settings on every redraw instead of silently
-    reverting to the defaults each tick."""
+def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
+    """(Re)draw the peak-analysis overlay on ``ax``, removing whatever
+    ``drawn`` (a previous call's return value) left behind first.
+
+    Deliberately a duplicate of ``escape.plot_utilities._update_peak_overlay``
+    (kept in sync by hand, same reasoning as :func:`find_peak` above) --
+    draws the center + FWHM reference lines and a text readout, the
+    subtracted background curve (peak case) or the two asymptotic levels
+    (step case), the two width-determining crossing points, and the
+    peak/step point itself labeled with its (x, y) coordinates.
+
+    ``n_bg``/``bg_model``/``fixed_offset``/``mode`` are the defaults used
+    when nothing else overrides them; if a
+    :class:`escape.plot_utilities.PeakAnalyzer` panel is attached to ``ax``,
+    its current settings (``ax._escape_peak_params``, including whether to
+    show the overlay at all) take precedence -- so a live-streaming plot
+    calling this with its own defaults on every redraw still respects the
+    panel once one is attached.
+
+    Returns the new ``drawn`` (pass back in next time), or ``None`` if the
+    overlay is switched off or :func:`find_peak` found nothing to show (too
+    few points yet, or flat) -- treat that the same as "no overlay".
+    """
     live = getattr(ax, "_escape_peak_params", None)
     if live is not None:
-        return live
-    return dict(n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
+        n_bg = live.get("n_bg", n_bg)
+        bg_model = live.get("bg_model", bg_model)
+        fixed_offset = live.get("fixed_offset", fixed_offset)
+        mode = live.get("mode", mode)
+        show = live.get("show", True)
+    else:
+        show = True
 
-
-def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
-    """(Re)draw the peak-analysis overlay (center + FWHM lines, a text
-    readout) on ``ax``, removing whatever ``drawn`` (a previous call's
-    return value) left behind first. Returns the new ``drawn`` (pass back
-    in next time), or ``None`` if :func:`find_peak` found nothing to show
-    (too few points yet, or flat) -- treat that the same as "no overlay".
-
-    If a :class:`escape.plot_utilities.PeakAnalyzer` panel is attached to
-    ``ax``, its current settings (stashed as ``ax._escape_peak_params``)
-    override the ``n_bg``/``bg_model``/``fixed_offset``/``mode`` arguments
-    given here -- see :func:`_peak_overlay_params`.
-    """
     if drawn is not None:
         for artist in drawn["artists"]:
             try:
                 artist.remove()
             except Exception:
                 pass
-    params = _peak_overlay_params(ax, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
-    result = find_peak(x, y, **params)
+    if not show:
+        return None
+
+    result = find_peak(x, y, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
     if result is None:
         return None
     center, fwhm = result["center"], result["fwhm"]
+    kind = "peak" if result["is_peak"] else "step"
     artists = [
         ax.axvline(center, color=_PEAK_OVERLAY_COLOR, ls="--", lw=1, alpha=0.8),
         ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
         ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
         ax.text(
-            0.02, 0.98, f"center={center:.4g}\nFWHM={fwhm:.4g}",
+            0.02, 0.98, f"{kind}: center={center:.4g}\nFWHM={fwhm:.4g}",
             transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
         ),
     ]
+    if result["background"] is not None:
+        bx, by = result["background"]
+        artists.append(ax.plot(bx, by, "-.", color=_PEAK_OVERLAY_COLOR, lw=1, alpha=0.5)[0])
+    if result["levels"] is not None:
+        for lev in result["levels"]:
+            artists.append(ax.axhline(lev, color=_PEAK_OVERLAY_COLOR, ls="-.", lw=1, alpha=0.5))
+    for cx, cy in (result["crossing_1"], result["crossing_2"]):
+        artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
+    artists.append(
+        ax.plot(
+            [result["peak_x"]], [result["peak_y"]], "o",
+            mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
+        )[0]
+    )
+    artists.append(
+        ax.annotate(
+            f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
+            xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
+            color=_PEAK_OVERLAY_COLOR, fontsize=8,
+        )
+    )
     return {"artists": artists, "result": result}
 
 
@@ -258,6 +329,8 @@ class _LivePlotBase:
         self._timer = None
         self.drawn = None
         self.autoscale = True
+        if self.fig is not None:
+            _attach_escape_buttons_lazy(self.fig)
 
     # ------------------------------------------------------------------
     # Figure / close-event wiring

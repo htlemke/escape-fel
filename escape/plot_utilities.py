@@ -1497,11 +1497,22 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
 
     Returns
     -------
-    dict with keys ``center``, ``fwhm``, ``peak_x``, ``peak_y``, ``is_peak``,
-    or ``None`` if the trace has too few finite points
+    dict, or ``None`` if the trace has too few finite points
     (< ``2 * n_bg + 3``) or no variation (flat) to analyze -- callers meant
     to run on live, possibly-incomplete data should treat ``None`` as
-    "nothing to show yet", not an error.
+    "nothing to show yet", not an error. Keys:
+
+    - ``center``, ``fwhm``, ``peak_x``, ``peak_y``, ``is_peak``: as before.
+    - ``crossing_1``, ``crossing_2`` : ``(x, y)`` tuples -- the two points
+      used to determine the width (the half-max crossings for a peak, the
+      10%/90%-level crossings for a step), in the original data's
+      coordinates, for plotting directly on top of the raw trace.
+    - ``background`` : ``(x, y)`` arrays of the fitted/constant background
+      that was subtracted before locating the peak, spanning the data --
+      or ``None`` for a step (see ``levels`` instead).
+    - ``levels`` : ``(level_before, level_after)`` -- the two asymptotic
+      levels (mean of the first/last ``n_bg`` points) a step was measured
+      between -- or ``None`` for a peak.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -1574,13 +1585,28 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
             frac = (level - y[gg]) / (y[j] - y[gg])
             return x[gg] + frac * (x[j] - x[gg])
 
-        lo = _level_crossing(lev0 + 0.1 * (lev1 - lev0))
-        hi = _level_crossing(lev0 + 0.9 * (lev1 - lev0))
+        level_lo = lev0 + 0.1 * (lev1 - lev0)
+        level_hi = lev0 + 0.9 * (lev1 - lev0)
+        lo = _level_crossing(level_lo)
+        hi = _level_crossing(level_hi)
         fwhm = abs(hi - lo)
+        crossing_1, crossing_2 = (float(lo), float(level_lo)), (float(hi), float(level_hi))
+        background = None
+        levels = (float(lev0), float(lev1))
+    else:
+        # xhm1/xhm2 live in the background-subtracted domain (half of the
+        # subtracted peak's height) -- add the background back at each
+        # crossing's x to place the marker on the original, visible curve.
+        y_hm = half + np.interp([xhm1, xhm2], x, b)
+        crossing_1, crossing_2 = (float(xhm1), float(y_hm[0])), (float(xhm2), float(y_hm[1]))
+        background = (x.copy(), b.copy())
+        levels = None
 
     return dict(
         center=float(center), fwhm=float(fwhm),
         peak_x=float(peak_x), peak_y=float(peak_y), is_peak=bool(is_peak),
+        crossing_1=crossing_1, crossing_2=crossing_2,
+        background=background, levels=levels,
     )
 
 
@@ -1598,23 +1624,48 @@ def _draw_safe(fig):
 
 
 def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
-    """(Re)draw the peak-analysis overlay (center + FWHM lines, a text
-    readout) on ``ax`` from the current ``x``/``y`` trace, removing
-    whatever ``drawn`` (a previous call's return value) left behind first.
+    """(Re)draw the peak-analysis overlay on ``ax`` from the current
+    ``x``/``y`` trace, removing whatever ``drawn`` (a previous call's
+    return value) left behind first.
 
-    ``n_bg``/``bg_model``/``fixed_offset``/``mode`` are passed straight
-    through to :func:`find_peak` -- see its docstring.
+    Draws, from :func:`find_peak`'s result: the center + FWHM reference
+    lines and a text readout (as before), the subtracted background curve
+    (peak case) or the two asymptotic levels (step case), the two
+    width-determining crossing points, and the peak/step point itself
+    labeled with its (x, y) coordinates -- a visual sanity check of every
+    quantity the analysis used, not just its answer.
+
+    ``n_bg``/``bg_model``/``fixed_offset``/``mode`` are the defaults used
+    when nothing else overrides them; if a :class:`PeakAnalyzer` panel is
+    attached to ``ax``, its current settings (``ax._escape_peak_params``,
+    including whether to show the overlay at all) take precedence -- so a
+    live-streaming plot calling this with its own defaults on every redraw
+    still respects the panel once one is attached.
 
     Returns the new ``drawn`` dict (pass it back in next time), or ``None``
-    if :func:`find_peak` couldn't analyze this trace (too few points, flat)
-    -- callers should treat that the same as "no overlay drawn".
+    if the overlay is switched off or :func:`find_peak` couldn't analyze
+    this trace (too few points, flat) -- callers should treat that the
+    same as "no overlay drawn".
     """
+    live = getattr(ax, "_escape_peak_params", None)
+    if live is not None:
+        n_bg = live.get("n_bg", n_bg)
+        bg_model = live.get("bg_model", bg_model)
+        fixed_offset = live.get("fixed_offset", fixed_offset)
+        mode = live.get("mode", mode)
+        show = live.get("show", True)
+    else:
+        show = True
+
     if drawn is not None:
         for artist in drawn["artists"]:
             try:
                 artist.remove()
             except Exception:
                 pass
+    if not show:
+        return None
+
     result = find_peak(x, y, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
     if result is None:
         return None
@@ -1629,6 +1680,27 @@ def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offse
             transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
         ),
     ]
+    if result["background"] is not None:
+        bx, by = result["background"]
+        artists.append(ax.plot(bx, by, "-.", color=_PEAK_OVERLAY_COLOR, lw=1, alpha=0.5)[0])
+    if result["levels"] is not None:
+        for lev in result["levels"]:
+            artists.append(ax.axhline(lev, color=_PEAK_OVERLAY_COLOR, ls="-.", lw=1, alpha=0.5))
+    for cx, cy in (result["crossing_1"], result["crossing_2"]):
+        artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
+    artists.append(
+        ax.plot(
+            [result["peak_x"]], [result["peak_y"]], "o",
+            mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
+        )[0]
+    )
+    artists.append(
+        ax.annotate(
+            f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
+            xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
+            color=_PEAK_OVERLAY_COLOR, fontsize=8,
+        )
+    )
     return {"artists": artists, "result": result}
 
 
@@ -1641,7 +1713,7 @@ class _PeakEngine:
     that go straight into :func:`find_peak` on every change.
     """
 
-    def __init__(self, ax, line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
+    def __init__(self, ax, line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto", show=True):
         self.ax = ax
         self.fig = ax.figure
         self.line = line
@@ -1649,6 +1721,7 @@ class _PeakEngine:
         self.bg_model = bg_model
         self.fixed_offset = fixed_offset
         self.mode = mode
+        self.show = show
         self.drawn = None
 
     def _target_line(self):
@@ -1662,19 +1735,24 @@ class _PeakEngine:
         return data_lines[-1] if data_lines else None
 
     def params(self):
-        return dict(n_bg=self.n_bg, bg_model=self.bg_model, fixed_offset=self.fixed_offset, mode=self.mode)
+        return dict(
+            n_bg=self.n_bg, bg_model=self.bg_model, fixed_offset=self.fixed_offset,
+            mode=self.mode, show=self.show,
+        )
 
     def update(self):
         """Recompute and redraw the overlay from the target line's current
-        data and the panel's current settings. Also stashes the settings on
-        the axes (``ax._escape_peak_params``) so a live-streaming plot
+        data and the panel's current settings (including whether to show it
+        at all). Also stashes the settings on the axes
+        (``ax._escape_peak_params``) so a live-streaming plot
         (:class:`escape.stream.plots.Plot`) redrawing this same overlay on
         its own timer keeps using them instead of reverting to defaults."""
         line = self._target_line()
         if line is None:
             return None
         self.ax._escape_peak_params = self.params()
-        self.drawn = _update_peak_overlay(self.ax, self.drawn, line.get_xdata(), line.get_ydata(), **self.params())
+        find_kwargs = dict(n_bg=self.n_bg, bg_model=self.bg_model, fixed_offset=self.fixed_offset, mode=self.mode)
+        self.drawn = _update_peak_overlay(self.ax, self.drawn, line.get_xdata(), line.get_ydata(), **find_kwargs)
         self.ax._escape_peak_overlay = self.drawn
         _draw_safe(self.fig)
         return self.drawn
@@ -1697,21 +1775,24 @@ class IpywidgetsPeakAnalyzer(widgets.VBox):
     below the figure.
 
     Just the handful of :func:`find_peak` knobs -- background-point count,
-    background model (linear/offset), an optional fixed offset, and a
-    peak/step/auto mode switch -- redrawing the overlay live as any of them
-    change, so the analysis can be checked by eye against the data rather
-    than trusted blindly. Deliberately much smaller than
-    :class:`escape.fit_gui.IpywidgetsAxesFitter` -- there's no model to
-    build, so no dropdown/expression field/parameter table, just these four
-    controls plus a way to clear the overlay.
+    background model (linear/offset), an optional fixed offset, a
+    peak/step/auto mode switch, and a plot/no-plot toggle -- redrawing the
+    overlay live as any of them change, so the analysis can be checked by
+    eye against the data rather than trusted blindly. Deliberately much
+    smaller than :class:`escape.fit_gui.IpywidgetsAxesFitter` -- there's no
+    model to build, so no dropdown/expression field/parameter table, just
+    these controls plus a way to clear the overlay.
     """
 
-    def __init__(self, ax=None, line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
+    def __init__(self, ax=None, line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto", show=True):
         self.ax = ax or plt.gca()
         self.engine = _PeakEngine(
-            self.ax, line=line, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode
+            self.ax, line=line, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode, show=show
         )
 
+        self._show_cb = widgets.Checkbox(
+            value=show, description="plot", indent=False, layout=widgets.Layout(width="70px"),
+        )
         self._n_bg_box = widgets.BoundedIntText(
             value=n_bg, min=1, max=100000, description="bg pts:", layout=widgets.Layout(width="150px")
         )
@@ -1729,13 +1810,16 @@ class IpywidgetsPeakAnalyzer(widgets.VBox):
         self._mode_toggle = widgets.ToggleButtons(options=["auto", "peak", "step"], value=mode, description="mode:")
         self._clear_btn = widgets.Button(description="Clear overlay")
 
-        for w in (self._n_bg_box, self._bg_model_toggle, self._fixed_cb, self._fixed_box, self._mode_toggle):
+        for w in (
+            self._show_cb, self._n_bg_box, self._bg_model_toggle,
+            self._fixed_cb, self._fixed_box, self._mode_toggle,
+        ):
             w.observe(self._on_change, names="value")
         self._clear_btn.on_click(lambda b: self.engine.clear())
 
         super().__init__(
             [
-                widgets.HTML("<b>Peak analysis</b>"),
+                widgets.HBox([widgets.HTML("<b>Peak analysis</b>"), self._show_cb]),
                 widgets.HBox([self._n_bg_box, self._bg_model_toggle]),
                 widgets.HBox([self._fixed_cb, self._fixed_box]),
                 self._mode_toggle,
@@ -1748,6 +1832,7 @@ class IpywidgetsPeakAnalyzer(widgets.VBox):
 
     def _on_change(self, change):
         self._fixed_box.disabled = not self._fixed_cb.value
+        self.engine.show = self._show_cb.value
         self.engine.n_bg = self._n_bg_box.value
         self.engine.bg_model = self._bg_model_toggle.value
         self.engine.fixed_offset = self._fixed_box.value if self._fixed_cb.value else None
@@ -1764,18 +1849,25 @@ def _make_qt_peak_analyzer_class():
 
     class QtPeakAnalyzer(QtWidgets.QWidget):
         """Peak-analysis control panel as a companion Qt window -- the Qt
-        analogue of :class:`IpywidgetsPeakAnalyzer`, same four controls."""
+        analogue of :class:`IpywidgetsPeakAnalyzer`, same controls."""
 
-        def __init__(self, ax=None, line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
+        def __init__(
+            self, ax=None, line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto", show=True
+        ):
             self._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
             super().__init__()
             self.ax = ax or plt.gca()
             self.engine = _PeakEngine(
-                self.ax, line=line, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode
+                self.ax, line=line, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode, show=show
             )
 
             self.setWindowTitle("Peak analysis")
             layout = QtWidgets.QVBoxLayout(self)
+
+            self._show_check = QtWidgets.QCheckBox("plot")
+            self._show_check.setChecked(show)
+            self._show_check.toggled.connect(self._on_change)
+            layout.addWidget(self._show_check)
 
             bg_row = QtWidgets.QHBoxLayout()
             bg_row.addWidget(QtWidgets.QLabel("bg points"))
@@ -1826,6 +1918,7 @@ def _make_qt_peak_analyzer_class():
 
         def _on_change(self, *args):
             self._fixed_spin.setEnabled(self._fixed_check.isChecked())
+            self.engine.show = self._show_check.isChecked()
             self.engine.n_bg = self._n_bg_spin.value()
             self.engine.bg_model = self._bg_model_cb.currentText()
             self.engine.fixed_offset = self._fixed_spin.value() if self._fixed_check.isChecked() else None
@@ -1864,15 +1957,17 @@ def _detect_peak_gui_backend():
     return None
 
 
-def PeakAnalyzer(ax=None, *, backend="auto", line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
+def PeakAnalyzer(
+    ax=None, *, backend="auto", line=None, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto", show=True
+):
     """Attach an interactive peak/step-analysis control panel to a
     matplotlib ``Axes``.
 
     The same idea as :func:`escape.fit_gui.AxesFitter`, but far smaller:
     just the handful of :func:`find_peak` knobs (background-point count,
-    background model, an optional fixed offset, and a peak/step/auto mode
-    switch), redrawing the overlay live as they change so the analysis can
-    be sanity-checked by eye against the data.
+    background model, an optional fixed offset, a peak/step/auto mode
+    switch, and a plot/no-plot toggle), redrawing the overlay live as they
+    change so the analysis can be sanity-checked by eye against the data.
 
     Parameters
     ----------
@@ -1887,8 +1982,10 @@ def PeakAnalyzer(ax=None, *, backend="auto", line=None, n_bg=3, bg_model="linear
         re-picked on every update -- so it keeps following whichever line a
         live-updating plot (e.g. :meth:`escape.stream.Stream.plot_med`)
         redraws in place, without needing to be re-attached.
-    n_bg, bg_model, fixed_offset, mode
-        Initial values for the panel's controls -- see :func:`find_peak`.
+    n_bg, bg_model, fixed_offset, mode, show
+        Initial values for the panel's controls -- see :func:`find_peak`
+        (``show`` is the panel's own plot/no-plot toggle, not a
+        ``find_peak`` argument).
 
     Returns
     -------
@@ -1906,13 +2003,43 @@ def PeakAnalyzer(ax=None, *, backend="auto", line=None, n_bg=3, bg_model="linear
             "PeakAnalyzer needs either a Qt matplotlib backend with a Qt binding "
             "installed, or a Jupyter kernel with ipywidgets."
         )
-    return cls(ax, line=line, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
+    return cls(ax, line=line, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode, show=show)
 
 
 def _run_peak_button(fig):
-    """The Peak toolbar button's click handler -- attaches (or re-raises,
-    if already attached) an interactive :class:`PeakAnalyzer` panel on the
-    active axes."""
+    """The Peak toolbar button's click handler -- toggles a peak-analysis
+    overlay (:func:`_update_peak_overlay`, using default parameters unless a
+    :class:`PeakAnalyzer` panel opened via the "Peak params" button has set
+    its own -- see ``ax._escape_peak_params``) on the active axes' data."""
+    ax = _get_active_axes(fig)
+    if ax is None:
+        print("[escape] no axes to analyze in this figure.")
+        return
+    existing = getattr(ax, "_escape_peak_overlay", None)
+    if existing is not None:
+        for artist in existing["artists"]:
+            try:
+                artist.remove()
+            except Exception:
+                pass
+        ax._escape_peak_overlay = None
+        _draw_safe(fig)
+        return
+    data_lines = [l for l in ax.get_lines() if l.get_color() != _PEAK_OVERLAY_COLOR]
+    if not data_lines:
+        print("[escape] no data line found in the active axes to analyze.")
+        return
+    line = data_lines[-1]
+    ax._escape_peak_overlay = _update_peak_overlay(ax, None, line.get_xdata(), line.get_ydata())
+    if ax._escape_peak_overlay is None:
+        print("[escape] not enough data on the active line to analyze yet.")
+    _draw_safe(fig)
+
+
+def _run_peak_params_button(fig):
+    """The Peak params toolbar button's click handler -- attaches (or
+    re-raises, if already attached) an interactive :class:`PeakAnalyzer`
+    control panel on the active axes."""
     ax = _get_active_axes(fig)
     if ax is None:
         print("[escape] no axes to analyze in this figure.")
@@ -1941,7 +2068,7 @@ def _attach_peak_button_qt(fig):
 
     toolbar.addSeparator()
     action = toolbar.addAction(icon, "Peak", _on_click) if icon is not None else toolbar.addAction("Peak", _on_click)
-    action.setToolTip("Open an interactive peak/step-analysis panel for the active axes")
+    action.setToolTip("Toggle a peak-analysis overlay (center/FWHM) on the active axes")
 
 
 def _attach_peak_button_ipympl(fig):
@@ -1954,16 +2081,57 @@ def _attach_peak_button_ipympl(fig):
 
     toolbar.escape_peak_button = _on_click
     toolbar.toolitems = list(toolbar.toolitems) + [
-        ("Peak", "Open an interactive peak/step-analysis panel for the active axes", "activity", "escape_peak_button")
+        ("Peak", "Toggle a peak-analysis overlay (center/FWHM) on the active axes", "activity", "escape_peak_button")
+    ]
+
+
+def _attach_peak_params_button_qt(fig):
+    toolbar = getattr(fig.canvas.manager, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "addAction"):
+        return
+
+    icon = None
+    try:
+        import qtawesome as qta
+
+        icon = qta.icon("mdi.tune-variant")
+    except Exception:
+        pass
+
+    def _on_click(checked=False):
+        _run_peak_params_button(fig)
+
+    action = (
+        toolbar.addAction(icon, "Peak params", _on_click)
+        if icon is not None
+        else toolbar.addAction("Peak params", _on_click)
+    )
+    action.setToolTip("Open the peak/step-analysis control panel for the active axes")
+
+
+def _attach_peak_params_button_ipympl(fig):
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "toolitems"):
+        return
+
+    def _on_click():
+        _run_peak_params_button(fig)
+
+    toolbar.escape_peak_params_button = _on_click
+    toolbar.toolitems = list(toolbar.toolitems) + [
+        (
+            "Peak params", "Open the peak/step-analysis control panel for the active axes",
+            "sliders", "escape_peak_params_button",
+        )
     ]
 
 
 def attach_peak_button(fig):
-    """Attach a "Peak" button to ``fig``'s toolbar, opening an interactive
-    :class:`PeakAnalyzer` panel (center/FWHM overlay plus background-model,
-    fixed-offset, and peak/step/auto mode controls) on whichever of its axes
-    was last clicked (the first axes, if none has been clicked yet) -- Qt
-    and ipympl backends only.
+    """Attach a "Peak" button to ``fig``'s toolbar, toggling a live
+    peak-analysis overlay (:func:`find_peak`: center + FWHM reference lines,
+    the width-determining crossing points, the subtracted background or
+    step levels, and a labeled peak/step point) on the active axes' data --
+    Qt and ipympl backends only.
 
     Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
     idempotent contract as :func:`attach_fit_button` -- see its docstring.
@@ -1982,6 +2150,59 @@ def attach_peak_button(fig):
         fig._escape_peak_attached = True
     except Exception as e:
         print(f"[escape] couldn't attach the Peak button: {e}")
+
+
+def attach_peak_params_button(fig):
+    """Attach a "Peak params" button to ``fig``'s toolbar, opening an
+    interactive :class:`PeakAnalyzer` control panel (background-point
+    count, background model, an optional fixed offset, a peak/step/auto
+    mode switch, and a plot/no-plot toggle) on whichever of its axes was
+    last clicked (the first axes, if none has been clicked yet) -- Qt and
+    ipympl backends only.
+
+    A separate button from "Peak" (:func:`attach_peak_button`, a plain
+    on/off toggle using default parameters) rather than a replacement for
+    it -- this one is for tuning those parameters, and it takes over
+    whatever overlay "Peak" already drew, since both act through the same
+    ``ax._escape_peak_params`` override.
+
+    Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
+    idempotent contract as :func:`attach_fit_button` -- see its docstring.
+    """
+    if getattr(fig, "_escape_peak_params_attached", False):
+        return
+    try:
+        backend = _detect_plot_backend()
+        if backend is None:
+            return
+        _track_active_axes(fig)
+        if backend == "qt":
+            _attach_peak_params_button_qt(fig)
+        else:
+            _attach_peak_params_button_ipympl(fig)
+        fig._escape_peak_params_attached = True
+    except Exception as e:
+        print(f"[escape] couldn't attach the Peak params button: {e}")
+
+
+def attach_escape_buttons(fig, *, fit=True, peak=True, peak_params=True):
+    """Attach escape's full set of interactive toolbar buttons -- Fit
+    (:func:`attach_fit_button`), Peak (:func:`attach_peak_button`), and
+    Peak params (:func:`attach_peak_params_button`) -- to ``fig`` in one
+    call, so every place that creates an interactive escape figure (static,
+    via :func:`nfigure`, or a live-updating :mod:`escape.stream.plots`
+    figure) wires them up the same way instead of each repeating the same
+    three calls -- or, for the live-plot figures, not wiring them up at
+    all. Same no-op-on-unsupported-backend contract as the individual
+    ``attach_*`` functions; pass ``fit``/``peak``/``peak_params`` as
+    ``False`` to skip one.
+    """
+    if fit:
+        attach_fit_button(fig)
+    if peak:
+        attach_peak_button(fig)
+    if peak_params:
+        attach_peak_params_button(fig)
 
 
 def attach_fit_button(fig):
@@ -2047,10 +2268,12 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
         ``True``: attaching it costs nothing (no ``lmfit`` import) unless
         actually clicked.
     peak_button : bool
-        Attach a "Peak" toolbar button (see :func:`attach_peak_button`),
-        toggling a peak-analysis overlay (center/FWHM) on the active axes.
-        Same backend restriction as ``fit_button``. Defaults to ``False``
-        (opt-in) here -- for a live counter plot where this is wanted by
+        Attach both a "Peak" toolbar button (see :func:`attach_peak_button`,
+        toggling a peak-analysis overlay on the active axes) and a "Peak
+        params" one (see :func:`attach_peak_params_button`, opening a panel
+        to tune it). Same backend restriction as ``fit_button``. Defaults
+        to ``False`` (opt-in) here -- for a live counter plot where this is
+        wanted by
         default, see ``escape.stream.plots.Plot``'s ``peak_overlay``.
     close_previous : bool
         If ``True`` (the default, and currently the only behavior this
@@ -2079,6 +2302,7 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
+        attach_peak_params_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2142,6 +2366,7 @@ def nsubplots(
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
+        attach_peak_params_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2202,6 +2427,7 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
+        attach_peak_params_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
