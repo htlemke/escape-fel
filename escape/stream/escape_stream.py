@@ -282,7 +282,19 @@ class DataManager:
             self._data.append(deque(maxlen=maxlen))
             self._eventIds.append(deque(maxlen=maxlen))
             self._counts.append(0)
-        self._data[index].append(data)
+        step_data = self._data[index]
+        if step_data and np.shape(data) != np.shape(step_data[-1]):
+            # The channel's per-event shape changed mid-accumulation (e.g. a
+            # detector ROI count got reconfigured) -- mean()/std()/median()/
+            # centerPerc() etc. all eventually do np.asarray(step_data), which
+            # raises an inhomogeneous-shape ValueError once both the old and
+            # new shape are present in the same step. Drop the stale,
+            # differently-shaped samples rather than let that happen; this
+            # step's stats just have fewer samples right after the change,
+            # the same way a step naturally does right after it opens.
+            step_data.clear()
+            self._eventIds[index].clear()
+        step_data.append(data)
         self._eventIds[index].append(eventId)
         self._counts[index] += 1
 
@@ -990,6 +1002,14 @@ class _RunningStat:
         self._weights = deque()
 
     def __call__(self, value, weight=None):
+        # Same reasoning as DataManager.append()'s shape guard: a channel's
+        # per-event shape can change mid-run (e.g. a detector ROI count
+        # reconfigured), and _compute()'s np.asarray(self._values) raises an
+        # inhomogeneous-shape ValueError once both shapes are in the window.
+        # Drop the stale window and start fresh from this event instead.
+        if self._values and np.shape(value) != np.shape(self._values[-1]):
+            self._values.clear()
+            self._weights.clear()
         self._values.append(value)
         if weight is not None:
             self._weights.append(weight)
@@ -1900,14 +1920,21 @@ class Stream:
         self._histPlot = hp
         return hp
 
-    def plot_med(self, update=0.5, axes=None, timeout=5):
-        """Median + percentile bands with live updates."""
+    def plot_med(self, update=0.5, axes=None, timeout=5, peak_overlay=True):
+        """Median + percentile bands with live updates.
+
+        peak_overlay : bool
+            Show a live peak-analysis overlay (center + FWHM, see
+            ``escape.stream.plots.find_peak``) on top of the median line.
+            Defaults to ``True``; pass ``False`` to opt out (e.g. for a
+            channel that isn't peak-shaped).
+        """
         self.accumulate(True)
         if axes is None:
             fig, axes = plt.subplots()
             fig.suptitle(f"{self.name}  median")
         self._wait_for_data(timeout)
-        mp = plots.Plot(self, axes=axes)
+        mp = plots.Plot(self, axes=axes, peak_overlay=peak_overlay)
         mp.plot()
         if update:
             mp.start(interval=update)

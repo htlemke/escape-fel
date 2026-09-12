@@ -71,6 +71,133 @@ def _redraw_step_band(ax, drawn, x, y, yerr, alpha=0.3, y_floor=0.0):
     return drawn
 
 
+def _skew(a):
+    """Sample skewness (3rd standardized moment) -- avoids a hard
+    ``scipy.stats`` dependency for the one number :func:`find_peak` needs
+    from it."""
+    a = np.asarray(a, dtype=float)
+    s = a.std()
+    if s == 0:
+        return 0.0
+    return float(np.mean((a - a.mean()) ** 3) / s**3)
+
+
+def find_peak(x, y, n_bg=3):
+    """Locate a peak (or step) in a 1-D scan trace.
+
+    Deliberately a duplicate of ``escape.plot_utilities.find_peak`` (same
+    algorithm, kept in sync by hand) rather than an import of it -- see this
+    module's own docstring on why ``escape.stream`` avoids depending on
+    ``escape.plot_utilities`` (ipywidgets/dask/IPython), matching the
+    existing ``_draw_step_band``/``escape.plot_utilities.errortube`` split.
+    See ``escape.plot_utilities.find_peak`` for the full docstring on the
+    method (linear background subtraction, skewness-based peak/step
+    classification, half-max or 10-90% crossing for the width).
+
+    Returns a dict with keys ``center``, ``fwhm``, ``peak_x``, ``peak_y``,
+    ``is_peak``, or ``None`` if the trace is too short (< ``2 * n_bg + 3``
+    finite points) or flat to analyze.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    finite = np.isfinite(x) & np.isfinite(y)
+    x, y = x[finite], y[finite]
+    if len(x) < 2 * n_bg + 3 or np.ptp(y) == 0:
+        return None
+    order = np.argsort(x)
+    x, y = x[order], y[order]
+
+    xb = np.concatenate([x[:n_bg], x[-n_bg:]])
+    yb = np.concatenate([y[:n_bg], y[-n_bg:]])
+    a = np.polyfit(xb, yb, 1)
+    yf = y - np.polyval(a, x)
+    xd = (x[1:] + x[:-1]) / 2
+    yd = np.diff(yf)
+
+    is_peak = abs(_skew(yf)) > abs(_skew(yd))
+    xw, yw = (x, yf) if is_peak else (xd, yd)
+    if not is_peak:
+        xwb = np.concatenate([xw[:n_bg], xw[-n_bg:]])
+        ywb = np.concatenate([yw[:n_bg], yw[-n_bg:]])
+        aw = np.polyfit(xwb, ywb, 1)
+        yw = yw - np.polyval(aw, xw)
+
+    if np.sum((xw[1:] - xw[:-1]) * (yw[1:] + yw[:-1]) / 2) < 0:
+        yw = -yw
+
+    mm = int(np.argmax(yw))
+    half = yw[mm] / 2
+
+    def _crossing(indices):
+        for i in indices:
+            if yw[i] < half:
+                j = i + 1 if i < mm else i - 1
+                if j < 0 or j >= len(xw) or yw[j] == yw[i]:
+                    return xw[i]
+                frac = (half - yw[i]) / (yw[j] - yw[i])
+                return xw[i] + frac * (xw[j] - xw[i])
+        return None
+
+    xhm1 = _crossing(range(mm, -1, -1))
+    xhm2 = _crossing(range(mm, len(xw)))
+    if xhm1 is None or xhm2 is None:
+        return None
+    center, fwhm = (xhm1 + xhm2) / 2, abs(xhm2 - xhm1)
+    peak_x = xw[mm] if is_peak else center
+    peak_y = y[int(np.argmin(np.abs(x - peak_x)))]
+
+    if not is_peak:
+        lev0, lev1 = y[:n_bg].mean(), y[-n_bg:].mean()
+
+        def _level_crossing(level):
+            gg = int(np.argmin(np.abs(y - level)))
+            j = gg + 1 if gg + 1 < len(x) else gg - 1
+            if j < 0 or y[j] == y[gg]:
+                return x[gg]
+            frac = (level - y[gg]) / (y[j] - y[gg])
+            return x[gg] + frac * (x[j] - x[gg])
+
+        lo = _level_crossing(lev0 + 0.1 * (lev1 - lev0))
+        hi = _level_crossing(lev0 + 0.9 * (lev1 - lev0))
+        fwhm = abs(hi - lo)
+
+    return dict(
+        center=float(center), fwhm=float(fwhm),
+        peak_x=float(peak_x), peak_y=float(peak_y), is_peak=bool(is_peak),
+    )
+
+
+_PEAK_OVERLAY_COLOR = "crimson"
+
+
+def _update_peak_overlay(ax, drawn, x, y, n_bg=3):
+    """(Re)draw the peak-analysis overlay (center + FWHM lines, a text
+    readout) on ``ax``, removing whatever ``drawn`` (a previous call's
+    return value) left behind first. Returns the new ``drawn`` (pass back
+    in next time), or ``None`` if :func:`find_peak` found nothing to show
+    (too few points yet, or flat) -- treat that the same as "no overlay"."""
+    if drawn is not None:
+        for artist in drawn["artists"]:
+            try:
+                artist.remove()
+            except Exception:
+                pass
+    result = find_peak(x, y, n_bg=n_bg)
+    if result is None:
+        return None
+    center, fwhm = result["center"], result["fwhm"]
+    artists = [
+        ax.axvline(center, color=_PEAK_OVERLAY_COLOR, ls="--", lw=1, alpha=0.8),
+        ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
+        ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
+        ax.text(
+            0.02, 0.98, f"center={center:.4g}\nFWHM={fwhm:.4g}",
+            transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
+        ),
+    ]
+    return {"artists": artists, "result": result}
+
+
 def _warn_inline():
     backend = matplotlib.get_backend()
     if "inline" in backend.lower():
@@ -275,6 +402,13 @@ class Plot(_LivePlotBase):
         Use a step-plot style instead of a line.
     alpha : float
     autosetAxlabel : bool
+    peak_overlay : bool
+        Show a live peak-analysis overlay (center + FWHM reference lines
+        and a text readout, see :func:`find_peak`) on top of the median
+        line. Defaults to ``True`` -- this is the "live plot of a counter"
+        case (value vs scan variable) where knowing the peak position while
+        the scan is still running is the whole point; toggle to ``False``
+        to opt out, e.g. for a channel that isn't peak-shaped.
     """
 
     def __init__(
@@ -288,6 +422,7 @@ class Plot(_LivePlotBase):
         alpha=0.3,
         autosetAxlabel=True,
         update_interval=0.5,
+        peak_overlay=True,
     ):
         if errPercentiles is None:
             errPercentiles = [69.3, 95.0]
@@ -302,6 +437,8 @@ class Plot(_LivePlotBase):
         self.step = step
         self.alpha = alpha
         self.autosetAxlabel = autosetAxlabel
+        self.peak_overlay = peak_overlay
+        self._peak_drawn = None
         self._connect_close_event()
 
     def _getplotData(self):  # noqa: N802
@@ -346,6 +483,8 @@ class Plot(_LivePlotBase):
             par = self.data.scan._parameters[self.scanVariable]
             self.axes.set_xlabel(f"{par.name} / {par.unit}")
             self.axes.set_ylabel(f"{self.data.name} / {self.data.unit}")
+        if self.peak_overlay:
+            self._peak_drawn = _update_peak_overlay(self.axes, None, x, y)
         _draw_safe(self.fig)
 
     def replot(self):
@@ -354,6 +493,8 @@ class Plot(_LivePlotBase):
         x, y, yerr = self._getplotData()
         if len(x) == 0:
             return
+        if self.peak_overlay:
+            self._peak_drawn = _update_peak_overlay(self.axes, self._peak_drawn, x, y)
         new_errs = []
         for band, coll in zip(yerr, self.drawn["err"]):
             color = coll.get_facecolor()

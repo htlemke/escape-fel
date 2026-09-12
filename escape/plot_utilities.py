@@ -1436,6 +1436,250 @@ def _attach_fit_button_ipympl(fig):
     ]
 
 
+def _skew(a):
+    """Sample skewness (3rd standardized moment) -- avoids a hard
+    ``scipy.stats`` dependency for the one number :func:`find_peak` needs
+    from it."""
+    a = np.asarray(a, dtype=float)
+    s = a.std()
+    if s == 0:
+        return 0.0
+    return float(np.mean((a - a.mean()) ** 3) / s**3)
+
+
+def find_peak(x, y, n_bg=3):
+    """Locate a peak (or step) in a 1-D scan trace.
+
+    A numpy/Python-3 port of the lab's old ``PeakAnalysis`` tool (originally
+    ``eco.utilities.PeakAnalysis``, Python 2 only and unusable as-is): fits a
+    linear background through the first/last ``n_bg`` points and subtracts
+    it, classifies the trace as peak-shaped or step-shaped by comparing the
+    skewness of the background-subtracted signal to that of its derivative
+    (a step's derivative is peak-shaped, which is what the comparison
+    distinguishes), then finds the center and width.
+
+    - Peak case: center/FWHM from linear interpolation of the half-maximum
+      crossings on either side of the maximum -- the standard FWHM
+      definition.
+    - Step case: center from the 50%-level crossing between the two
+      asymptotic levels (mean of the first/last ``n_bg`` points); "fwhm" is
+      the 10-90% rise/fall width instead, the step-equivalent of FWHM
+      (deliberately not a port of the original's unexplained empirical
+      ``0.1195`` constants -- this is the standard, easily-verified
+      definition instead).
+
+    Parameters
+    ----------
+    x, y : array-like
+        The scan trace (need not be pre-sorted). Non-finite points are
+        dropped before analysis.
+    n_bg : int
+        Number of points at each end used to estimate the background /
+        asymptotic levels.
+
+    Returns
+    -------
+    dict with keys ``center``, ``fwhm``, ``peak_x``, ``peak_y``, ``is_peak``,
+    or ``None`` if the trace has too few finite points
+    (< ``2 * n_bg + 3``) or no variation (flat) to analyze -- callers meant
+    to run on live, possibly-incomplete data should treat ``None`` as
+    "nothing to show yet", not an error.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    finite = np.isfinite(x) & np.isfinite(y)
+    x, y = x[finite], y[finite]
+    if len(x) < 2 * n_bg + 3 or np.ptp(y) == 0:
+        return None
+    order = np.argsort(x)
+    x, y = x[order], y[order]
+
+    xb = np.concatenate([x[:n_bg], x[-n_bg:]])
+    yb = np.concatenate([y[:n_bg], y[-n_bg:]])
+    a = np.polyfit(xb, yb, 1)
+    yf = y - np.polyval(a, x)
+    xd = (x[1:] + x[:-1]) / 2
+    yd = np.diff(yf)
+
+    is_peak = abs(_skew(yf)) > abs(_skew(yd))
+    xw, yw = (x, yf) if is_peak else (xd, yd)
+    if not is_peak:
+        xwb = np.concatenate([xw[:n_bg], xw[-n_bg:]])
+        ywb = np.concatenate([yw[:n_bg], yw[-n_bg:]])
+        aw = np.polyfit(xwb, ywb, 1)
+        yw = yw - np.polyval(aw, xw)
+
+    # Orient the feature to point "up" (positive-going), signed area under yw.
+    if np.sum((xw[1:] - xw[:-1]) * (yw[1:] + yw[:-1]) / 2) < 0:
+        yw = -yw
+
+    mm = int(np.argmax(yw))
+    half = yw[mm] / 2
+
+    def _crossing(indices):
+        for i in indices:
+            if yw[i] < half:
+                j = i + 1 if i < mm else i - 1
+                if j < 0 or j >= len(xw) or yw[j] == yw[i]:
+                    return xw[i]
+                frac = (half - yw[i]) / (yw[j] - yw[i])
+                return xw[i] + frac * (xw[j] - xw[i])
+        return None
+
+    xhm1 = _crossing(range(mm, -1, -1))
+    xhm2 = _crossing(range(mm, len(xw)))
+    if xhm1 is None or xhm2 is None:
+        return None
+    center, fwhm = (xhm1 + xhm2) / 2, abs(xhm2 - xhm1)
+    peak_x = xw[mm] if is_peak else center
+    peak_y = y[int(np.argmin(np.abs(x - peak_x)))]
+
+    if not is_peak:
+        lev0, lev1 = y[:n_bg].mean(), y[-n_bg:].mean()
+
+        def _level_crossing(level):
+            gg = int(np.argmin(np.abs(y - level)))
+            j = gg + 1 if gg + 1 < len(x) else gg - 1
+            if j < 0 or y[j] == y[gg]:
+                return x[gg]
+            frac = (level - y[gg]) / (y[j] - y[gg])
+            return x[gg] + frac * (x[j] - x[gg])
+
+        lo = _level_crossing(lev0 + 0.1 * (lev1 - lev0))
+        hi = _level_crossing(lev0 + 0.9 * (lev1 - lev0))
+        fwhm = abs(hi - lo)
+
+    return dict(
+        center=float(center), fwhm=float(fwhm),
+        peak_x=float(peak_x), peak_y=float(peak_y), is_peak=bool(is_peak),
+    )
+
+
+# Artists a peak overlay draws, so _update_peak_overlay can remove and
+# redraw them together on every live-plot update / button re-click.
+_PEAK_OVERLAY_COLOR = "crimson"
+
+
+def _update_peak_overlay(ax, drawn, x, y, n_bg=3):
+    """(Re)draw the peak-analysis overlay (center + FWHM lines, a text
+    readout) on ``ax`` from the current ``x``/``y`` trace, removing
+    whatever ``drawn`` (a previous call's return value) left behind first.
+
+    Returns the new ``drawn`` dict (pass it back in next time), or ``None``
+    if :func:`find_peak` couldn't analyze this trace (too few points, flat)
+    -- callers should treat that the same as "no overlay drawn".
+    """
+    if drawn is not None:
+        for artist in drawn["artists"]:
+            try:
+                artist.remove()
+            except Exception:
+                pass
+    result = find_peak(x, y, n_bg=n_bg)
+    if result is None:
+        return None
+    center, fwhm = result["center"], result["fwhm"]
+    artists = [
+        ax.axvline(center, color=_PEAK_OVERLAY_COLOR, ls="--", lw=1, alpha=0.8),
+        ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
+        ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5),
+        ax.text(
+            0.02, 0.98, f"center={center:.4g}\nFWHM={fwhm:.4g}",
+            transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
+        ),
+    ]
+    return {"artists": artists, "result": result}
+
+
+def _run_peak_button(fig):
+    """The Peak toolbar button's click handler -- toggles a peak-analysis
+    overlay (see :func:`_update_peak_overlay`) on the active axes' first
+    non-overlay data line."""
+    ax = _get_active_axes(fig)
+    if ax is None:
+        print("[escape] no axes to analyze in this figure.")
+        return
+    existing = getattr(ax, "_escape_peak_overlay", None)
+    if existing is not None:
+        for artist in existing["artists"]:
+            try:
+                artist.remove()
+            except Exception:
+                pass
+        ax._escape_peak_overlay = None
+        _draw_safe(fig)
+        return
+    data_lines = [l for l in ax.get_lines() if l.get_color() != _PEAK_OVERLAY_COLOR]
+    if not data_lines:
+        print("[escape] no data line found in the active axes to analyze.")
+        return
+    line = data_lines[0]
+    ax._escape_peak_overlay = _update_peak_overlay(ax, None, line.get_xdata(), line.get_ydata())
+    if ax._escape_peak_overlay is None:
+        print("[escape] not enough data on the active line to analyze yet.")
+    _draw_safe(fig)
+
+
+def _attach_peak_button_qt(fig):
+    toolbar = getattr(fig.canvas.manager, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "addAction"):
+        return
+
+    icon = None
+    try:
+        import qtawesome as qta
+
+        icon = qta.icon("mdi.chart-gaussian")
+    except Exception:
+        pass
+
+    def _on_click(checked=False):
+        _run_peak_button(fig)
+
+    toolbar.addSeparator()
+    action = toolbar.addAction(icon, "Peak", _on_click) if icon is not None else toolbar.addAction("Peak", _on_click)
+    action.setToolTip("Toggle a peak-analysis overlay (center/FWHM) on the active axes")
+
+
+def _attach_peak_button_ipympl(fig):
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "toolitems"):
+        return
+
+    def _on_click():
+        _run_peak_button(fig)
+
+    toolbar.escape_peak_button = _on_click
+    toolbar.toolitems = list(toolbar.toolitems) + [
+        ("Peak", "Toggle a peak-analysis overlay (center/FWHM) on the active axes", "activity", "escape_peak_button")
+    ]
+
+
+def attach_peak_button(fig):
+    """Attach a "Peak" button to ``fig``'s toolbar, toggling a live
+    peak-analysis overlay (:func:`find_peak`: center + FWHM reference lines
+    and a text readout) on the active axes' data -- Qt and ipympl backends
+    only.
+
+    Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
+    idempotent contract as :func:`attach_fit_button` -- see its docstring.
+    """
+    if getattr(fig, "_escape_peak_attached", False):
+        return
+    try:
+        backend = _detect_plot_backend()
+        if backend is None:
+            return
+        _track_active_axes(fig)
+        if backend == "qt":
+            _attach_peak_button_qt(fig)
+        else:
+            _attach_peak_button_ipympl(fig)
+        fig._escape_peak_attached = True
+    except Exception as e:
+        print(f"[escape] couldn't attach the Peak button: {e}")
+
+
 def attach_fit_button(fig):
     """Attach a "Fit" button to ``fig``'s toolbar, opening an interactive
     lmfit panel (:func:`escape.fit_gui.AxesFitter`) on whichever of its axes
@@ -1466,7 +1710,7 @@ def attach_fit_button(fig):
         print(f"[escape] couldn't attach the Fit button: {e}")
 
 
-def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, close_previous=True, **kwargs):
+def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak_button=False, close_previous=True, **kwargs):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
     instead of being reused/added to (matplotlib's default when ``num``
@@ -1498,6 +1742,12 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, clos
         Qt/ipympl backends only, a harmless no-op elsewhere. Defaults to
         ``True``: attaching it costs nothing (no ``lmfit`` import) unless
         actually clicked.
+    peak_button : bool
+        Attach a "Peak" toolbar button (see :func:`attach_peak_button`),
+        toggling a peak-analysis overlay (center/FWHM) on the active axes.
+        Same backend restriction as ``fit_button``. Defaults to ``False``
+        (opt-in) here -- for a live counter plot where this is wanted by
+        default, see ``escape.stream.plots.Plot``'s ``peak_overlay``.
     close_previous : bool
         If ``True`` (the default, and currently the only behavior this
         function has ever had), a pre-existing figure of the same ``num``
@@ -1523,6 +1773,8 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, clos
     fig = plt.figure(num) if exists else plt.figure(num=num, **kwargs)
     if fit_button:
         attach_fit_button(fig)
+    if peak_button:
+        attach_peak_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -1530,7 +1782,7 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, clos
 
 
 def nsubplots(
-    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, fit_button=True, close_previous=True, **kwargs
+    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, fit_button=True, peak_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
@@ -1551,6 +1803,9 @@ def nsubplots(
     fit_button : bool
         Attach a "Fit" toolbar button (see :func:`attach_fit_button`) to the
         figure. Defaults to ``True`` (see :func:`nfigure`).
+    peak_button : bool
+        Attach a "Peak" toolbar button (see :func:`attach_peak_button`) to
+        the figure. Defaults to ``False`` (see :func:`nfigure`).
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
         (same figure, same axes, same ``nrows``/``ncols`` as when it was
@@ -1581,13 +1836,15 @@ def nsubplots(
         fig._escape_nsubplots_axes = ax
     if fit_button:
         attach_fit_button(fig)
+    if peak_button:
+        attach_peak_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig, ax
 
 
-def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_button=True, close_previous=True, **kwargs):
+def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_button=True, peak_button=False, close_previous=True, **kwargs):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
     when omitted).
@@ -1607,6 +1864,9 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
     fit_button : bool
         Attach a "Fit" toolbar button (see :func:`attach_fit_button`) to the
         figure. Defaults to ``True`` (see :func:`nfigure`).
+    peak_button : bool
+        Attach a "Peak" toolbar button (see :func:`attach_peak_button`) to
+        the figure. Defaults to ``False`` (see :func:`nfigure`).
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
         (same figure, same mosaic layout as when it was first created)
@@ -1636,6 +1896,8 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
         fig._escape_mosaic_axd = axd
     if fit_button:
         attach_fit_button(fig)
+    if peak_button:
+        attach_peak_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
