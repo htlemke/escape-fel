@@ -1551,6 +1551,19 @@ class Stream:
     def median(self):
         return [np.median(td, axis=0) for td in self.data]
 
+    def sum(self):
+        return [np.sum(td, axis=0) for td in self.data]
+
+    def min(self):
+        return [np.min(td, axis=0) if len(td) else np.nan for td in self.data]
+
+    def max(self):
+        return [np.max(td, axis=0) if len(td) else np.nan for td in self.data]
+
+    def count(self):
+        """True, uncapped per-step event count -- see DataManager.counts()."""
+        return self._dataManager.counts()
+
     def centerPerc(self, perc=68.3):
         pervals = [50 - perc / 2.0, 50 + perc / 2.0]
         # np.percentile raises IndexError on an empty step (unlike mean/median/std,
@@ -2176,6 +2189,211 @@ class Stream:
             else ""
         )
         return f"Stream({self.name!r}, unit={self.unit!r}, n={n}{scan_info})"
+
+
+# ---------------------------------------------------------------------------
+# Grid — live N-D reshaping/plotting of a Stream binned by 2+ parameters
+# ---------------------------------------------------------------------------
+#
+# The live counterpart of escape.storage.Grid -- deliberately mirrors its
+# shape, method names, and "plot=True for essentially every reduction
+# method" pattern (see escape.storage.storage.Grid /
+# _make_grid_scan_wrapper), but built on a live escape.stream.Stream
+# (already binned by an N-parameter escape.stream.Scan -- see Scan's own
+# docstring on multi-parameter binning) instead of a post-hoc
+# escape.storage.Array/Scan. No new binning machinery needed: Scan already
+# keys bins on the tuple of however many parameters it's given, so a
+# 2-parameter Scan already produces exactly the per-(x_index, y_index) bins
+# a grid needs -- Grid here is only the reshape-into-an-array-and-plot
+# layer on top, same division of responsibility as the storage side
+# (Scan partitions events into steps; Grid reshapes/plots those steps as
+# an N-D array).
+#
+# NOTE distinct from escape.storage.Scan/Grid: this Scan/Stream/Grid live
+# in escape.stream and share the *name* "Scan"/"Grid" with the
+# escape.storage classes on purpose (escape.stream is meant to mirror the
+# Array API -- see escape/stream/escape_stream.py's own module docstring),
+# but are otherwise unrelated implementations. Worth being deliberate about
+# which one you mean when both are in scope.
+
+_GRID_REDUCE_METHODS = ["mean", "std", "median", "sum", "min", "max", "count"]
+
+
+def _make_grid_stream_wrapper(method_name):
+    def _wrapper(self, plot=False, **plot_kws):
+        """Wraps Stream.{method}() with grid reshaping and optional live plotting.
+
+        Parameters
+        ----------
+        plot : bool, optional
+            If True, also (re)draw this stat as a live 2D heatmap -- see
+            :meth:`Grid.plot`. Returns ``(grid_array, GridPlot)`` in that
+            case instead of just ``grid_array``.
+        **plot_kws
+            Forwarded to :meth:`Grid.plot` when ``plot=True`` (ignored
+            otherwise).
+        """
+        values = getattr(self.stream, method_name)()
+        grid_data = self.to_grid(values)
+        if plot:
+            gp = self.plot(stat=method_name, **plot_kws)
+            return grid_data, gp
+        return grid_data
+
+    _wrapper.__name__ = method_name
+    _wrapper.__doc__ = (_wrapper.__doc__ or "").replace("{method}", method_name)
+    return _wrapper
+
+
+class Grid:
+    """Live reshaping (and optional live plotting) of a Stream binned by
+    2 or more parameters into a rectangular N-D array -- the live
+    counterpart of :class:`escape.storage.storage.Grid`.
+
+    Parameters
+    ----------
+    stream : Stream
+        A Stream already bound to a multi-parameter ``Scan`` (i.e. built
+        via ``Stream(source=..., scan=Scan(parameters=[p0, p1, ...]))``,
+        directly or via arithmetic on such a Stream) -- see the module
+        docstring above. Each of that Scan's parameters supplies one
+        integer coordinate per event (e.g. a step/grid index along that
+        axis), and ``stream.scan._values`` (one entry per discovered bin)
+        is read directly as the grid coordinates -- rounded to the nearest
+        integer, so a parameter is free to report its index as ``2`` or
+        ``2.0`` interchangeably.
+    shape : tuple of int
+        Grid shape, e.g. ``(n_x, n_y)`` -- fastest-varying axis last, same
+        convention as ``escape.storage.Grid``/numpy.
+    positions : sequence of array-like, optional
+        Real-world coordinate values for each axis (e.g. actual motor
+        positions, not just indices 0..n-1), used for axis
+        ticks/labels when plotting. One array per axis, same order as
+        ``shape``.
+    dimension_names : sequence of str, optional
+        Axis labels for plotting, same order as ``shape``.
+
+    Examples
+    --------
+    ::
+
+        x_idx, y_idx = _StepIndexSource(), _StepIndexSource()  # or reuse a
+                                                                # real StepScan's
+                                                                # own indices
+        grid_scan = Scan(parameters=[x_idx, y_idx])
+        binned = Stream(source=some_detector_stream._source, scan=grid_scan)
+        binned.accumulate(True)
+        grid = Grid(binned, shape=(10, 8), positions=[xs, ys],
+                    dimension_names=["x", "y"])
+        grid.mean(plot=True)          # live-updating 2D heatmap of the mean
+        grid.fill_count()             # (filled, total, percent)
+    """
+
+    def __init__(self, stream, shape, positions=None, dimension_names=None):
+        self.stream = stream
+        self.shape = tuple(int(s) for s in shape)
+        self.positions = positions
+        self.dimension_names = dimension_names
+        self._live_plots = {}
+
+    def get_grid_indices(self):
+        """Integer grid coordinate (one tuple per discovered bin, same
+        order as ``self.stream.data``) for every step this Grid's Stream
+        has seen so far -- read directly off the underlying Scan's
+        parameter values, rounded to the nearest integer."""
+        return [
+            tuple(int(round(v)) for v in step) for step in self.stream.scan._values
+        ]
+
+    def to_grid(self, values):
+        """Reshape a list of per-step values (in ``self.stream.data``
+        order -- exactly what ``self.stream.mean()``/``.std()``/etc.
+        return) into an array of ``self.shape``, NaN-filled for any grid
+        cell not discovered/visited yet.
+
+        Only scalar per-cell values are supported (a per-step reduction
+        like mean()/std()/sum()/... over a scalar channel) -- an
+        array-valued channel's per-step reduction isn't reshaped further.
+        """
+        values = list(values)
+        grid_data = np.full(self.shape, np.nan, dtype=float)
+        for value, index in zip(values, self.get_grid_indices()):
+            try:
+                grid_data[index] = value
+            except (IndexError, ValueError):
+                # index outside self.shape (e.g. shape given too small) or
+                # value isn't scalar -- skip rather than crash a live
+                # reduction call over one bad/unexpected cell.
+                continue
+        return grid_data
+
+    def fill_count(self):
+        """Return ``(filled, total, percent)`` -- how many of this grid's
+        cells have at least one sample so far, out of the total
+        ``prod(shape)``. Mirrors ``escape.storage.Grid.fill_count()``."""
+        total = int(np.prod(self.shape))
+        filled = len(set(self.get_grid_indices()))
+        percent = (filled / total * 100.0) if total else 0.0
+        return filled, total, percent
+
+    def get_grid_specs(self):
+        return {
+            "shape": self.shape,
+            "positions": self.positions,
+            "grid_dimension_names": self.dimension_names,
+        }
+
+    def plot(self, stat="mean", axes=None, update_interval=0.5, **kwargs):
+        """Live-updating 2D heatmap of ``getattr(self.stream, stat)()``,
+        reshaped via :meth:`to_grid`. Only meaningful for a 2-D grid
+        (``len(self.shape) == 2``).
+
+        Repeated calls with the same *stat* update and return the same
+        live plot (cached on this Grid) rather than creating a new one
+        each time -- e.g. safe to call from ``plot=True`` on every
+        reduction-method call.
+
+        Parameters
+        ----------
+        stat : str
+            Which Stream reduction method to display -- one of
+            ``mean/std/median/sum/min/max/count`` (must be a method that
+            returns one scalar per known step, i.e. not ``centerPerc``,
+            which returns a pair per step).
+        axes : matplotlib.axes.Axes, optional
+        update_interval : float
+            Seconds between redraws.
+        **kwargs
+            Forwarded to :class:`escape.stream.plots.GridPlot`.
+
+        Returns
+        -------
+        escape.stream.plots.GridPlot
+        """
+        existing = self._live_plots.get(stat)
+        if existing is not None:
+            return existing
+        if len(self.shape) != 2:
+            raise ValueError(
+                f"Grid.plot() only supports a 2-D grid, this one has shape {self.shape}"
+            )
+        gp = plots.GridPlot(self, stat=stat, axes=axes, update_interval=update_interval, **kwargs)
+        gp.plot()
+        gp.start(interval=update_interval)
+        self._live_plots[stat] = gp
+        return gp
+
+    def __len__(self):
+        return len(self.stream.scan._values)
+
+    def __repr__(self):
+        filled, total, percent = self.fill_count()
+        dims = self.dimension_names if self.dimension_names is not None else []
+        return f"<Grid shape={self.shape} dims={dims} filled={filled}/{total} ({percent:0.1f}%)>"
+
+
+for _grid_method in _GRID_REDUCE_METHODS:
+    setattr(Grid, _grid_method, _make_grid_stream_wrapper(_grid_method))
 
 
 # ---------------------------------------------------------------------------

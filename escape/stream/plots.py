@@ -861,3 +861,93 @@ class WaterfallPlot(_LivePlotBase):
         im.set_data(rows)
         im.set_clim(np.nanmin(rows), np.nanmax(rows))
         _draw_safe(self.fig)
+
+
+# ---------------------------------------------------------------------------
+# GridPlot — live 2D heatmap of a Grid's per-cell reduction stat
+# ---------------------------------------------------------------------------
+
+class GridPlot(_LivePlotBase):
+    """Live 2D heatmap of one of a ``Grid``'s reduction stats
+    (mean/std/median/sum/min/max/count), reshaped via ``Grid.to_grid()``.
+
+    Normally constructed through ``Grid.plot()``, not directly -- see
+    there for the usual entry point and caching behavior (one GridPlot
+    per (Grid, stat) pair, reused across repeated ``Grid.<stat>(plot=True)``
+    calls).
+
+    Closing this plot's figure stops accumulation on the Grid's
+    underlying Stream (see ``_LivePlotBase._on_close``) -- if you have
+    more than one ``GridPlot`` open for the same ``Grid`` (different
+    stats), they share that one Stream, so closing any one of them stops
+    data collection for all of them, not just itself. This mirrors every
+    other live-plot class here (one plot ~ one data source's lifecycle);
+    if you need independent lifetimes, use separate ``Grid`` instances
+    (they can wrap ``Stream``s bound to the same underlying channel(s)).
+
+    Parameters
+    ----------
+    grid : Grid
+    stat : str
+        Which of the Grid's reduction methods to display -- must return
+        one scalar per known step (``mean/std/median/sum/min/max/count``,
+        not ``centerPerc``).
+    axes : matplotlib.axes.Axes, optional
+    cmap : str
+    update_interval : float
+    """
+
+    def __init__(self, grid, stat="mean", axes=None, cmap="viridis", update_interval=0.5, **imshow_kws):
+        if axes is None:
+            fig, axes = plt.subplots()
+            fig.suptitle(f"{grid.stream.name}  {stat}  (grid)")
+        super().__init__([grid.stream], axes=axes, update_interval=update_interval)
+        self.grid = grid
+        self.stat = stat
+        self.cmap = cmap
+        self.imshow_kws = imshow_kws
+        self._connect_close_event()
+
+    def _grid_data(self):
+        values = getattr(self.grid.stream, self.stat)()
+        return self.grid.to_grid(values)
+
+    def _extent(self):
+        positions = self.grid.positions
+        if positions and len(positions) >= 2:
+            y_raw = np.asarray(positions[0], dtype=float)
+            x_raw = np.asarray(positions[1], dtype=float)
+            # origin="upper" (imshow default) draws row 0 at the top -- flip
+            # the y extent to match, so increasing y still points up visually.
+            return [x_raw.min(), x_raw.max(), y_raw.max(), y_raw.min()]
+        return [0, self.grid.shape[1], self.grid.shape[0], 0]
+
+    def _title(self):
+        filled, total, percent = self.grid.fill_count()
+        return f"{self.grid.stream.name}  {self.stat}  [{filled}/{total} filled, {percent:0.0f}%]"
+
+    def plot(self):
+        data = self._grid_data()
+        kwargs = dict(self.imshow_kws)
+        kwargs.setdefault("cmap", self.cmap)
+        kwargs.setdefault("aspect", "auto")
+        im = self.axes.imshow(data, extent=self._extent(), **kwargs)
+        cbar = self.fig.colorbar(im, ax=self.axes, label=self.stat)
+        self.drawn = dict(im=im, cbar=cbar)
+        dims = self.grid.dimension_names
+        if dims and len(dims) >= 2:
+            self.axes.set_xlabel(dims[1])
+            self.axes.set_ylabel(dims[0])
+        self.axes.set_title(self._title())
+        _draw_safe(self.fig)
+
+    def replot(self):
+        if self.drawn is None:
+            return
+        data = self._grid_data()
+        im = self.drawn["im"]
+        im.set_data(data)
+        if np.isfinite(data).any():
+            im.set_clim(np.nanmin(data), np.nanmax(data))
+        self.axes.set_title(self._title())
+        _draw_safe(self.fig)

@@ -22,6 +22,7 @@ from .escape_stream import (
     isesc,
     from_getter,
     GetterSource,
+    Grid,
 )
 from .es_wrappers import EventHandler_SFEL, LocalEventHandler, DirectStreamEventHandler
 from .es_wrappers_datahub import (
