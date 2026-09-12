@@ -82,7 +82,7 @@ def _skew(a):
     return float(np.mean((a - a.mean()) ** 3) / s**3)
 
 
-def find_peak(x, y, n_bg=3):
+def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
     """Locate a peak (or step) in a 1-D scan trace.
 
     Deliberately a duplicate of ``escape.plot_utilities.find_peak`` (same
@@ -91,8 +91,9 @@ def find_peak(x, y, n_bg=3):
     ``escape.plot_utilities`` (ipywidgets/dask/IPython), matching the
     existing ``_draw_step_band``/``escape.plot_utilities.errortube`` split.
     See ``escape.plot_utilities.find_peak`` for the full docstring on the
-    method (linear background subtraction, skewness-based peak/step
-    classification, half-max or 10-90% crossing for the width).
+    method and parameters (linear/offset background subtraction, an
+    optional fixed offset, forced/auto peak-vs-step classification,
+    half-max or 10-90% crossing for the width).
 
     Returns a dict with keys ``center``, ``fwhm``, ``peak_x``, ``peak_y``,
     ``is_peak``, or ``None`` if the trace is too short (< ``2 * n_bg + 3``
@@ -109,12 +110,23 @@ def find_peak(x, y, n_bg=3):
 
     xb = np.concatenate([x[:n_bg], x[-n_bg:]])
     yb = np.concatenate([y[:n_bg], y[-n_bg:]])
-    a = np.polyfit(xb, yb, 1)
-    yf = y - np.polyval(a, x)
+    if fixed_offset is not None:
+        b = np.full_like(x, float(fixed_offset))
+    elif bg_model == "offset":
+        b = np.full_like(x, yb.mean())
+    else:
+        a = np.polyfit(xb, yb, 1)
+        b = np.polyval(a, x)
+    yf = y - b
     xd = (x[1:] + x[:-1]) / 2
     yd = np.diff(yf)
 
-    is_peak = abs(_skew(yf)) > abs(_skew(yd))
+    if mode == "peak":
+        is_peak = True
+    elif mode == "step":
+        is_peak = False
+    else:
+        is_peak = abs(_skew(yf)) > abs(_skew(yd))
     xw, yw = (x, yf) if is_peak else (xd, yd)
     if not is_peak:
         xwb = np.concatenate([xw[:n_bg], xw[-n_bg:]])
@@ -170,19 +182,39 @@ def find_peak(x, y, n_bg=3):
 _PEAK_OVERLAY_COLOR = "crimson"
 
 
-def _update_peak_overlay(ax, drawn, x, y, n_bg=3):
+def _peak_overlay_params(ax, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
+    """The ``find_peak`` params to use for ``ax``'s overlay: whatever an
+    attached :class:`escape.plot_utilities.PeakAnalyzer` panel last set
+    (stashed on the axes as ``_escape_peak_params``) if there is one,
+    otherwise the given defaults -- so a live-streaming plot keeps
+    respecting the panel's settings on every redraw instead of silently
+    reverting to the defaults each tick."""
+    live = getattr(ax, "_escape_peak_params", None)
+    if live is not None:
+        return live
+    return dict(n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
+
+
+def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
     """(Re)draw the peak-analysis overlay (center + FWHM lines, a text
     readout) on ``ax``, removing whatever ``drawn`` (a previous call's
     return value) left behind first. Returns the new ``drawn`` (pass back
     in next time), or ``None`` if :func:`find_peak` found nothing to show
-    (too few points yet, or flat) -- treat that the same as "no overlay"."""
+    (too few points yet, or flat) -- treat that the same as "no overlay".
+
+    If a :class:`escape.plot_utilities.PeakAnalyzer` panel is attached to
+    ``ax``, its current settings (stashed as ``ax._escape_peak_params``)
+    override the ``n_bg``/``bg_model``/``fixed_offset``/``mode`` arguments
+    given here -- see :func:`_peak_overlay_params`.
+    """
     if drawn is not None:
         for artist in drawn["artists"]:
             try:
                 artist.remove()
             except Exception:
                 pass
-    result = find_peak(x, y, n_bg=n_bg)
+    params = _peak_overlay_params(ax, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
+    result = find_peak(x, y, **params)
     if result is None:
         return None
     center, fwhm = result["center"], result["fwhm"]
