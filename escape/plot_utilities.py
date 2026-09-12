@@ -1887,7 +1887,21 @@ class _PeakEngine:
         self.fixed_offset = fixed_offset
         self.mode = mode
         self.show = show
-        self.drawn = None
+
+    @property
+    def drawn(self):
+        """The overlay currently on ``self.ax`` -- read fresh from
+        ``ax._escape_peak_overlay`` every time rather than cached on
+        ``self``, since a live-updating plot (:class:`escape.stream.plots.Plot`)
+        redraws through that same attribute on its own timer, independently
+        of this engine. A cached copy goes stale the moment such a redraw
+        happens in between two calls here (its artists already replaced by
+        fresh ones), which used to make both update() -- it would draw a
+        second overlay on top instead of replacing the existing one -- and
+        clear() -- it would try to remove already-gone artists, leaving the
+        live plot's newer ones as an orphaned, never-removed leftover --
+        silently do the wrong thing."""
+        return getattr(self.ax, "_escape_peak_overlay", None)
 
     def _target_line(self):
         """The line to analyze: the one passed in at construction if it's
@@ -1917,21 +1931,29 @@ class _PeakEngine:
             return None
         self.ax._escape_peak_params = self.params()
         find_kwargs = dict(n_bg=self.n_bg, bg_model=self.bg_model, fixed_offset=self.fixed_offset, mode=self.mode)
-        self.drawn = _update_peak_overlay(self.ax, self.drawn, line.get_xdata(), line.get_ydata(), **find_kwargs)
-        self.ax._escape_peak_overlay = self.drawn
+        drawn = _update_peak_overlay(self.ax, self.drawn, line.get_xdata(), line.get_ydata(), **find_kwargs)
+        self.ax._escape_peak_overlay = drawn
         _draw_safe(self.fig)
-        return self.drawn
+        return drawn
 
     def clear(self):
-        if self.drawn is not None:
-            for artist in self.drawn["artists"]:
+        """Remove the overlay and persist ``show=False`` in
+        ``ax._escape_peak_params`` -- unlike discarding it to ``None``
+        (the previous behavior), which let the very next automatic redraw
+        from a live-updating plot (:class:`escape.stream.plots.Plot`, whose
+        own redraw timer keeps calling :func:`_update_peak_overlay`
+        regardless of whether this panel is open) revert to the default
+        ``show=True`` and silently bring the overlay right back."""
+        self.show = False
+        drawn = self.drawn
+        if drawn is not None:
+            for artist in drawn["artists"]:
                 try:
                     artist.remove()
                 except Exception:
                     pass
-            self.drawn = None
         self.ax._escape_peak_overlay = None
-        self.ax._escape_peak_params = None
+        self.ax._escape_peak_params = self.params()
         _draw_safe(self.fig)
 
 
@@ -1980,7 +2002,7 @@ class IpywidgetsPeakAnalyzer(widgets.VBox):
             self._fixed_cb, self._fixed_box, self._mode_toggle,
         ):
             w.observe(self._on_change, names="value")
-        self._clear_btn.on_click(lambda b: self.engine.clear())
+        self._clear_btn.on_click(self._on_clear)
 
         super().__init__(
             [
@@ -2003,6 +2025,10 @@ class IpywidgetsPeakAnalyzer(widgets.VBox):
         self.engine.fixed_offset = self._fixed_box.value if self._fixed_cb.value else None
         self.engine.mode = self._mode_toggle.value
         self.engine.update()
+
+    def _on_clear(self, b=None):
+        self.engine.clear()
+        self._show_cb.value = False  # reflect the cleared state in the UI
 
     def close(self):
         self.engine.clear()
@@ -2074,7 +2100,7 @@ def _make_qt_peak_analyzer_class():
             layout.addLayout(mode_row)
 
             clear_btn = QtWidgets.QPushButton("Clear overlay")
-            clear_btn.clicked.connect(lambda: self.engine.clear())
+            clear_btn.clicked.connect(self._on_clear)
             layout.addWidget(clear_btn)
 
             self.resize(360, 170)
@@ -2089,6 +2115,10 @@ def _make_qt_peak_analyzer_class():
             self.engine.fixed_offset = self._fixed_spin.value() if self._fixed_check.isChecked() else None
             self.engine.mode = next(b.text() for b in self._mode_group.buttons() if b.isChecked())
             self.engine.update()
+
+        def _on_clear(self, *args):
+            self.engine.clear()
+            self._show_check.setChecked(False)  # reflect the cleared state in the UI
 
     return QtPeakAnalyzer
 

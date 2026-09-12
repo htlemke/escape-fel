@@ -565,19 +565,19 @@ class Plot(_LivePlotBase):
     ):
         if errPercentiles is None:
             errPercentiles = [69.3, 95.0]
+        label = label if label is not None else data.name
         if axes is None:
             fig, axes = plt.subplots()
-            fig.suptitle(f"{data.name}  median")
+            fig.suptitle(f"{label}  median")
         super().__init__([data], axes=axes, update_interval=update_interval)
         self.data = data
-        self.label = label if label is not None else data.name
+        self.label = label
         self.scanVariable = scanVariable
         self.errPercentiles = errPercentiles
         self.step = step
         self.alpha = alpha
         self.autosetAxlabel = autosetAxlabel
         self.peak_overlay = peak_overlay
-        self._peak_drawn = None
         self._connect_close_event()
 
     def _getplotData(self):  # noqa: N802
@@ -621,10 +621,30 @@ class Plot(_LivePlotBase):
         if self.autosetAxlabel and self.data.scan._parameters:
             par = self.data.scan._parameters[self.scanVariable]
             self.axes.set_xlabel(f"{par.name} / {par.unit}")
-            self.axes.set_ylabel(f"{self.data.name} / {self.data.unit}")
+            self.axes.set_ylabel(f"{self.label} / {self.data.unit}")
         if self.peak_overlay:
-            self._peak_drawn = _update_peak_overlay(self.axes, None, x, y)
+            self._refresh_peak_overlay(x, y)
         _draw_safe(self.fig)
+
+    def _refresh_peak_overlay(self, x, y):
+        """Draw/update the peak overlay through ``self.axes._escape_peak_overlay``
+        -- the *same* "currently drawn" reference a :class:`PeakAnalyzer`
+        panel attached to this axes reads and writes (``_PeakEngine.update``/
+        ``.clear``), rather than a separate instance attribute here. Two
+        independent trackers for what should be one set of on-axes artists
+        used to mean each side could only remove artists *it* had drawn:
+        clicking "Clear overlay" removed the panel's copy and reset
+        ``ax._escape_peak_params`` to ``None``, but this class's own replot
+        timer kept calling :func:`_update_peak_overlay` regardless (using
+        its separate, still-live tracking reference) and, seeing no forced
+        params, redrew a fresh overlay with default settings a moment
+        later -- the overlay silently coming back right after being
+        cleared, and orphaned artists never actually removed either. Using
+        the shared reference for both means whichever side draws last is
+        the one whose removal-of-the-previous-overlay actually works."""
+        drawn = getattr(self.axes, "_escape_peak_overlay", None)
+        drawn = _update_peak_overlay(self.axes, drawn, x, y)
+        self.axes._escape_peak_overlay = drawn
 
     def replot(self):
         if self.drawn is None:
@@ -633,7 +653,7 @@ class Plot(_LivePlotBase):
         if len(x) == 0:
             return
         if self.peak_overlay:
-            self._peak_drawn = _update_peak_overlay(self.axes, self._peak_drawn, x, y)
+            self._refresh_peak_overlay(x, y)
         new_errs = []
         for band, coll in zip(yerr, self.drawn["err"]):
             color = coll.get_facecolor()

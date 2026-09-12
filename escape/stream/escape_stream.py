@@ -2056,7 +2056,7 @@ class Stream:
         self._histPlot = hp
         return hp
 
-    def plot_med(self, update=0.5, axes=None, timeout=5, peak_overlay=True):
+    def plot_med(self, update=0.5, axes=None, timeout=5, peak_overlay=True, label=None):
         """Median + percentile bands with live updates.
 
         peak_overlay : bool
@@ -2064,13 +2064,19 @@ class Stream:
             ``escape.stream.plots.find_peak``) on top of the median line.
             Defaults to ``True``; pass ``False`` to opt out (e.g. for a
             channel that isn't peak-shaped).
+        label : str, optional
+            Title/y-axis label to use instead of ``self.name`` (the raw
+            channel this Stream subscribes to) -- e.g. a counter wrapping
+            this Stream passing its own, friendlier name. Defaults to
+            ``self.name``.
         """
         self.accumulate(True)
+        title = label if label is not None else self.name
         if axes is None:
             fig, axes = plt.subplots()
-            fig.suptitle(f"{self.name}  median")
+            fig.suptitle(f"{title}  median")
         self._wait_for_data(timeout)
-        mp = plots.Plot(self, axes=axes, peak_overlay=peak_overlay)
+        mp = plots.Plot(self, axes=axes, peak_overlay=peak_overlay, label=label)
         mp.plot()
         if update:
             mp.start(interval=update)
