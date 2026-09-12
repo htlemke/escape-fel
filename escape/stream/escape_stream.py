@@ -405,6 +405,129 @@ class ProcSource:
         return self.procObj.ret_values[self.returnIndex]
 
 
+def _cache_getter(getter, update_time=0.1):
+    """Wrap a zero-arg getter so it's actually called at most once every
+    *update_time* seconds -- repeated calls within that window reuse the
+    previous result. ``update_time=0`` (or ``None``) disables caching and
+    calls through every time.
+
+    Exists for :func:`from_getter`: a real bs Stream can deliver events at
+    the facility repetition rate, but the getter it's combined with (e.g. a
+    Detector's ``get_current_value()``, often an EPICS get) is usually far
+    slower-changing and not worth re-reading on every single pulse.
+    """
+    if not update_time:
+        return getter
+    state = {"t": None, "value": None}
+
+    def wrapped():
+        now = time.time()
+        if state["t"] is None or (now - state["t"]) >= update_time:
+            state["value"] = getter()
+            state["t"] = now
+        return state["value"]
+
+    return wrapped
+
+
+class GetterSource:
+    """Wraps a plain zero-arg getter as a Stream source -- see
+    :func:`from_getter`.
+
+    Deliberately *not* an :class:`EventSource`/:class:`ProcSource`/
+    :class:`FilteredEventSource`: it has no real bs channel to subscribe,
+    so :func:`_collect_source_channels` (and so
+    ``Stream.accumulate()``) correctly falls through to "nothing
+    registerable" for it -- see that function's docstring. Its
+    ``getEventData()`` just calls the (cached) getter every time it's
+    asked, independent of pulse_id/eventWorker.event -- the wrapped value
+    isn't pulse-synchronized data, it's read fresh (subject to the cache)
+    whenever the combining ``ProcObj`` asks for it.
+    """
+
+    def __init__(self, getter, eventWorker, name=None, unit="a.u.", update_time=0.1):
+        self._raw_getter = getter
+        self._getter = _cache_getter(getter, update_time)
+        self.eventWorker = eventWorker
+        self.name = name or getattr(getter, "__qualname__", None) or repr(getter)
+        self.unit = unit
+
+    def getEventData(self):  # noqa: N802
+        try:
+            return self._getter()
+        except Exception:
+            return None
+
+
+def _is_getter_like(obj):
+    """Whether *obj* should be auto-wrapped via :func:`from_getter` when it
+    shows up as a ``Stream`` arithmetic operand (see ``_wrapOperatorJoin``):
+    a Detector-like object (anything with ``get_current_value()``, matching
+    eco's ``Detector`` protocol) or a plain zero-arg callable (e.g. a bound
+    ``get_current_value`` method used directly). Excludes anything already
+    esc (a real ``Stream``/``ProcObj`` result -- handled normally) and
+    plain numbers/arrays/strings, which must keep working as ordinary
+    constants exactly as before.
+    """
+    if isesc(obj):
+        return False
+    if hasattr(obj, "get_current_value"):
+        return True
+    return callable(obj) and not isinstance(obj, type)
+
+
+def from_getter(getter_or_detector, eventworker=None, name=None, unit="a.u.", update_time=0.1):
+    """Wrap a plain getter or a Detector-like object as a live ``Stream``.
+
+    Lets a non-streamed, "read current value on demand" object -- a plain
+    zero-arg callable (e.g. ``obj.get_current_value``), or anything with a
+    ``get_current_value()`` method (eco's ``Detector``/``Adjustable``
+    protocol) -- participate in ordinary ``Stream`` arithmetic
+    (``+ - * / // % ** & | ^``, comparisons) alongside real bs Streams.
+    ``Stream``'s operators auto-wrap a bare getter/Detector operand through
+    this function already (see ``_wrapOperatorJoin``), so
+    ``some_stream + some_detector`` works directly without calling this by
+    hand -- call it explicitly when you need to combine two non-Stream
+    operands first (e.g. ``factor * from_getter(some_detector)``), or to
+    pass a non-default *update_time*/*eventworker*/*name*.
+
+    Not pulse-synchronized in itself -- see *update_time*.
+
+    Parameters
+    ----------
+    getter_or_detector : callable or Detector-like
+        A zero-arg callable, or an object with ``get_current_value()``.
+    eventworker : EventWorker, optional
+        Must be the same ``EventWorker`` as whatever real ``Stream`` this
+        gets combined with (``ProcObj`` asserts all operands share one).
+        Falls back to the module-level default, same as the short
+        ``Stream`` constructor.
+    name, unit : str, optional
+    update_time : float, default 0.1
+        Minimum seconds between actual getter calls -- see
+        :func:`_cache_getter`. ``0``/``None`` disables caching.
+
+    Returns
+    -------
+    Stream
+    """
+    if eventworker is None:
+        eventworker = globals().get("eventworker")
+    getter = getter_or_detector
+    if not callable(getter_or_detector):
+        get_current_value = getattr(getter_or_detector, "get_current_value", None)
+        if get_current_value is None:
+            raise TypeError(
+                "from_getter() needs a zero-arg callable or a Detector-like "
+                f"object with get_current_value(), got {type(getter_or_detector)}"
+            )
+        getter = get_current_value
+        if name is None:
+            name = getattr(getter_or_detector, "name", None)
+    source = GetterSource(getter, eventworker, name=name, unit=unit, update_time=update_time)
+    return Stream(source=source)
+
+
 class FileSource:
     """Placeholder for indexed file sources."""
     pass
@@ -2279,16 +2402,33 @@ def wrapFunc_singleOutput(func, name=None, unit=None, scan=None):  # noqa: N802
 
 def _wrapOperatorJoin(func, symbol):
     def newFunc(*args):
+        if any(_is_getter_like(a) for a in args):
+            # A bare Detector/getter operand alongside a real Stream (e.g.
+            # `some_stream + some_detector`) -- auto-wrap it via
+            # from_getter() using the *other* operand's EventWorker (all
+            # esc operands of one ProcObj must share one; see
+            # ProcObj._resolveEventWorker). Plain numbers/arrays are left
+            # untouched (see _is_getter_like) and keep working as ordinary
+            # constants exactly as before.
+            ew = next((a._source.eventWorker for a in args if isesc(a)), None)
+            args = tuple(
+                from_getter(a, eventworker=ew) if _is_getter_like(a) else a
+                for a in args
+            )
         names = [getattr(a, "name", type(a).__name__) for a in args]
         units = [getattr(a, "unit", "no unit") for a in args]
         sep = f" {symbol} "
+        # Not necessarily args[0]: the reflected operators
+        # (_wrapOperatorJoinReflected, e.g. `factor * stream`) call this
+        # with the plain constant first and the Stream second.
+        scan = next(a.scan for a in args if isesc(a))
         p = ProcObj(
             func,
             args=args,
             returns_is_esc=[True],
             returns_names=[("(" + sep.join(names) + ")")],
             returns_units=[("(" + sep.join(units) + ")")],
-            scan=args[0].scan,
+            scan=scan,
         )
         return p.createChildren()[0]
     return newFunc
@@ -2309,11 +2449,30 @@ def _wrapOperatorSingle(func, symbol):
     return newFunc
 
 
+def _wrapOperatorJoinReflected(func, symbol):
+    """``__r<op>__`` counterpart of :func:`_wrapOperatorJoin`, for
+    ``<non-Stream> <op> <Stream>`` (e.g. ``factor * some_stream`` -- a
+    plain ``float`` has no idea how to multiply by a ``Stream``, so Python
+    falls back to ``Stream.__rmul__``). Reuses the same auto-wrap-a-getter/
+    Detector-operand logic, just with the operands swapped back into the
+    correct order (``a op b`` for ``b.__rop__(a)``) before delegating.
+    """
+    forward = _wrapOperatorJoin(func, symbol)
+
+    def newFunc(self, other):
+        return forward(other, self)
+
+    return newFunc
+
+
 _operatorsJoin = [
     (operator.add, "+"), (operator.truediv, "/"), (operator.floordiv, "//"),
     (operator.and_, "&"), (operator.xor, "^"), (operator.or_, "|"),
     (operator.pow, "**"), (operator.lshift, "<<"), (operator.mod, "%"),
     (operator.mul, "*"), (operator.rshift, ">>"), (operator.sub, "-"),
+]
+
+_operatorsCompare = [
     (operator.lt, "<"), (operator.le, "<="), (operator.eq, "=="),
     (operator.ne, "!="), (operator.ge, ">="), (operator.gt, ">"),
 ]
@@ -2323,7 +2482,20 @@ _operatorsSingle = [
 ]
 
 for _opJoin, _sym in _operatorsJoin:
-    setattr(Stream, f"__{_opJoin.__name__}__", _wrapOperatorJoin(_opJoin, _sym))
+    # .rstrip("_"): operator.and_/or_ are named with a trailing underscore
+    # (avoiding the `and`/`or` keywords) -- f"__{'and_'}__" would silently
+    # produce "__and___" (three trailing underscores), which Python's
+    # operator dispatch never looks up, so `stream & other`/`stream | other`
+    # would silently never call it. Every other name here has no trailing
+    # underscore of its own, so rstrip is a no-op for them.
+    _dunder = _opJoin.__name__.rstrip("_")
+    setattr(Stream, f"__{_dunder}__", _wrapOperatorJoin(_opJoin, _sym))
+    # Reflected counterpart -- e.g. `factor * stream` (a plain number/
+    # getter/Detector on the LEFT) needs __rmul__; comparisons don't need
+    # this (Python auto-reflects __lt__/__gt__ etc. on its own).
+    setattr(Stream, f"__r{_dunder}__", _wrapOperatorJoinReflected(_opJoin, _sym))
+for _opCmp, _sym in _operatorsCompare:
+    setattr(Stream, f"__{_opCmp.__name__}__", _wrapOperatorJoin(_opCmp, _sym))
 for _opSing, _sym in _operatorsSingle:
     setattr(Stream, f"__{_opSing.__name__}__", _wrapOperatorSingle(_opSing, _sym))
 

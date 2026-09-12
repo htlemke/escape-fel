@@ -20,6 +20,8 @@ from .escape_stream import (
     digitizeScan,
     wrapFunc_singleOutput,
     isesc,
+    from_getter,
+    GetterSource,
 )
 from .es_wrappers import EventHandler_SFEL, LocalEventHandler, DirectStreamEventHandler
 from .es_wrappers_datahub import (
