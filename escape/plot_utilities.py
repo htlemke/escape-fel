@@ -1380,12 +1380,32 @@ def _close_axes_guis(fig):
                     pass
 
 
+def _run_before_click(fig):
+    """Run whatever ``before_click`` hook was passed to
+    ``attach_fit_button``/``attach_peak_button``/``attach_peak_params_button``
+    (usually via :func:`attach_escape_buttons`), if any -- see those
+    docstrings. Called first thing by every button's click handler below, so
+    a host with its own destructive live-redraw loop (e.g.
+    ``eco.acquisition.counters.CounterValue``'s ``FuncAnimation``, which
+    calls ``ax.cla()`` on a timer) gets a chance to stop it before an
+    overlay/panel is drawn on top -- otherwise the next animation frame
+    would just wipe it straight back off.
+    """
+    hook = getattr(fig, "_escape_before_click", None)
+    if hook is not None:
+        try:
+            hook()
+        except Exception as e:
+            print(f"[escape] before_click hook failed: {e}")
+
+
 def _run_fit_button(fig):
     """The Fit toolbar button's click handler, shared by the Qt/ipympl
     attachments below. Importing ``escape.fit_gui`` (and so ``lmfit``) is
     deferred to here -- the click -- rather than done at attach time, so
     attaching the button costs nothing up front even without lmfit
     installed."""
+    _run_before_click(fig)
     ax = _get_active_axes(fig)
     if ax is None:
         print("[escape] no axes to fit in this figure.")
@@ -2029,6 +2049,7 @@ def _run_peak_button(fig):
     overlay (:func:`_update_peak_overlay`, using default parameters unless a
     :class:`PeakAnalyzer` panel opened via the "Peak params" button has set
     its own -- see ``ax._escape_peak_params``) on the active axes' data."""
+    _run_before_click(fig)
     ax = _get_active_axes(fig)
     if ax is None:
         print("[escape] no axes to analyze in this figure.")
@@ -2058,6 +2079,7 @@ def _run_peak_params_button(fig):
     """The Peak params toolbar button's click handler -- attaches (or
     re-raises, if already attached) an interactive :class:`PeakAnalyzer`
     control panel on the active axes."""
+    _run_before_click(fig)
     ax = _get_active_axes(fig)
     if ax is None:
         print("[escape] no axes to analyze in this figure.")
@@ -2144,16 +2166,30 @@ def _attach_peak_params_button_ipympl(fig):
     ]
 
 
-def attach_peak_button(fig):
+def _set_before_click(fig, before_click):
+    """Register/replace ``fig``'s ``before_click`` hook (see
+    :func:`_run_before_click`) -- a no-op when ``before_click`` is ``None``,
+    so calling one ``attach_*`` function after another without passing it
+    again doesn't clobber a hook an earlier call already set."""
+    if before_click is not None:
+        fig._escape_before_click = before_click
+
+
+def attach_peak_button(fig, *, before_click=None):
     """Attach a "Peak" button to ``fig``'s toolbar, toggling a live
     peak-analysis overlay (:func:`find_peak`: center + FWHM reference lines,
     the width-determining crossing points, the subtracted background or
     step levels, and a labeled peak/step point) on the active axes' data --
     Qt and ipympl backends only.
 
+    ``before_click``, if given, is called (with no arguments) at the start
+    of every click on this button, before anything else -- see
+    :func:`attach_fit_button`'s docstring for why.
+
     Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
     idempotent contract as :func:`attach_fit_button` -- see its docstring.
     """
+    _set_before_click(fig, before_click)
     if getattr(fig, "_escape_peak_attached", False):
         return
     try:
@@ -2170,7 +2206,7 @@ def attach_peak_button(fig):
         print(f"[escape] couldn't attach the Peak button: {e}")
 
 
-def attach_peak_params_button(fig):
+def attach_peak_params_button(fig, *, before_click=None):
     """Attach a "Peak params" button to ``fig``'s toolbar, opening an
     interactive :class:`PeakAnalyzer` control panel (background-point
     count, background model, an optional fixed offset, a peak/step/auto
@@ -2184,9 +2220,14 @@ def attach_peak_params_button(fig):
     whatever overlay "Peak" already drew, since both act through the same
     ``ax._escape_peak_params`` override.
 
+    ``before_click``, if given, is called (with no arguments) at the start
+    of every click on this button -- see :func:`attach_fit_button`'s
+    docstring for why.
+
     Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
     idempotent contract as :func:`attach_fit_button` -- see its docstring.
     """
+    _set_before_click(fig, before_click)
     if getattr(fig, "_escape_peak_params_attached", False):
         return
     try:
@@ -2203,7 +2244,7 @@ def attach_peak_params_button(fig):
         print(f"[escape] couldn't attach the Peak params button: {e}")
 
 
-def attach_escape_buttons(fig, *, fit=True, peak=True, peak_params=True):
+def attach_escape_buttons(fig, *, fit=True, peak=True, peak_params=True, before_click=None):
     """Attach escape's full set of interactive toolbar buttons -- Fit
     (:func:`attach_fit_button`), Peak (:func:`attach_peak_button`), and
     Peak params (:func:`attach_peak_params_button`) -- to ``fig`` in one
@@ -2214,20 +2255,35 @@ def attach_escape_buttons(fig, *, fit=True, peak=True, peak_params=True):
     all. Same no-op-on-unsupported-backend contract as the individual
     ``attach_*`` functions; pass ``fit``/``peak``/``peak_params`` as
     ``False`` to skip one.
+
+    ``before_click``, if given, is forwarded to every attached button --
+    see :func:`attach_fit_button`'s docstring for what it's for (e.g.
+    ``eco.acquisition.counters.CounterValue`` passing its own
+    ``stop_animation`` so its ``FuncAnimation``-driven live plot stops
+    clearing the axes before one of these tools draws on it).
     """
     if fit:
-        attach_fit_button(fig)
+        attach_fit_button(fig, before_click=before_click)
     if peak:
-        attach_peak_button(fig)
+        attach_peak_button(fig, before_click=before_click)
     if peak_params:
-        attach_peak_params_button(fig)
+        attach_peak_params_button(fig, before_click=before_click)
 
 
-def attach_fit_button(fig):
+def attach_fit_button(fig, *, before_click=None):
     """Attach a "Fit" button to ``fig``'s toolbar, opening an interactive
     lmfit panel (:func:`escape.fit_gui.AxesFitter`) on whichever of its axes
     was last clicked (the first axes, if none has been clicked yet) --
     Qt and ipympl (``%matplotlib widget``) backends only.
+
+    ``before_click``, if given, is called (with no arguments) at the start
+    of every click on this button, before anything else -- for a host whose
+    own live-redraw loop would otherwise fight with what the button draws
+    (see :func:`_run_before_click`), e.g. a ``FuncAnimation``-driven plot
+    that clears its axes on a timer needs to stop that first. Stored on
+    ``fig`` (last call wins), so it only needs to be passed once even when
+    attaching more than one button -- :func:`attach_escape_buttons` does
+    this for you.
 
     A no-op, not an error, anywhere this doesn't apply: other backends
     (inline, plain ``Agg``, ...) have no interactive toolbar to attach to,
@@ -2237,6 +2293,7 @@ def attach_fit_button(fig):
     figure creation and should never be the reason a plot call fails.
     Idempotent: attaching twice to the same figure is a no-op the second time.
     """
+    _set_before_click(fig, before_click)
     if getattr(fig, "_escape_fit_attached", False):
         return
     try:
