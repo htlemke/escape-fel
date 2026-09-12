@@ -1382,8 +1382,8 @@ def _close_axes_guis(fig):
 
 def _run_before_click(fig):
     """Run whatever ``before_click`` hook was passed to
-    ``attach_fit_button``/``attach_peak_button``/``attach_peak_params_button``
-    (usually via :func:`attach_escape_buttons`), if any -- see those
+    ``attach_fit_button``/``attach_peak_button`` (usually via
+    :func:`attach_escape_buttons`), if any -- see those
     docstrings. Called first thing by every button's click handler below, so
     a host with its own destructive live-redraw loop (e.g.
     ``eco.acquisition.counters.CounterValue``'s ``FuncAnimation``, which
@@ -2172,40 +2172,14 @@ def PeakAnalyzer(
 
 
 def _run_peak_button(fig):
-    """The Peak toolbar button's click handler -- toggles a peak-analysis
-    overlay (:func:`_update_peak_overlay`, using default parameters unless a
-    :class:`PeakAnalyzer` panel opened via the "Peak params" button has set
-    its own -- see ``ax._escape_peak_params``) on the active axes' data."""
-    _run_before_click(fig)
-    ax = _get_active_axes(fig)
-    if ax is None:
-        print("[escape] no axes to analyze in this figure.")
-        return
-    existing = getattr(ax, "_escape_peak_overlay", None)
-    if existing is not None:
-        for artist in existing["artists"]:
-            try:
-                artist.remove()
-            except Exception:
-                pass
-        ax._escape_peak_overlay = None
-        _draw_safe(fig)
-        return
-    data_lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
-    if not data_lines:
-        print("[escape] no data line found in the active axes to analyze.")
-        return
-    line = data_lines[-1]
-    ax._escape_peak_overlay = _update_peak_overlay(ax, None, line.get_xdata(), line.get_ydata())
-    if ax._escape_peak_overlay is None:
-        print("[escape] not enough data on the active line to analyze yet.")
-    _draw_safe(fig)
-
-
-def _run_peak_params_button(fig):
-    """The Peak params toolbar button's click handler -- attaches (or
-    re-raises, if already attached) an interactive :class:`PeakAnalyzer`
-    control panel on the active axes."""
+    """The Peak toolbar button's click handler -- attaches (or re-raises, if
+    already attached) an interactive :class:`PeakAnalyzer` control panel
+    (background-point count, background model, an optional fixed offset, a
+    peak/step/auto mode switch, and a plot/no-plot toggle) on the active
+    axes. One button doing this rather than a separate plain on/off toggle
+    plus a separate "Peak params" button to tune it -- the panel's own
+    "plot" checkbox already covers the toggle, so the split just duplicated
+    that."""
     _run_before_click(fig)
     ax = _get_active_axes(fig)
     if ax is None:
@@ -2233,7 +2207,7 @@ def _attach_peak_button_qt(fig):
 
     toolbar.addSeparator()
     action = toolbar.addAction(icon, "", _on_click) if icon is not None else toolbar.addAction("Peak", _on_click)
-    action.setToolTip("Toggle a peak-analysis overlay (center/FWHM) on the active axes")
+    action.setToolTip("Open the peak/step-analysis panel (center/FWHM overlay) for the active axes")
 
 
 def _attach_peak_button_ipympl(fig):
@@ -2246,48 +2220,7 @@ def _attach_peak_button_ipympl(fig):
 
     toolbar.escape_peak_button = _on_click
     toolbar.toolitems = list(toolbar.toolitems) + [
-        ("Peak", "Toggle a peak-analysis overlay (center/FWHM) on the active axes", "activity", "escape_peak_button")
-    ]
-
-
-def _attach_peak_params_button_qt(fig):
-    toolbar = getattr(fig.canvas.manager, "toolbar", None)
-    if toolbar is None or not hasattr(toolbar, "addAction"):
-        return
-
-    icon = None
-    try:
-        import qtawesome as qta
-
-        icon = qta.icon("mdi.tune-variant")
-    except Exception:
-        pass
-
-    def _on_click(checked=False):
-        _run_peak_params_button(fig)
-
-    action = (
-        toolbar.addAction(icon, "Peak params", _on_click)
-        if icon is not None
-        else toolbar.addAction("Peak params", _on_click)
-    )
-    action.setToolTip("Open the peak/step-analysis control panel for the active axes")
-
-
-def _attach_peak_params_button_ipympl(fig):
-    toolbar = getattr(fig.canvas, "toolbar", None)
-    if toolbar is None or not hasattr(toolbar, "toolitems"):
-        return
-
-    def _on_click():
-        _run_peak_params_button(fig)
-
-    toolbar.escape_peak_params_button = _on_click
-    toolbar.toolitems = list(toolbar.toolitems) + [
-        (
-            "Peak params", "Open the peak/step-analysis control panel for the active axes",
-            "sliders", "escape_peak_params_button",
-        )
+        ("Peak", "Open the peak/step-analysis panel (center/FWHM overlay) for the active axes", "activity", "escape_peak_button")
     ]
 
 
@@ -2301,11 +2234,19 @@ def _set_before_click(fig, before_click):
 
 
 def attach_peak_button(fig, *, before_click=None):
-    """Attach a "Peak" button to ``fig``'s toolbar, toggling a live
-    peak-analysis overlay (:func:`find_peak`: center + FWHM reference lines,
-    the width-determining crossing points, the subtracted background or
-    step levels, and a labeled peak/step point) on the active axes' data --
-    Qt and ipympl backends only.
+    """Attach a "Peak" button to ``fig``'s toolbar, opening an interactive
+    :class:`PeakAnalyzer` control panel (background-point count,
+    background model, an optional fixed offset, a peak/step/auto mode
+    switch, and a plot/no-plot toggle -- which also draws/redraws
+    :func:`find_peak`'s overlay: center + FWHM reference lines, the
+    width-determining crossing points, the subtracted background or step
+    levels, and a labeled peak/step point) on whichever of its axes was
+    last clicked (the first axes, if none has been clicked yet) -- Qt and
+    ipympl backends only.
+
+    One button for this rather than a separate plain on/off toggle plus a
+    "Peak params" button to tune it -- the panel's own "plot" checkbox
+    already is that toggle, so the split just duplicated it.
 
     ``before_click``, if given, is called (with no arguments) at the start
     of every click on this button, before anything else -- see
@@ -2331,54 +2272,15 @@ def attach_peak_button(fig, *, before_click=None):
         print(f"[escape] couldn't attach the Peak button: {e}")
 
 
-def attach_peak_params_button(fig, *, before_click=None):
-    """Attach a "Peak params" button to ``fig``'s toolbar, opening an
-    interactive :class:`PeakAnalyzer` control panel (background-point
-    count, background model, an optional fixed offset, a peak/step/auto
-    mode switch, and a plot/no-plot toggle) on whichever of its axes was
-    last clicked (the first axes, if none has been clicked yet) -- Qt and
-    ipympl backends only.
-
-    A separate button from "Peak" (:func:`attach_peak_button`, a plain
-    on/off toggle using default parameters) rather than a replacement for
-    it -- this one is for tuning those parameters, and it takes over
-    whatever overlay "Peak" already drew, since both act through the same
-    ``ax._escape_peak_params`` override.
-
-    ``before_click``, if given, is called (with no arguments) at the start
-    of every click on this button -- see :func:`attach_fit_button`'s
-    docstring for why.
-
-    Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
-    idempotent contract as :func:`attach_fit_button` -- see its docstring.
-    """
-    _set_before_click(fig, before_click)
-    if getattr(fig, "_escape_peak_params_attached", False):
-        return
-    try:
-        backend = _detect_plot_backend()
-        if backend is None:
-            return
-        _track_active_axes(fig)
-        if backend == "qt":
-            _attach_peak_params_button_qt(fig)
-        else:
-            _attach_peak_params_button_ipympl(fig)
-        fig._escape_peak_params_attached = True
-    except Exception as e:
-        print(f"[escape] couldn't attach the Peak params button: {e}")
-
-
-def attach_escape_buttons(fig, *, fit=True, peak=True, peak_params=True, before_click=None):
-    """Attach escape's full set of interactive toolbar buttons -- Fit
-    (:func:`attach_fit_button`), Peak (:func:`attach_peak_button`), and
-    Peak params (:func:`attach_peak_params_button`) -- to ``fig`` in one
-    call, so every place that creates an interactive escape figure (static,
-    via :func:`nfigure`, or a live-updating :mod:`escape.stream.plots`
-    figure) wires them up the same way instead of each repeating the same
-    three calls -- or, for the live-plot figures, not wiring them up at
-    all. Same no-op-on-unsupported-backend contract as the individual
-    ``attach_*`` functions; pass ``fit``/``peak``/``peak_params`` as
+def attach_escape_buttons(fig, *, fit=True, peak=True, before_click=None):
+    """Attach escape's interactive toolbar buttons -- Fit
+    (:func:`attach_fit_button`) and Peak (:func:`attach_peak_button`) -- to
+    ``fig`` in one call, so every place that creates an interactive escape
+    figure (static, via :func:`nfigure`, or a live-updating
+    :mod:`escape.stream.plots` figure) wires them up the same way instead
+    of each repeating the same calls -- or, for the live-plot figures, not
+    wiring them up at all. Same no-op-on-unsupported-backend contract as
+    the individual ``attach_*`` functions; pass ``fit``/``peak`` as
     ``False`` to skip one.
 
     ``before_click``, if given, is forwarded to every attached button --
@@ -2391,8 +2293,6 @@ def attach_escape_buttons(fig, *, fit=True, peak=True, peak_params=True, before_
         attach_fit_button(fig, before_click=before_click)
     if peak:
         attach_peak_button(fig, before_click=before_click)
-    if peak_params:
-        attach_peak_params_button(fig, before_click=before_click)
 
 
 def attach_fit_button(fig, *, before_click=None):
@@ -2468,13 +2368,12 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
         ``True``: attaching it costs nothing (no ``lmfit`` import) unless
         actually clicked.
     peak_button : bool
-        Attach both a "Peak" toolbar button (see :func:`attach_peak_button`,
-        toggling a peak-analysis overlay on the active axes) and a "Peak
-        params" one (see :func:`attach_peak_params_button`, opening a panel
-        to tune it). Same backend restriction as ``fit_button``. Defaults
-        to ``False`` (opt-in) here -- for a live counter plot where this is
-        wanted by
-        default, see ``escape.stream.plots.Plot``'s ``peak_overlay``.
+        Attach a "Peak" toolbar button (see :func:`attach_peak_button`,
+        opening the peak/step-analysis panel -- center/FWHM overlay plus
+        its tuning controls -- on the active axes). Same backend
+        restriction as ``fit_button``. Defaults to ``False`` (opt-in) here
+        -- for a live counter plot where this is wanted by default, see
+        ``escape.stream.plots.Plot``'s ``peak_overlay``.
     close_previous : bool
         If ``True`` (the default, and currently the only behavior this
         function has ever had), a pre-existing figure of the same ``num``
@@ -2502,7 +2401,6 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
-        attach_peak_params_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2566,7 +2464,6 @@ def nsubplots(
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
-        attach_peak_params_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2627,7 +2524,6 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
-        attach_peak_params_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
