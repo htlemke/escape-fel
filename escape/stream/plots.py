@@ -158,8 +158,12 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
         aw = np.polyfit(xwb, ywb, 1)
         yw = yw - np.polyval(aw, xw)
 
+    # `sign` undoes this flip for anything that needs to go back to the real
+    # (unflipped) signal afterward -- see the peak-case crossing_1/2 below.
+    sign = 1.0
     if np.sum((xw[1:] - xw[:-1]) * (yw[1:] + yw[:-1]) / 2) < 0:
         yw = -yw
+        sign = -1.0
 
     mm = int(np.argmax(yw))
     half = yw[mm] / 2
@@ -203,9 +207,15 @@ def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
         levels = (float(lev0), float(lev1))
     else:
         # xhm1/xhm2 live in the background-subtracted domain (half of the
-        # subtracted peak's height) -- add the background back at each
-        # crossing's x to place the marker on the original, visible curve.
-        y_hm = half + np.interp([xhm1, xhm2], x, b)
+        # subtracted peak's height, in the possibly sign-flipped working
+        # array) -- add the background back at each crossing's x to place
+        # the marker on the original, visible curve. For a negative peak
+        # (a dip), `half` is positive in the flipped array but the real
+        # crossing sits *below* the background, not above it -- `sign`
+        # (from the orientation flip above) corrects for that; without it
+        # the crossing markers land mirrored above the background instead
+        # of between it and the dip.
+        y_hm = sign * half + np.interp([xhm1, xhm2], x, b)
         crossing_1, crossing_2 = (float(xhm1), float(y_hm[0])), (float(xhm2), float(y_hm[1]))
         background = (x.copy(), b.copy())
         levels = None
