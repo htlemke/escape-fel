@@ -1475,7 +1475,7 @@ class Stream:
                     rows.append({"event": ev_idx, "scan_step": step_idx, "scan_value": step_val, self.name: v})
         return pd.DataFrame(rows)
 
-    def to_array(self, index="pulse_id", name=None, unit=None):
+    def to_array(self, index="pulse_id", name=None, unit=None, parameter=None, grid_specs=None):
         """Snapshot this Stream's currently accumulated data as a static ``escape.Array``.
 
         A one-shot conversion of whatever has been accumulated *so far* --
@@ -1504,6 +1504,22 @@ class Stream:
             this Stream's total accumulated sample count).
         name, unit : str, optional
             Default to this Stream's own ``.name``/``.unit``.
+        parameter : dict, optional
+            Override for the resulting Array's ``parameter`` (same
+            ``{param_name: {"values": [...]}}`` shape, one value per step,
+            as the default computed from this Stream's own ``scan``) --
+            for a caller whose bins carry a physically meaningful scan
+            parameter that this Stream's own ``.scan`` doesn't know about
+            (e.g. ``eco.detector.bs_counter.BsStreamCounter``, whose
+            internal ``Scan`` is keyed on a synthetic step index rather
+            than the real scanned adjustable's values). Must have one
+            value per step (``len(self.lens())``) per parameter, same as
+            the default.
+        grid_specs : dict, optional
+            Forwarded to ``Array(grid_specs=...)`` so the result's
+            ``.grid`` works for a grid/mesh-scanned Stream -- this Stream's
+            own ``scan``/:meth:`to_frame` have no grid concept, so this is
+            never filled in automatically, only from an explicit override.
 
         Returns
         -------
@@ -1511,7 +1527,8 @@ class Stream:
             With ``step_lengths``/``parameter`` set from this Stream's scan
             structure if it has one (mirroring ``escape.storage.Scan``'s
             ``{param_name: {"values": [...]}}`` shape) -- a single implicit
-            step otherwise.
+            step otherwise -- or from the ``parameter``/``grid_specs``
+            overrides above, if given.
         """
         from escape import Array
 
@@ -1528,14 +1545,15 @@ class Stream:
 
         name = name or self.name
         unit = unit or self.unit
-        if self.scan._parameters is None:
-            return Array(data=data, index=idx, name=name, unit=unit)
+        if parameter is None and self.scan._parameters is None:
+            return Array(data=data, index=idx, name=name, unit=unit, grid_specs=grid_specs)
 
         step_lengths = self.lens()
-        parameter = {p: {"values": list(self.scan[p])} for p in self.scan.keys()}
+        if parameter is None:
+            parameter = {p: {"values": list(self.scan[p])} for p in self.scan.keys()}
         return Array(
             data=data, index=idx, step_lengths=step_lengths, parameter=parameter,
-            name=name, unit=unit,
+            name=name, unit=unit, grid_specs=grid_specs,
         )
 
     # ------------------------------------------------------------------
