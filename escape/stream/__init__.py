@@ -1,6 +1,5 @@
 from .escape_stream import (
     Stream,
-    EscData,          # backward-compatible alias for Stream
     StreamBinning,
     EventWorker,
     EventSource,
@@ -12,7 +11,6 @@ from .escape_stream import (
     StreamContext,
     TestStream,
     initStreamInstances,
-    initEscDataInstances,  # backward-compatible alias
     pulse_id,
     lab_time,
     digitize,

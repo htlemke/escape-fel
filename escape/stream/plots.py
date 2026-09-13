@@ -18,7 +18,7 @@ Improvements over the original plots.py:
     untouched by this.
   - Each plot connects to matplotlib's 'close_event' so that:
       a) the update timer stops automatically, and
-      b) the EscData object(s) stop accumulating.
+      b) the Stream object(s) stop accumulating.
     This fulfils the "stop acquisition when figure is destroyed" requirement.
   - Plots expose start() / stop() and a StreamContext through .context so the user
     can also drive acquisition lifetime manually or tie several plots to one context.
@@ -414,7 +414,7 @@ class _LivePlotBase:
         self.isUpdating = True
         self._timer.start()
 
-    # Back-compat alias used by EscData.plot_* helpers.
+    # Back-compat alias used by Stream.plot_* helpers.
     updateContinuously = start  # noqa: N815
 
     def stop(self):
@@ -450,7 +450,7 @@ class HistPlot(_LivePlotBase):
 
     Parameters
     ----------
-    data : EscData
+    data : Stream
         The data source being plotted.
     axes : matplotlib.axes.Axes, optional
         Target axes; a new figure is created if omitted.
@@ -531,7 +531,7 @@ class Plot(_LivePlotBase):
 
     Parameters
     ----------
-    data : EscData
+    data : Stream
     axes : matplotlib.axes.Axes, optional
     label : str, optional
     scanVariable : int
@@ -682,7 +682,7 @@ class PlotCorrelation(_LivePlotBase):
 
     Parameters
     ----------
-    data_x, data_y : EscData
+    data_x, data_y : Stream
         The x- and y-channel sources.
     Nlast : int
         Number of most recent matched events to display.
@@ -775,18 +775,18 @@ class PlotCorrelation(_LivePlotBase):
 
 
 # ---------------------------------------------------------------------------
-# ValueHistPlot — value-distribution histogram (for no-scan EscData)
+# ValueHistPlot — value-distribution histogram (for no-scan Stream)
 # ---------------------------------------------------------------------------
 
 class ValueHistPlot(_LivePlotBase):
     """Distribution histogram of collected scalar values.
 
-    Use this (or let ``EscData.plot_hist`` route to it automatically) when
-    the EscData has no scan, i.e. all events land in a single step.
+    Use this (or let ``Stream.plot_hist`` route to it automatically) when
+    the Stream has no scan, i.e. all events land in a single step.
 
     Parameters
     ----------
-    data : EscData
+    data : Stream
     axes : matplotlib.axes.Axes, optional
     label : str, optional
     n_bins : int

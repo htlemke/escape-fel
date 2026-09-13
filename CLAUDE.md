@@ -283,8 +283,9 @@ deriving function parameters from notebook-namespace variables.
   aborting `_do_restart()` before `startEventLoop()` ran — see
   `escape/stream/escape_stream.py`'s `EventWorker.stopEventLoop`, now an
   identity check). The rewrite (formerly prototyped as the now-removed
-  `escape/stream_new/`) exposes `Stream` (`EscData` kept as a back-compat
-  alias) mirroring the `Array` API for live data: `Stream.digitize(bins)`
+  `escape/stream_new/`) exposes `Stream` mirroring the `Array` API for
+  live data (the `EscData` back-compat alias has since been removed --
+  use `Stream` everywhere): `Stream.digitize(bins)`
   returns a `StreamBinning` whose `.categorize(other_stream)` re-groups a
   second stream by that binning; `Stream[mask_stream]` / `.filter(mask_stream)`
   emits only events where the mask stream is truthy at the same pulse ID.

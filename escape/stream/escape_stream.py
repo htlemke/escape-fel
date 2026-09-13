@@ -21,7 +21,6 @@ Improvements over escape_stream.py:
         with ctx:               # accumulate for the duration of the block
             ...
         ctx.tie_to_figure(fig)  # auto-stop when the figure window closes
-  - EscData is kept as a backward-compatible alias for Stream.
 """
 
 import threading
@@ -2549,11 +2548,6 @@ def initStreamInstances(eventWorker=None):  # noqa: N802
     return tools.Dict2obj(out)
 
 
-# backward-compatible alias
-def initEscDataInstances(eventWorker=None):  # noqa: N802
-    return initStreamInstances(eventWorker)
-
-
 def _resolve_eventworker(eventworker, func_name):
     if eventworker is not None:
         return eventworker
@@ -2753,6 +2747,3 @@ for _opSing, _sym in _operatorsSingle:
 # ~stream uses logical NOT (not_ returns True/False) rather than bitwise invert
 # so that i[~pump] works correctly when pump_on is a float 0.0/1.0 channel.
 Stream.__invert__ = _wrapOperatorSingle(operator.not_, "not")
-
-# EscData alias — keeps existing notebooks / code working unchanged
-EscData = Stream

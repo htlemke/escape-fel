@@ -23,7 +23,7 @@ import time
 class NullEvent:
     """Placeholder event emitted when no bsread source is connected.
 
-    All data lookups return None; the event-ID is None so that EscData
+    All data lookups return None; the event-ID is None so that Stream
     de-duplication filters it out before any data is appended.
     """
 
