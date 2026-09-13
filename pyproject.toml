@@ -76,6 +76,9 @@ include = ["escape*"]
 [tool.setuptools.package-data]
 # bundle the EXAFS demo dataset (Cu foil, APS 13ID; from xraylarch examples)
 "escape.exafs" = ["data/*.xmu"]
+# Fit/Peak toolbar button icons (escape.plot_utilities._build_fit_icon/
+# _build_peak_icon) -- edited in Inkscape, loaded at runtime via QIcon().
+"escape" = ["icons/*.svg"]
 
 [tool.setuptools_scm]
 # version is derived automatically from git tags: v0.1.0 -> 0.1.0

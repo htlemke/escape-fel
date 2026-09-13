@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 import matplotlib.pyplot as plt
 from time import sleep
 import ipywidgets as widgets
@@ -1418,14 +1419,42 @@ def _run_fit_button(fig):
     _get_or_create_axes_gui(ax, "_escape_fit_gui", lambda: AxesFitter(ax))
 
 
+_ICONS_DIR = Path(__file__).resolve().parent / "icons"
+
+
+def _icon_from_svg(name):
+    """``QIcon`` loaded from ``escape/icons/<name>.svg`` (edited by hand in
+    Inkscape -- see that directory's ``README``), or ``None`` if the file
+    is missing or fails to load (e.g. the optional ``QtSvg`` binding isn't
+    installed) -- callers should fall back to drawing one procedurally in
+    that case, not raise."""
+    path = _ICONS_DIR / f"{name}.svg"
+    if not path.is_file():
+        return None
+    try:
+        from qtpy import QtGui
+
+        icon = QtGui.QIcon(str(path))
+    except Exception:
+        return None
+    return icon if not icon.isNull() else None
+
+
 def _build_fit_icon(size=24):
-    """A small "scatter + fit line" QIcon for the Fit toolbar button, drawn
-    with QPainter instead of shipping a bitmap asset -- the standard icon
-    for this button everywhere it's attached (originally
+    """A small "scatter + fit line" QIcon for the Fit toolbar button --
+    ``escape/icons/fit.svg`` if present (see :func:`_icon_from_svg`),
+    else drawn procedurally with QPainter as a fallback. The svg is the
+    real, editable (in Inkscape) source of this icon; the procedural
+    drawing only exists so a from-scratch checkout without the asset (or
+    without QtSvg) still gets *an* icon rather than none -- originally
     ``eco.acquisition.counters.CounterValue``'s own icon, moved here so
     every Fit button -- eco's and escape's own -- looks the same instead of
-    each side drawing/choosing its own)."""
+    each side drawing/choosing its own."""
     from qtpy import QtCore, QtGui
+
+    icon = _icon_from_svg("fit")
+    if icon is not None:
+        return icon
 
     pixmap = QtGui.QPixmap(size, size)
     pixmap.fill(QtCore.Qt.transparent)
@@ -1459,13 +1488,18 @@ def _build_fit_icon(size=24):
 
 
 def _build_peak_icon(size=24):
-    """A small "peak trace + FWHM bar" QIcon for the Peak toolbar button,
-    drawn with QPainter instead of shipping a bitmap asset -- same idea as
-    :func:`_build_fit_icon`: a jagged peak-shaped trace (dots joined by
+    """A small "peak trace + FWHM bar" QIcon for the Peak toolbar button --
+    ``escape/icons/peak.svg`` if present, else drawn procedurally as a
+    fallback (same relationship as :func:`_build_fit_icon`/``fit.svg``).
+    The procedural version: a jagged peak-shaped trace (dots joined by
     lines) with a red horizontal bar (tick-capped, like an error bar)
     marking the width at half maximum, the same visual vocabulary as the
     overlay this button draws (:func:`_update_peak_overlay`)."""
     from qtpy import QtCore, QtGui
+
+    icon = _icon_from_svg("peak")
+    if icon is not None:
+        return icon
 
     pixmap = QtGui.QPixmap(size, size)
     pixmap.fill(QtCore.Qt.transparent)
