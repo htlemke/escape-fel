@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 from time import sleep
@@ -16,6 +18,8 @@ import matplotlib.transforms as mtransforms
 import matplotlib.colors as mcolors
 from IPython import get_ipython
 from IPython.display import display
+
+from escape._peak_analysis import _draw_safe, _update_peak_overlay, find_peak
 
 try:
     from sidecar import Sidecar
@@ -1271,12 +1275,25 @@ def _suppress_inline_redisplay(obj):
     obj._ipython_display_ = lambda: None
 
 
-def _detect_plot_backend():
-    """"qt", "ipympl", or ``None`` (no toolbar worth attaching to)."""
-    backend = plt.get_backend().lower()
-    if "qt" in backend:
+def _detect_plot_backend(fig):
+    """"qt", "ipympl", or ``None`` (no toolbar worth attaching to).
+
+    Keyed off ``fig.canvas``'s own class/module rather than
+    ``plt.get_backend()`` -- ipympl registers itself under *two* backend
+    names, ``"ipympl"`` and ``"widget"`` (both resolving to
+    ``ipympl.backend_nbagg``; see its ``matplotlib.backend`` entry points),
+    and ``%matplotlib widget`` -- the commonly documented, most-used way to
+    enable it in Jupyter -- makes ``plt.get_backend()`` report the literal
+    string ``"widget"``, not ``"ipympl"``. A substring check for
+    ``"ipympl"`` against that string therefore misses the common case
+    entirely. The canvas class's module name doesn't have this problem: it
+    reflects the backend that's actually active for this figure regardless
+    of which alias was used to select it.
+    """
+    module = type(fig.canvas).__module__.lower()
+    if "qt" in module:
         return "qt"
-    if "ipympl" in backend:
+    if "ipympl" in module:
         return "ipympl"
     return None
 
@@ -1306,12 +1323,18 @@ def _get_active_axes(fig):
 
 
 def _gui_is_alive(widget):
-    """Whether a previously-created panel (Qt widget or ipywidgets widget)
-    is still usable. Qt: calling any method on a widget whose underlying
-    C++ object was destroyed raises ``RuntimeError``. ipywidgets: ``.comm``
-    becomes ``None`` once the widget is ``.close()``-d."""
+    """Whether a previously-created panel (Qt widget, ipywidgets widget, or
+    an "mpl" backend panel -- ``MplAxesFitter``/``MplFreqAnalyzer``, a plain
+    Python object with neither) is still usable. Qt: calling any method on a
+    widget whose underlying C++ object was destroyed raises ``RuntimeError``.
+    ipywidgets: ``.comm`` becomes ``None`` once the widget is ``.close()``-d.
+    "mpl": embedded directly in its source figure via ``axes_grid1`` rather
+    than a separate window/widget with its own alive/closed state to check
+    -- alive for as long as that figure is, nothing further to check here."""
     if hasattr(widget, "comm"):
         return widget.comm is not None
+    if not hasattr(widget, "isVisible"):
+        return True
     try:
         widget.isVisible()
         return True
@@ -1322,8 +1345,9 @@ def _gui_is_alive(widget):
 def _raise_gui(widget):
     """Bring an existing Qt panel back to the front; a no-op for ipywidgets
     (there's no separate window to raise -- it's already inline/in its
-    Sidecar tab)."""
-    if hasattr(widget, "comm"):
+    Sidecar tab) and for an "mpl" backend panel (already inline in its
+    source figure, same reason)."""
+    if hasattr(widget, "comm") or not hasattr(widget, "show"):
         return
     try:
         widget.show()
@@ -1358,7 +1382,7 @@ def _get_or_create_axes_gui(ax, attr_name, factory):
 
 # attribute names _get_or_create_axes_gui caches interactive panels under --
 # listed here so _close_axes_guis can find and close all of them at once.
-_AXES_GUI_ATTRS = ("_escape_fit_gui", "_escape_peak_gui")
+_AXES_GUI_ATTRS = ("_escape_fit_gui", "_escape_peak_gui", "_escape_freq_gui")
 
 
 def _close_axes_guis(fig):
@@ -1400,6 +1424,39 @@ def _run_before_click(fig):
             print(f"[escape] before_click hook failed: {e}")
 
 
+def _defer_to_event_loop(fn):
+    """Schedule ``fn()`` to run on the kernel's own event loop on its next
+    iteration, instead of calling it immediately, inline, from wherever
+    this is invoked.
+
+    Used to build the Fit/Peak ipywidgets panel *outside* the call stack
+    of the comm message that triggered it (an ipympl toolbar-button
+    click, dispatched via ``escape.plot_utilities._attach_fit_button_ipympl``
+    /``_attach_peak_button_ipympl``) -- constructing a multi-widget
+    ipywidgets panel (several ``Dropdown``/``Button``/``Text`` children
+    plus their container) directly nested inside that message's own
+    handler is a known trigger for JupyterLab's widget manager racing its
+    own model registration: it can try to resolve a just-created child
+    widget's model before that widget's comm-open has been processed,
+    raising a frontend "widget model not found" error on *every* click,
+    not just occasionally. Giving the event loop a tick to finish
+    handling the incoming message first (the standard mitigation for this
+    class of issue) avoids that.
+
+    Falls back to calling ``fn()`` immediately if there's no running event
+    loop to defer to (e.g. a Qt backend's click handler, which isn't
+    asyncio-driven, or running outside a real Jupyter kernel at all) --
+    the race is specific to being nested inside async comm-message
+    handling in the first place, so there's nothing to avoid in that case.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        fn()
+        return
+    loop.call_soon(fn)
+
+
 def _run_fit_button(fig):
     """The Fit toolbar button's click handler, shared by the Qt/ipympl
     attachments below. Importing ``escape.fit_gui`` (and so ``lmfit``) is
@@ -1417,6 +1474,23 @@ def _run_fit_button(fig):
         print(f"[escape] the Fit button needs the optional 'lmfit' dependency: {e}")
         return
     _get_or_create_axes_gui(ax, "_escape_fit_gui", lambda: AxesFitter(ax))
+
+
+def _run_freq_button(fig):
+    """The Freq toolbar button's click handler, same shape as
+    :func:`_run_fit_button`. Unlike ``fit_gui`` (hard ``lmfit`` dependency),
+    ``escape.freq_gui`` itself needs nothing beyond scipy (already a hard
+    dependency of ``escape``) -- only its optional wavelet-scalogram method
+    needs ``PyWavelets``, and that's checked lazily inside the panel when
+    that method is actually run, not at import/attach time."""
+    _run_before_click(fig)
+    ax = _get_active_axes(fig)
+    if ax is None:
+        print("[escape] no axes to analyze in this figure.")
+        return
+    from escape.freq_gui import FreqAnalyzer
+
+    _get_or_create_axes_gui(ax, "_escape_freq_gui", lambda: FreqAnalyzer(ax))
 
 
 _ICONS_DIR = Path(__file__).resolve().parent / "icons"
@@ -1567,7 +1641,7 @@ def _attach_fit_button_ipympl(fig):
         return
 
     def _on_click():
-        _run_fit_button(fig)
+        _defer_to_event_loop(lambda: _run_fit_button(fig))
 
     # a plain function assigned as an *instance* attribute stays unbound (no
     # implicit self) -- exactly the zero-arg callable handle_toolbar_button
@@ -1578,329 +1652,31 @@ def _attach_fit_button_ipympl(fig):
     ]
 
 
-def _skew(a):
-    """Sample skewness (3rd standardized moment) -- avoids a hard
-    ``scipy.stats`` dependency for the one number :func:`find_peak` needs
-    from it."""
-    a = np.asarray(a, dtype=float)
-    s = a.std()
-    if s == 0:
-        return 0.0
-    return float(np.mean((a - a.mean()) ** 3) / s**3)
+def _attach_freq_button_qt(fig):
+    toolbar = getattr(fig.canvas.manager, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "addAction"):
+        return
+
+    def _on_click(checked=False):
+        _run_freq_button(fig)
+
+    toolbar.addSeparator()
+    action = toolbar.addAction("Freq", _on_click)
+    action.setToolTip("Attach an interactive frequency/wavelet analysis panel to the active axes")
 
 
-def find_peak(x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
-    """Locate a peak (or step) in a 1-D scan trace.
+def _attach_freq_button_ipympl(fig):
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "toolitems"):
+        return
 
-    A numpy/Python-3 port of the lab's old ``PeakAnalysis`` tool (originally
-    ``eco.utilities.PeakAnalysis``, Python 2 only and unusable as-is): fits a
-    background through the first/last ``n_bg`` points and subtracts it,
-    classifies the trace as peak-shaped or step-shaped by comparing the
-    skewness of the background-subtracted signal to that of its derivative
-    (a step's derivative is peak-shaped, which is what the comparison
-    distinguishes) unless *mode* forces one, then finds the center and width.
-    Peaks may be positive or negative (a dip) -- the feature is oriented by
-    its signed integral before locating it, so either works the same way.
+    def _on_click():
+        _defer_to_event_loop(lambda: _run_freq_button(fig))
 
-    - Peak case: center/FWHM from linear interpolation of the half-maximum
-      crossings on either side of the maximum -- the standard FWHM
-      definition.
-    - Step case: ``center`` is the 50%-level ("half-rise") crossing between
-      the two asymptotic levels (mean of the first/last ``n_bg`` points) on
-      the actual curve; ``fwhm`` is the width between the half-maximum
-      crossings of the *derivative* (already computed to classify
-      peak-vs-step in the first place) rather than an arbitrary 10-90%
-      level crossing on the raw curve -- a step is the integral of its own
-      derivative, so if that derivative is Gaussian-shaped, those crossings
-      are exactly the FWHM points of that Gaussian, the physically
-      meaningful width of the transition (deliberately not a port of the
-      original ``PeakAnalysis``'s unexplained empirical ``0.1195``
-      constants). ``center`` and the half-width of ``fwhm`` generally don't
-      coincide exactly (they come from different crossings), unlike the
-      peak case where they do by construction.
-
-    Parameters
-    ----------
-    x, y : array-like
-        The scan trace (need not be pre-sorted). Non-finite points are
-        dropped before analysis.
-    n_bg : int
-        Number of points at each end used to estimate the background /
-        asymptotic levels.
-    bg_model : "linear" or "offset"
-        How the background is estimated from the ``n_bg`` edge points
-        (ignored if *fixed_offset* is given). ``"linear"`` (default) fits a
-        line through them (handles a sloped background/baseline drift);
-        ``"offset"`` uses their plain mean instead (a flat background --
-        use this if a sloped fit is overreacting to edge noise on a
-        genuinely flat baseline).
-    fixed_offset : float, optional
-        Skip background estimation entirely and subtract this constant
-        instead -- for a known/fixed baseline (e.g. a detector's dark
-        level) rather than one estimated from this particular trace.
-    mode : "auto", "peak", or "step"
-        ``"auto"`` (default) classifies via the skewness comparison
-        described above. ``"peak"``/``"step"`` forces that branch instead
-        -- use this when the automatic classification picks the wrong one
-        (e.g. a noisy or asymmetric trace).
-
-    Returns
-    -------
-    dict, or ``None`` if the trace has too few finite points
-    (< ``2 * n_bg + 3``) or no variation (flat) to analyze -- callers meant
-    to run on live, possibly-incomplete data should treat ``None`` as
-    "nothing to show yet", not an error. Keys:
-
-    - ``center``, ``fwhm``, ``is_peak``: as above.
-    - ``peak_x``, ``peak_y`` : the peak/dip extremum's coordinates for a
-      peak; for a step, just ``center``'s coordinates again (there's no
-      single extremum point to mark there -- see
-      :func:`_update_peak_overlay`, which doesn't draw a point marker for
-      the step case).
-    - ``crossing_1``, ``crossing_2`` : ``(x, y)`` tuples -- the two points
-      used to determine the width (the half-max crossings, on the curve
-      for a peak or on its derivative for a step -- see above), in the
-      original data's coordinates, for plotting directly on top of the raw
-      trace.
-    - ``background`` : ``(x, y)`` arrays of the fitted/constant background
-      that was subtracted before locating the peak, spanning the data --
-      or ``None`` for a step (see ``levels`` instead).
-    - ``levels`` : ``(level_before, level_after)`` -- the two asymptotic
-      levels (mean of the first/last ``n_bg`` points) a step was measured
-      between -- or ``None`` for a peak.
-    """
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-    finite = np.isfinite(x) & np.isfinite(y)
-    x, y = x[finite], y[finite]
-    if len(x) < 2 * n_bg + 3 or np.ptp(y) == 0:
-        return None
-    order = np.argsort(x)
-    x, y = x[order], y[order]
-
-    xb = np.concatenate([x[:n_bg], x[-n_bg:]])
-    yb = np.concatenate([y[:n_bg], y[-n_bg:]])
-    if fixed_offset is not None:
-        b = np.full_like(x, float(fixed_offset))
-    elif bg_model == "offset":
-        b = np.full_like(x, yb.mean())
-    else:
-        a = np.polyfit(xb, yb, 1)
-        b = np.polyval(a, x)
-    yf = y - b
-    xd = (x[1:] + x[:-1]) / 2
-    yd = np.diff(yf)
-
-    if mode == "peak":
-        is_peak = True
-    elif mode == "step":
-        is_peak = False
-    else:
-        is_peak = abs(_skew(yf)) > abs(_skew(yd))
-    xw, yw = (x, yf) if is_peak else (xd, yd)
-    if not is_peak:
-        xwb = np.concatenate([xw[:n_bg], xw[-n_bg:]])
-        ywb = np.concatenate([yw[:n_bg], yw[-n_bg:]])
-        aw = np.polyfit(xwb, ywb, 1)
-        yw = yw - np.polyval(aw, xw)
-
-    # Orient the feature to point "up" (positive-going), signed area under yw.
-    # `sign` undoes this for anything that needs to go back to the real
-    # (unflipped) signal afterward -- see the peak-case crossing_1/2 below.
-    sign = 1.0
-    if np.sum((xw[1:] - xw[:-1]) * (yw[1:] + yw[:-1]) / 2) < 0:
-        yw = -yw
-        sign = -1.0
-
-    mm = int(np.argmax(yw))
-    half = yw[mm] / 2
-
-    def _crossing(indices):
-        for i in indices:
-            if yw[i] < half:
-                j = i + 1 if i < mm else i - 1
-                if j < 0 or j >= len(xw) or yw[j] == yw[i]:
-                    return xw[i]
-                frac = (half - yw[i]) / (yw[j] - yw[i])
-                return xw[i] + frac * (xw[j] - xw[i])
-        return None
-
-    xhm1 = _crossing(range(mm, -1, -1))
-    xhm2 = _crossing(range(mm, len(xw)))
-    if xhm1 is None or xhm2 is None:
-        return None
-    center, fwhm = (xhm1 + xhm2) / 2, abs(xhm2 - xhm1)
-    peak_x = xw[mm] if is_peak else center
-    peak_y = y[int(np.argmin(np.abs(x - peak_x)))]
-
-    if not is_peak:
-        lev0, lev1 = y[:n_bg].mean(), y[-n_bg:].mean()
-
-        def _level_crossing(level):
-            gg = int(np.argmin(np.abs(y - level)))
-            j = gg + 1 if gg + 1 < len(x) else gg - 1
-            if j < 0 or y[j] == y[gg]:
-                return x[gg]
-            frac = (level - y[gg]) / (y[j] - y[gg])
-            return x[gg] + frac * (x[j] - x[gg])
-
-        # The half-rise point: where the actual curve crosses halfway
-        # between the two baselines -- distinct from xhm1/xhm2 above (the
-        # derivative's own FWHM crossings), though the two nearly coincide
-        # for a clean, symmetric step.
-        center = _level_crossing(lev0 + 0.5 * (lev1 - lev0))
-        # Width: xhm1/xhm2 (already computed above, in the derivative
-        # domain) rather than an arbitrary 10-90% level crossing on the raw
-        # curve -- a step is the integral of its own derivative, so a
-        # derivative shaped like a Gaussian makes those the FWHM points of
-        # that Gaussian, the physically meaningful width of the transition.
-        fwhm = abs(xhm2 - xhm1)
-        crossing_1 = (float(xhm1), float(np.interp(xhm1, x, y)))
-        crossing_2 = (float(xhm2), float(np.interp(xhm2, x, y)))
-        background = None
-        levels = (float(lev0), float(lev1))
-        peak_x, peak_y = float(center), float(np.interp(center, x, y))
-    else:
-        # xhm1/xhm2 live in the background-subtracted domain (half of the
-        # subtracted peak's height, in the possibly sign-flipped working
-        # array) -- add the background back at each crossing's x to place
-        # the marker on the original, visible curve. For a negative peak
-        # (a dip), `half` is positive in the flipped array but the real
-        # crossing sits *below* the background, not above it -- `sign`
-        # (from the orientation flip above) corrects for that; without it
-        # the crossing markers land mirrored above the background instead
-        # of between it and the dip.
-        y_hm = sign * half + np.interp([xhm1, xhm2], x, b)
-        crossing_1, crossing_2 = (float(xhm1), float(y_hm[0])), (float(xhm2), float(y_hm[1]))
-        background = (x.copy(), b.copy())
-        levels = None
-
-    return dict(
-        center=float(center), fwhm=float(fwhm),
-        peak_x=float(peak_x), peak_y=float(peak_y), is_peak=bool(is_peak),
-        crossing_1=crossing_1, crossing_2=crossing_2,
-        background=background, levels=levels,
-    )
-
-
-# Artists a peak overlay draws, so _update_peak_overlay can remove and
-# redraw them together on every live-plot update / button re-click.
-_PEAK_OVERLAY_COLOR = "crimson"
-
-
-def _draw_safe(fig):
-    """Schedule a redraw. Safe to call from a backend timer callback (GUI thread)."""
-    try:
-        fig.canvas.draw_idle()
-    except Exception:
-        pass
-
-
-def _update_peak_overlay(ax, drawn, x, y, n_bg=3, bg_model="linear", fixed_offset=None, mode="auto"):
-    """(Re)draw the peak-analysis overlay on ``ax`` from the current
-    ``x``/``y`` trace, removing whatever ``drawn`` (a previous call's
-    return value) left behind first.
-
-    Draws, from :func:`find_peak`'s result: a center reference line and a
-    text readout, plus, depending on ``is_peak`` -- a visual sanity check
-    of every quantity the analysis used, not just its answer:
-
-    - Peak case: the two FWHM crossing lines (at ``center +/- fwhm/2``, the
-      same points as ``crossing_1``/``crossing_2``), the subtracted
-      background curve, the crossing points themselves marked on the
-      curve, and the peak/dip point labeled with its (x, y) coordinates.
-    - Step case: the two asymptotic baseline levels, and the two
-      width-determining points (the derivative's own FWHM crossings, see
-      :func:`find_peak`) as vertical lines rather than points on the curve
-      -- there's no single "step point" to mark the way there's an
-      unambiguous extremum for a peak.
-
-    ``n_bg``/``bg_model``/``fixed_offset``/``mode`` are the defaults used
-    when nothing else overrides them; if a :class:`PeakAnalyzer` panel is
-    attached to ``ax``, its current settings (``ax._escape_peak_params``,
-    including whether to show the overlay at all) take precedence -- so a
-    live-streaming plot calling this with its own defaults on every redraw
-    still respects the panel once one is attached.
-
-    Returns the new ``drawn`` dict (pass it back in next time), or ``None``
-    if the overlay is switched off or :func:`find_peak` couldn't analyze
-    this trace (too few points, flat) -- callers should treat that the
-    same as "no overlay drawn".
-    """
-    live = getattr(ax, "_escape_peak_params", None)
-    if live is not None:
-        n_bg = live.get("n_bg", n_bg)
-        bg_model = live.get("bg_model", bg_model)
-        fixed_offset = live.get("fixed_offset", fixed_offset)
-        mode = live.get("mode", mode)
-        show = live.get("show", True)
-    else:
-        show = True
-
-    if drawn is not None:
-        for artist in drawn["artists"]:
-            try:
-                artist.remove()
-            except Exception:
-                pass
-    if not show:
-        return None
-
-    result = find_peak(x, y, n_bg=n_bg, bg_model=bg_model, fixed_offset=fixed_offset, mode=mode)
-    if result is None:
-        return None
-    center, fwhm, is_peak = result["center"], result["fwhm"], result["is_peak"]
-    kind = "peak" if is_peak else "step"
-    artists = [
-        ax.axvline(center, color=_PEAK_OVERLAY_COLOR, ls="--", lw=1, alpha=0.8),
-        ax.text(
-            0.02, 0.98, f"{kind}: center={center:.4g}\nFWHM={fwhm:.4g}",
-            transform=ax.transAxes, va="top", ha="left", color=_PEAK_OVERLAY_COLOR, fontsize=9,
-        ),
+    toolbar.escape_freq_button = _on_click
+    toolbar.toolitems = list(toolbar.toolitems) + [
+        ("Freq", "Attach an interactive frequency/wavelet analysis panel to the active axes", "area-chart", "escape_freq_button")
     ]
-    if is_peak:
-        # center +/- fwhm/2 == crossing_1/2's x exactly (by construction --
-        # both come straight from the same half-max crossings), so either
-        # pair of vertical lines marks the same two points.
-        artists.append(ax.axvline(center - fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
-        artists.append(ax.axvline(center + fwhm / 2, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
-        bx, by = result["background"]
-        artists.append(ax.plot(bx, by, "-.", color=_PEAK_OVERLAY_COLOR, lw=1, alpha=0.5)[0])
-        for cx, cy in (result["crossing_1"], result["crossing_2"]):
-            artists.append(ax.plot([cx], [cy], "x", color=_PEAK_OVERLAY_COLOR, ms=8, mew=1.5)[0])
-        artists.append(
-            ax.plot(
-                [result["peak_x"]], [result["peak_y"]], "o",
-                color=_PEAK_OVERLAY_COLOR, mfc="none", mec=_PEAK_OVERLAY_COLOR, ms=9, mew=1.5,
-            )[0]
-        )
-        artists.append(
-            ax.annotate(
-                f"({result['peak_x']:.4g}, {result['peak_y']:.4g})",
-                xy=(result["peak_x"], result["peak_y"]), xytext=(6, 6), textcoords="offset points",
-                color=_PEAK_OVERLAY_COLOR, fontsize=8,
-            )
-        )
-    else:
-        # Step case: no single "step point" marker (there isn't one, the
-        # way there's an unambiguous peak/dip extremum for the peak case)
-        # -- just the two baselines and, as vertical lines rather than
-        # points on the curve, the half-rise center (above) and the two
-        # width points (crossing_1/2, the derivative's own FWHM crossings
-        # -- see find_peak).
-        for lev in result["levels"]:
-            artists.append(ax.axhline(lev, color=_PEAK_OVERLAY_COLOR, ls="-.", lw=1, alpha=0.5))
-        for cx, cy in (result["crossing_1"], result["crossing_2"]):
-            artists.append(ax.axvline(cx, color=_PEAK_OVERLAY_COLOR, ls=":", lw=1, alpha=0.5))
-    # Marked (rather than relying on color alone, which one missing
-    # `color=` kwarg silently breaks -- see the peak-point marker's history)
-    # so every "find the data line" scan elsewhere in escape (this module's
-    # own Peak/Peak-params buttons, and escape.fit_gui's/escape.freq_gui's
-    # shared escape._axes_selection.snapshot_data_lines) can reliably skip
-    # every artist this function draws, in either attachment order.
-    for artist in artists:
-        artist._escape_overlay = True
-    return {"artists": artists, "result": result}
 
 
 class _PeakEngine:
@@ -2167,19 +1943,20 @@ def _get_qt_peak_analyzer_class():
     return _peak_qt_class_cache
 
 
-def _detect_peak_gui_backend():
-    """"qt" or "ipywidgets" for the :class:`PeakAnalyzer` panel itself --
-    not to be confused with :func:`_detect_plot_backend`, which restricts
-    which *plotting* canvas backends get a toolbar button in the first
-    place. Mirrors :func:`escape.fit_gui.detect_backend`'s qt-or-ipywidgets
-    preference (no plain-matplotlib fallback here, since the toolbar button
-    itself is already qt/ipympl-only -- see :func:`attach_peak_button`)."""
-    try:
-        from qtpy import QtWidgets  # noqa: F401
-
+def _detect_peak_gui_backend(fig):
+    """"qt" or "ipywidgets" for the :class:`PeakAnalyzer` panel itself,
+    following whichever backend ``fig`` -- the figure actually being
+    analyzed -- is on (via :func:`_detect_plot_backend`, the same check
+    :func:`attach_peak_button` already used to decide which toolbar to
+    attach the button to in the first place), *not* just whether a Qt
+    binding happens to be importable: it's common to have PyQt/PySide
+    installed alongside an ipympl (``%matplotlib widget``) notebook, and an
+    importable ``qtpy`` says nothing about whether this particular figure
+    is a Qt one. Mirrors :func:`escape.fit_gui.detect_backend`'s
+    qt-or-ipywidgets preference (no plain-matplotlib fallback here, since
+    the toolbar button itself is already qt/ipympl-only)."""
+    if _detect_plot_backend(fig) == "qt":
         return "qt"
-    except Exception:
-        pass
     ip = get_ipython()
     if ip is not None and ip.__class__.__name__ == "ZMQInteractiveShell":
         return "ipywidgets"
@@ -2222,7 +1999,7 @@ def PeakAnalyzer(
     exposing ``.engine`` (a :class:`_PeakEngine`) and ``.close()``.
     """
     ax = ax or plt.gca()
-    chosen = backend if backend != "auto" else _detect_peak_gui_backend()
+    chosen = backend if backend != "auto" else _detect_peak_gui_backend(ax.figure)
     if chosen == "qt":
         cls = _get_qt_peak_analyzer_class()
     elif chosen == "ipywidgets":
@@ -2236,22 +2013,49 @@ def PeakAnalyzer(
 
 
 def _run_peak_button(fig):
-    """The Peak toolbar button's click handler -- attaches (or re-raises, if
-    already attached) an interactive :class:`PeakAnalyzer` control panel
-    (background-point count, background model, an optional fixed offset, a
-    peak/step/auto mode switch, and a plot/no-plot toggle) on the active
-    axes. One button doing this rather than a separate plain on/off toggle
-    plus a separate "Peak params" button to tune it -- the panel's own
-    "plot" checkbox already covers the toggle, so the split just duplicated
-    that."""
+    """The Peak toolbar button's click handler -- two clicks, two things:
+
+    1. First click on an axes with no overlay showing yet: just draw the
+       :func:`find_peak` overlay (center/FWHM/baseline lines) on the active
+       axes with default settings, via ``find_peak(..., plot=ax)`` -- no
+       panel, nothing to tune, just the analysis on top of the data
+       already visible.
+    2. Second click (overlay already showing, no panel open yet): *now*
+       attach the full interactive :class:`PeakAnalyzer` control panel
+       (background-point count, background model, an optional fixed
+       offset, a peak/step/auto mode switch, and its own plot/no-plot
+       toggle) so the quick look from step 1 can be tuned.
+
+    A further click while the panel is already open just re-raises it (via
+    :func:`_get_or_create_axes_gui`), same as before -- this doesn't revert
+    to the plain-overlay state. Judged by state (is an overlay/panel
+    already there for this axes), not a click counter, so it also does the
+    right thing on an axes whose overlay is already showing because a live
+    plot draws it automatically (e.g. ``escape.stream.plots.Plot``'s
+    ``peak_overlay=True``) -- the very first button click there opens the
+    panel directly, skipping the redundant "just show the overlay" step
+    since it's already visible.
+    """
     _run_before_click(fig)
     ax = _get_active_axes(fig)
     if ax is None:
         print("[escape] no axes to analyze in this figure.")
         return
-    if not [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]:
+    data_lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+    if not data_lines:
         print("[escape] no data line found in the active axes to analyze.")
         return
+
+    existing_gui = getattr(ax, "_escape_peak_gui", None)
+    if existing_gui is not None and _gui_is_alive(existing_gui):
+        _get_or_create_axes_gui(ax, "_escape_peak_gui", lambda: PeakAnalyzer(ax))
+        return
+
+    if getattr(ax, "_escape_peak_overlay", None) is None:
+        line = data_lines[-1]
+        find_peak(line.get_xdata(), line.get_ydata(), plot=ax)
+        return
+
     _get_or_create_axes_gui(ax, "_escape_peak_gui", lambda: PeakAnalyzer(ax))
 
 
@@ -2271,7 +2075,7 @@ def _attach_peak_button_qt(fig):
 
     toolbar.addSeparator()
     action = toolbar.addAction(icon, "", _on_click) if icon is not None else toolbar.addAction("Peak", _on_click)
-    action.setToolTip("Open the peak/step-analysis panel (center/FWHM overlay) for the active axes")
+    action.setToolTip("Peak/step analysis for the active axes -- first click shows the overlay, second opens the tuning panel")
 
 
 def _attach_peak_button_ipympl(fig):
@@ -2280,7 +2084,7 @@ def _attach_peak_button_ipympl(fig):
         return
 
     def _on_click():
-        _run_peak_button(fig)
+        _defer_to_event_loop(lambda: _run_peak_button(fig))
 
     toolbar.escape_peak_button = _on_click
     toolbar.toolitems = list(toolbar.toolitems) + [
@@ -2298,14 +2102,16 @@ def _set_before_click(fig, before_click):
 
 
 def attach_peak_button(fig, *, before_click=None):
-    """Attach a "Peak" button to ``fig``'s toolbar, opening an interactive
-    :class:`PeakAnalyzer` control panel (background-point count,
-    background model, an optional fixed offset, a peak/step/auto mode
-    switch, and a plot/no-plot toggle -- which also draws/redraws
-    :func:`find_peak`'s overlay: center + FWHM reference lines, the
+    """Attach a "Peak" button to ``fig``'s toolbar -- two clicks, two
+    things (see :func:`_run_peak_button`): the first just draws
+    :func:`find_peak`'s overlay (center + FWHM reference lines, the
     width-determining crossing points, the subtracted background or step
     levels, and a labeled peak/step point) on whichever of its axes was
-    last clicked (the first axes, if none has been clicked yet) -- Qt and
+    last clicked (the first axes, if none has been clicked yet), with
+    default settings and no panel; the second attaches the full
+    interactive :class:`PeakAnalyzer` control panel (background-point
+    count, background model, an optional fixed offset, a peak/step/auto
+    mode switch, and its own plot/no-plot toggle) to tune it. Qt and
     ipympl backends only.
 
     One button for this rather than a separate plain on/off toggle plus a
@@ -2317,13 +2123,16 @@ def attach_peak_button(fig, *, before_click=None):
     :func:`attach_fit_button`'s docstring for why.
 
     Same no-op-on-unsupported-backend / swallow-and-print-on-failure /
-    idempotent contract as :func:`attach_fit_button` -- see its docstring.
+    idempotent / ``ESCAPE_TOOLBAR_BUTTONS`` contract as
+    :func:`attach_fit_button` -- see its docstring.
     """
+    if not ESCAPE_TOOLBAR_BUTTONS:
+        return
     _set_before_click(fig, before_click)
     if getattr(fig, "_escape_peak_attached", False):
         return
     try:
-        backend = _detect_plot_backend()
+        backend = _detect_plot_backend(fig)
         if backend is None:
             return
         _track_active_axes(fig)
@@ -2336,16 +2145,31 @@ def attach_peak_button(fig, *, before_click=None):
         print(f"[escape] couldn't attach the Peak button: {e}")
 
 
-def attach_escape_buttons(fig, *, fit=True, peak=True, before_click=None):
+# Global escape hatch: set to False (directly, or by setting
+# ESCAPE_DISABLE_TOOLBAR_BUTTONS=1 in the environment before importing
+# escape) to make attach_fit_button/attach_peak_button/attach_escape_buttons
+# -- and so nfigure()/nsubplots()/nsubplot_mosaic()'s fit_button/peak_button
+# defaults, and escape.stream.plots' live figures -- a no-op everywhere,
+# in case attaching them (the ipympl toolbar button + deferred-panel-build
+# machinery, see attach_fit_button) turns out to cost more in some notebook
+# environment than it's worth. Doesn't touch a figure that already has
+# buttons attached; check/set it before creating figures, not after.
+ESCAPE_TOOLBAR_BUTTONS = os.environ.get("ESCAPE_DISABLE_TOOLBAR_BUTTONS", "").strip().lower() not in ("1", "true", "yes")
+
+
+def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, before_click=None):
     """Attach escape's interactive toolbar buttons -- Fit
-    (:func:`attach_fit_button`) and Peak (:func:`attach_peak_button`) -- to
-    ``fig`` in one call, so every place that creates an interactive escape
-    figure (static, via :func:`nfigure`, or a live-updating
-    :mod:`escape.stream.plots` figure) wires them up the same way instead
-    of each repeating the same calls -- or, for the live-plot figures, not
-    wiring them up at all. Same no-op-on-unsupported-backend contract as
-    the individual ``attach_*`` functions; pass ``fit``/``peak`` as
-    ``False`` to skip one.
+    (:func:`attach_fit_button`), Peak (:func:`attach_peak_button`), and
+    optionally Freq (:func:`attach_freq_button`) -- to ``fig`` in one call,
+    so every place that creates an interactive escape figure (static, via
+    :func:`nfigure`, or a live-updating :mod:`escape.stream.plots` figure)
+    wires them up the same way instead of each repeating the same calls --
+    or, for the live-plot figures, not wiring them up at all. Same
+    no-op-on-unsupported-backend contract as the individual ``attach_*``
+    functions; pass ``fit``/``peak`` as ``False`` to skip one. ``freq``
+    defaults to ``False`` (purely opt-in, unlike ``fit``/``peak``) --
+    frequency/wavelet analysis is a more specialized tool than most figures
+    need a button for.
 
     ``before_click``, if given, is forwarded to every attached button --
     see :func:`attach_fit_button`'s docstring for what it's for (e.g.
@@ -2357,6 +2181,8 @@ def attach_escape_buttons(fig, *, fit=True, peak=True, before_click=None):
         attach_fit_button(fig, before_click=before_click)
     if peak:
         attach_peak_button(fig, before_click=before_click)
+    if freq:
+        attach_freq_button(fig, before_click=before_click)
 
 
 def attach_fit_button(fig, *, before_click=None):
@@ -2381,12 +2207,17 @@ def attach_fit_button(fig, *, before_click=None):
     printed note rather than raised -- this is a convenience layered onto
     figure creation and should never be the reason a plot call fails.
     Idempotent: attaching twice to the same figure is a no-op the second time.
+    Also a no-op if the module-level :data:`ESCAPE_TOOLBAR_BUTTONS` switch
+    (or the ``ESCAPE_DISABLE_TOOLBAR_BUTTONS`` environment variable it reads
+    at import time) has been set to disable these buttons globally.
     """
+    if not ESCAPE_TOOLBAR_BUTTONS:
+        return
     _set_before_click(fig, before_click)
     if getattr(fig, "_escape_fit_attached", False):
         return
     try:
-        backend = _detect_plot_backend()
+        backend = _detect_plot_backend(fig)
         if backend is None:
             return
         _track_active_axes(fig)
@@ -2399,7 +2230,43 @@ def attach_fit_button(fig, *, before_click=None):
         print(f"[escape] couldn't attach the Fit button: {e}")
 
 
-def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak_button=False, close_previous=True, **kwargs):
+def attach_freq_button(fig, *, before_click=None):
+    """Attach a "Freq" button to ``fig``'s toolbar, opening an interactive
+    frequency/wavelet analysis panel (:func:`escape.freq_gui.FreqAnalyzer`
+    -- power spectrum, spectrogram, or wavelet scalogram) on whichever of
+    its axes was last clicked (the first axes, if none has been clicked
+    yet) -- Qt and ipympl backends only. Purely optional: unlike Fit/Peak,
+    not attached by ``nfigure``/``nsubplots``/``nsubplot_mosaic`` by
+    default -- pass ``freq_button=True`` there, or call this directly.
+
+    ``before_click`` and the no-op-on-unsupported-backend /
+    swallow-and-print-on-failure / idempotent / ``ESCAPE_TOOLBAR_BUTTONS``
+    contract are all the same as :func:`attach_fit_button` -- see its
+    docstring.
+    """
+    if not ESCAPE_TOOLBAR_BUTTONS:
+        return
+    _set_before_click(fig, before_click)
+    if getattr(fig, "_escape_freq_attached", False):
+        return
+    try:
+        backend = _detect_plot_backend(fig)
+        if backend is None:
+            return
+        _track_active_axes(fig)
+        if backend == "qt":
+            _attach_freq_button_qt(fig)
+        else:
+            _attach_freq_button_ipympl(fig)
+        fig._escape_freq_attached = True
+    except Exception as e:
+        print(f"[escape] couldn't attach the Freq button: {e}")
+
+
+def nfigure(
+    num=_AUTO_NAME, *, detached=False, title=None,
+    fit_button=True, peak_button=False, freq_button=False, close_previous=True, **kwargs
+):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
     instead of being reused/added to (matplotlib's default when ``num``
@@ -2430,14 +2297,27 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
         Attach a "Fit" toolbar button (see :func:`attach_fit_button`) --
         Qt/ipympl backends only, a harmless no-op elsewhere. Defaults to
         ``True``: attaching it costs nothing (no ``lmfit`` import) unless
-        actually clicked.
+        actually clicked. Set the module-level ``ESCAPE_TOOLBAR_BUTTONS``
+        switch (or the ``ESCAPE_DISABLE_TOOLBAR_BUTTONS`` environment
+        variable) to disable Fit/Peak buttons everywhere, in one place,
+        instead of passing ``fit_button=False`` to every call, if attaching
+        them ever turns out to cost more than expected in some environment.
     peak_button : bool
-        Attach a "Peak" toolbar button (see :func:`attach_peak_button`,
-        opening the peak/step-analysis panel -- center/FWHM overlay plus
-        its tuning controls -- on the active axes). Same backend
-        restriction as ``fit_button``. Defaults to ``False`` (opt-in) here
-        -- for a live counter plot where this is wanted by default, see
-        ``escape.stream.plots.Plot``'s ``peak_overlay``.
+        Attach a "Peak" toolbar button (see :func:`attach_peak_button`) --
+        first click draws the :func:`find_peak` overlay (center/FWHM/
+        baseline lines) on the active axes with default settings; second
+        click opens the full tuning panel. Same backend restriction (and
+        ``ESCAPE_TOOLBAR_BUTTONS`` switch) as ``fit_button``. Defaults to
+        ``False`` (opt-in) here -- for a live counter plot where the
+        overlay is wanted by default, see ``escape.stream.plots.Plot``'s
+        ``peak_overlay``.
+    freq_button : bool
+        Attach a "Freq" toolbar button (see :func:`attach_freq_button`,
+        opening a frequency/wavelet analysis panel -- power spectrum,
+        spectrogram, or wavelet scalogram -- on the active axes). Same
+        backend restriction and ``ESCAPE_TOOLBAR_BUTTONS`` switch as
+        ``fit_button``. Defaults to ``False`` (purely opt-in) -- a more
+        specialized tool than most figures need a button for.
     close_previous : bool
         If ``True`` (the default, and currently the only behavior this
         function has ever had), a pre-existing figure of the same ``num``
@@ -2465,6 +2345,8 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
+    if freq_button:
+        attach_freq_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2472,7 +2354,8 @@ def nfigure(num=_AUTO_NAME, *, detached=False, title=None, fit_button=True, peak
 
 
 def nsubplots(
-    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None, fit_button=True, peak_button=False, close_previous=True, **kwargs
+    nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None,
+    fit_button=True, peak_button=False, freq_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
@@ -2495,6 +2378,9 @@ def nsubplots(
         figure. Defaults to ``True`` (see :func:`nfigure`).
     peak_button : bool
         Attach a "Peak" toolbar button (see :func:`attach_peak_button`) to
+        the figure. Defaults to ``False`` (see :func:`nfigure`).
+    freq_button : bool
+        Attach a "Freq" toolbar button (see :func:`attach_freq_button`) to
         the figure. Defaults to ``False`` (see :func:`nfigure`).
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
@@ -2528,13 +2414,18 @@ def nsubplots(
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
+    if freq_button:
+        attach_freq_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
     return fig, ax
 
 
-def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_button=True, peak_button=False, close_previous=True, **kwargs):
+def nsubplot_mosaic(
+    *args, num=_AUTO_NAME, detached=False, title=None,
+    fit_button=True, peak_button=False, freq_button=False, close_previous=True, **kwargs
+):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
     when omitted).
@@ -2556,6 +2447,9 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
         figure. Defaults to ``True`` (see :func:`nfigure`).
     peak_button : bool
         Attach a "Peak" toolbar button (see :func:`attach_peak_button`) to
+        the figure. Defaults to ``False`` (see :func:`nfigure`).
+    freq_button : bool
+        Attach a "Freq" toolbar button (see :func:`attach_freq_button`) to
         the figure. Defaults to ``False`` (see :func:`nfigure`).
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
@@ -2588,6 +2482,8 @@ def nsubplot_mosaic(*args, num=_AUTO_NAME, detached=False, title=None, fit_butto
         attach_fit_button(fig)
     if peak_button:
         attach_peak_button(fig)
+    if freq_button:
+        attach_freq_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))

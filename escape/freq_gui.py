@@ -488,8 +488,14 @@ def _make_ipywidgets_freq_analyzer_class():
             )
             self._method_dd.observe(self._on_method, names="value")
 
-            self._nperseg_box = widgets.IntText(value=0, description="nperseg", layout=widgets.Layout(width="150px"))
-            self._noverlap_box = widgets.IntText(value=0, description="noverlap", layout=widgets.Layout(width="150px"))
+            self._nperseg_box = widgets.IntText(
+                value=0, description="nperseg (0=auto)", style={"description_width": "initial"},
+                layout=widgets.Layout(width="180px"),
+            )
+            self._noverlap_box = widgets.IntText(
+                value=0, description="noverlap (0=auto)", style={"description_width": "initial"},
+                layout=widgets.Layout(width="180px"),
+            )
             self._nscales_box = widgets.IntText(value=64, description="n_scales", layout=widgets.Layout(width="150px"))
             self._wavelet_dd = widgets.Dropdown(
                 options=CONTINUOUS_WAVELETS, value="morl", description="wavelet", layout=widgets.Layout(width="220px")

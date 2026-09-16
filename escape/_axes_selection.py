@@ -84,6 +84,14 @@ class AxesRangeSelector:
         line = self.target_line()
         x = np.asarray(line.get_xdata(), dtype=float)
         y = np.asarray(line.get_ydata(), dtype=float)
+        # Sort by x (same convention as escape.plot_utilities.find_peak) --
+        # harmless for fitting (escape.fit_gui doesn't care about order),
+        # but escape.freq_gui's spectral methods assume x is monotonic to
+        # get a meaningful sample spacing from np.diff(x); a data line
+        # plotted in acquisition rather than x order (e.g. an unsorted
+        # scan) would otherwise raise there instead of "just working".
+        order = np.argsort(x)
+        x, y = x[order], y[order]
         if self.range is not None:
             xmin, xmax = self.range
             mask = (x >= xmin) & (x <= xmax)

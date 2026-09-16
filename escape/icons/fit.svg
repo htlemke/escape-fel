@@ -3,43 +3,44 @@
  viewBox="0 0 256 256"
  xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"  version="1.2" baseProfile="tiny">
 <title>Fit icon</title>
-<desc>Generated with Qt</desc>
+<desc>Point cloud with a 30-degree fit line through it</desc>
 <defs>
 </defs>
 <g fill="none" stroke="black" stroke-width="1" fill-rule="evenodd" stroke-linecap="square" stroke-linejoin="bevel" >
 
 <g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="25.6" stroke-linecap="round" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
-font-family="Noto Sans" font-size="12" font-weight="400" font-style="normal" 
+font-family="Noto Sans" font-size="12" font-weight="400" font-style="normal"
 >
-<polyline fill="none" vector-effect="none" points="20.48,217.6 235.52,38.4 " />
+<polyline fill="none" vector-effect="none" points="14.00,193.82 242.00,62.18 " />
 </g>
 
 <g fill="#000000" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)"
-font-family="Noto Sans" font-size="12" font-weight="400" font-style="normal" 
+font-family="Noto Sans" font-size="12" font-weight="400" font-style="normal"
 >
-<circle cx="25.6" cy="140.8" r="15.36"/>
-<circle cx="35.84" cy="184.32" r="15.36"/>
-<circle cx="46.08" cy="102.4" r="15.36"/>
-<circle cx="56.32" cy="158.72" r="15.36"/>
-<circle cx="66.56" cy="76.8" r="15.36"/>
-<circle cx="76.8" cy="128" r="15.36"/>
-<circle cx="87.04" cy="174.08" r="15.36"/>
-<circle cx="97.28" cy="89.6" r="15.36"/>
-<circle cx="107.52" cy="140.8" r="15.36"/>
-<circle cx="117.76" cy="64" r="15.36"/>
-<circle cx="138.24" cy="158.72" r="15.36"/>
-<circle cx="148.48" cy="76.8" r="15.36"/>
-<circle cx="158.72" cy="128" r="15.36"/>
-<circle cx="168.96" cy="51.2" r="15.36"/>
-<circle cx="179.2" cy="102.4" r="15.36"/>
-<circle cx="189.44" cy="148.48" r="15.36"/>
-<circle cx="199.68" cy="71.68" r="15.36"/>
-<circle cx="209.92" cy="115.2" r="15.36"/>
-<circle cx="220.16" cy="38.4" r="15.36"/>
-<circle cx="230.4" cy="89.6" r="15.36"/>
-<circle cx="51.2" cy="51.2" r="15.36"/>
-<circle cx="153.6" cy="166.4" r="15.36"/>
-<circle cx="89.6" cy="38.4" r="15.36"/>
+<circle cx="86.31" cy="78.87" r="9.0"/>
+<circle cx="108.30" cy="110.51" r="9.0"/>
+<circle cx="157.02" cy="115.35" r="9.0"/>
+<circle cx="80.33" cy="140.68" r="9.0"/>
+<circle cx="50.58" cy="192.20" r="9.0"/>
+<circle cx="74.46" cy="201.19" r="9.0"/>
+<circle cx="63.21" cy="165.84" r="9.0"/>
+<circle cx="124.14" cy="138.78" r="9.0"/>
+<circle cx="142.25" cy="84.73" r="9.0"/>
+<circle cx="160.32" cy="54.98" r="9.0"/>
+<circle cx="121.21" cy="171.21" r="9.0"/>
+<circle cx="224.36" cy="73.02" r="9.0"/>
+<circle cx="20.55" cy="148.71" r="9.0"/>
+<circle cx="60.78" cy="123.10" r="9.0"/>
+<circle cx="215.72" cy="154.94" r="9.0"/>
+<circle cx="198.73" cy="106.63" r="9.0"/>
+<circle cx="84.67" cy="164.46" r="9.0"/>
+<circle cx="196.67" cy="60.50" r="9.0"/>
+<circle cx="175.90" cy="142.27" r="9.0"/>
+<circle cx="179.21" cy="84.61" r="9.0"/>
+<circle cx="64.78" cy="80.66" r="9.0"/>
+<circle cx="52.58" cy="147.64" r="9.0"/>
+<circle cx="152.87" cy="142.33" r="9.0"/>
+<circle cx="103.94" cy="149.89" r="9.0"/>
 </g>
 </g>
 </svg>

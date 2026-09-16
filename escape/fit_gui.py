@@ -366,6 +366,25 @@ class _FitEngine:
         print(result.fit_report())
         return result
 
+    def clear(self):
+        """Remove every overlay artist this engine has drawn -- the
+        preview curve and the fit result (plus its per-component curves,
+        if any) -- leaving the axes as if nothing had been previewed/fit
+        yet. Doesn't discard ``self.result``/``self.params``/``self.model``
+        themselves (the Report/Code tabs and a follow-up fit still work),
+        just the drawing -- the Fit panel's "Clear overlay" button,
+        mirroring :class:`_PeakEngine`'s ``clear``."""
+        for artist in self._preview_artists:
+            artist.remove()
+        self._preview_artists = []
+        for artist in self._fit_artists:
+            artist.remove()
+        self._fit_artists = []
+        legend = self.ax.get_legend()
+        if legend is not None:
+            legend.remove()
+        self.fig.canvas.draw_idle()
+
     def _draw_result(self, x, result):
         for artist in self._preview_artists:
             artist.remove()
@@ -670,6 +689,8 @@ def _make_ipywidgets_fitter_class():
             self._preview_btn.on_click(lambda b: self._on_preview())
             self._run_btn = widgets.Button(description="Run fit", button_style="success")
             self._run_btn.on_click(lambda b: self.run_fit())
+            self._clear_overlay_btn = widgets.Button(description="Clear overlay")
+            self._clear_overlay_btn.on_click(lambda b: self.engine.clear())
 
             self._param_box = widgets.VBox(layout=widgets.Layout(max_height="320px", overflow="auto"))
             self._report_html = widgets.HTML(_pre_scroll_html("(no fit run yet)"))
@@ -695,7 +716,7 @@ def _make_ipywidgets_fitter_class():
                     widgets.HBox([self._component_dd, self._add_btn, self._clear_btn]),
                     self._expr_text,
                     widgets.HBox([self._xmin_box, self._xmax_box, self._range_toggle]),
-                    widgets.HBox([self._guess_btn, self._preview_btn, self._run_btn]),
+                    widgets.HBox([self._guess_btn, self._preview_btn, self._run_btn, self._clear_overlay_btn]),
                     tabs,
                 ],
                 layout=widgets.Layout(border="solid 1px #ccc", padding="6px", width=width),
@@ -927,9 +948,12 @@ def _make_qt_axes_fitter_class():
             preview_btn.clicked.connect(self._on_preview)
             run_btn = QtWidgets.QPushButton("Run fit")
             run_btn.clicked.connect(self.run_fit)
+            clear_overlay_btn = QtWidgets.QPushButton("Clear overlay")
+            clear_overlay_btn.clicked.connect(self.engine.clear)
             run_row.addWidget(guess_btn)
             run_row.addWidget(preview_btn)
             run_row.addWidget(run_btn)
+            run_row.addWidget(clear_overlay_btn)
             layout.addLayout(run_row)
 
             tabs = QtWidgets.QTabWidget()
