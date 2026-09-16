@@ -414,9 +414,7 @@ def parseScanEcoV01(
         if parse_res_file is not None and dstores_flat:
             try:
                 print(f'Writing parse result ({len(fls["toparse"])} new file(s)) → {parse_res_file}')
-                with open(parse_res_file, "w") as fp:
-                    json.dump(dstores_flat, fp)
-                _try_set_world_writable(parse_res_file)
+                _atomic_write_json(parse_res_file, dstores_flat)
             except Exception as exc:
                 logger.warning("Cannot write parse result cache: %s", exc)
 
@@ -589,15 +587,41 @@ class LazyContainer:
 def _try_set_world_writable(path):
     """Set world-readable/writable permissions; silently ignore failures.
 
-    Directories get 0o777 (execute needed for traversal), files get 0o666.
-    Errors from network filesystems, quota limits, or missing ownership are
-    swallowed so callers never crash over a permission issue.
+    Directories get 0o777 plus setgid (0o2000, "g+s") — instead of clobbering
+    the mode outright — so files later created inside inherit the directory's
+    (project) group rather than falling back to a caller's own default group,
+    which on shared GPFS filesets can be charged against an unrelated group
+    quota. Files get 0o666. Errors from network filesystems, quota limits, or
+    missing ownership are swallowed so callers never crash over a permission
+    issue.
     """
     try:
-        mode = 0o777 if Path(path).is_dir() else 0o666
-        os.chmod(path, mode)
+        if Path(path).is_dir():
+            os.chmod(path, 0o777 | 0o2000)
+        else:
+            os.chmod(path, 0o666)
     except (PermissionError, OSError):
         pass
+
+
+def _atomic_write_json(path, data):
+    """Write JSON to `path` atomically via a temp file + os.replace().
+
+    A plain open("w")+json.dump() truncates `path` immediately, so a crash or
+    quota error mid-write leaves a permanently corrupt, permission-locked
+    0-byte file that later readers/writers (possibly different users on a
+    shared cache) can never recover from. Writing to a per-process temp file
+    first and swapping it in with os.replace() (atomic on POSIX) means
+    `path` is either left fully intact or fully replaced.
+    """
+    tmp_path = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    try:
+        with tmp_path.open("w") as fh:
+            json.dump(data, fh)
+        _try_set_world_writable(tmp_path)
+        os.replace(tmp_path, path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 # =============================================================================
@@ -1075,9 +1099,7 @@ def parseScanEcoV02(
     if cache_path is not None and scan_results:
         try:
             print(f"Writing parse result ({len(files_to_scan)} new file(s)) → {cache_path}")
-            with cache_path.open("w") as fh:
-                json.dump(dstores_flat, fh)
-            _try_set_world_writable(cache_path)
+            _atomic_write_json(cache_path, dstores_flat)
         except Exception as exc:
             logger.warning("Cannot write parse result cache: %s", exc)
 
@@ -1595,18 +1617,16 @@ def parseScanEcoV03(
     if cache_path is not None and (scan_results or cached_dead_ends_by_kind):
         try:
             print(f"Writing parse result ({len(files_to_scan)} new file(s)) → {cache_path}")
-            with cache_path.open("w") as fh:
-                json.dump(
-                    {
-                        "dstores_flat": dstores_flat,
-                        "dead_ends_by_kind": {
-                            kind: sorted(paths)
-                            for kind, paths in cached_dead_ends_by_kind.items()
-                        },
+            _atomic_write_json(
+                cache_path,
+                {
+                    "dstores_flat": dstores_flat,
+                    "dead_ends_by_kind": {
+                        kind: sorted(paths)
+                        for kind, paths in cached_dead_ends_by_kind.items()
                     },
-                    fh,
-                )
-            _try_set_world_writable(cache_path)
+                },
+            )
         except Exception as exc:
             logger.warning("Cannot write parse result cache: %s", exc)
 
