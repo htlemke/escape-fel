@@ -46,14 +46,40 @@ def _dedupe_array_for_alias(data, name):
         f"that duplication is intended.",
         stacklevel=3,
     )
-    new_array = copy.copy(data)
-    del new_array.h5
-    if hasattr(new_array, "_scan"):
-        new_array._scan = None
-    if hasattr(new_array, "_touched"):
-        new_array._touched = False
-    if hasattr(new_array, "_tools"):
-        new_array._tools = None
+    # Rebuild via the constructor rather than copy.copy(): Array/ArrayTimestamps
+    # carry a lazily-built Scan/ScanTimestamps that back-references its owning
+    # array, and a shallow copy here ended up sharing the *same* __dict__ as
+    # the original (observed empirically -- deleting/rebinding .h5 on the
+    # "copy" also mutated the original in place), so construct a fresh
+    # instance explicitly instead of trusting copy.copy's semantics for this
+    # class.
+    cls = type(data)
+    if hasattr(data, "timestamps"):  # ArrayTimestamps
+        new_array = cls(
+            data=data.data,
+            timestamps=data.timestamps,
+            timestamp_intervals=getattr(data.scan, "timestamp_intervals", None),
+            parameter=getattr(data.scan, "parameter", None),
+            name=name,
+        )
+    else:
+        if data._scan is not None:
+            step_lengths = data._scan.step_lengths
+            parameter = data._scan.parameter
+        else:
+            step_lengths = data._scan_step_lengths
+            parameter = data._scan_parameter
+        new_array = cls(
+            data=data._data,
+            index=data._index,
+            step_lengths=step_lengths,
+            parameter=parameter,
+            name=name,
+            unit=data.unit,
+            source=data.source,
+            grid_specs=getattr(data, "_grid_specs", None),
+        )
+    assert new_array.__dict__ is not data.__dict__
     return new_array
 
 
