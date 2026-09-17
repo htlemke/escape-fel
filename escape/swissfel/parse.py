@@ -407,13 +407,30 @@ def load_dataset_from_scan(
         Permission string applied recursively to the result file after
         creation, e.g. ``"g+rw"`` (default).  ``None`` skips the chmod step.
     parse_version : {1, 2, 3}, optional
-        Parser version to use.  ``1`` selects the original SwissFEL eco-scan
-        parser; ``2`` selects the v2 rewrite (thread-based metadata scan);
-        ``3`` (default) additionally prunes the per-file HDF5 discovery walk
-        using dead-end knowledge shared between the scanning workers, which
-        speeds up parsing scans with many files of the same instrument
-        configuration.  Pass ``1`` or ``2`` to fall back to the older
-        parsers if ``3`` ever misbehaves for a given beamline's file layout.
+        Parser version to use (default ``3``):
+
+        - ``1`` -- ``parseScanEcoV01``, the original eco-scan parser.
+          Metadata scan via ``dask.compute(scheduler="processes")``;
+          per-channel slices pre-computed and cached; keeps an HDF5 file
+          handle per read; ``lazyEscArrays`` defaults to ``False`` (eager).
+        - ``2`` -- ``parseScanEcoV02``, a clean rewrite. Each dataset wrapped
+          in a picklable ``_H5ProxyV02`` fed straight to ``da.from_array``
+          (file opened/closed per chunk read, no handle held open);
+          metadata scan via ``ThreadPoolExecutor`` (h5py releases the GIL,
+          so threads match process-pool speed without pickling overhead);
+          simpler JSON cache (raw shape/dtype/chunk0, no slice lists,
+          ``.parse_result_v02.json`` so caches never collide with v1).
+        - ``3`` (default) -- ``parseScanEcoV03``, a drop-in v2 replacement
+          that additionally prunes the per-file HDF5 discovery walk using
+          "dead-end" knowledge shared between scanning workers (threads by
+          default; ``use_processes=True`` switches to a process pool backed
+          by a ``multiprocessing.Manager``) -- speeds up scans with many
+          files of the same instrument configuration. ``lazyEscArrays``
+          defaults to ``True`` here (dask-backed, built lazily), unlike
+          v1/v2's ``False``.
+
+        Pass ``1`` or ``2`` to fall back to an older parser if ``3`` ever
+        misbehaves for a given beamline's file layout.
     wait_for_data_files : bool, optional
         If ``True``, block (per metadata file, polling every
         ``wait_poll_interval`` seconds) until every raw data file referenced

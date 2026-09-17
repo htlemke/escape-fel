@@ -49,8 +49,8 @@ class ArrayTimestamps:
         grid_specs=None,
         name="none",
     ):
-        self.data = np.asarray(data)
-        self.timestamps = np.asarray(timestamps)
+        self._data = data
+        self._timestamps = timestamps
         self.name = name
         self.scan = ScanTimestamps(
             parameter=parameter,
@@ -61,12 +61,44 @@ class ArrayTimestamps:
         self._append_methods()
 
     @property
+    def data(self):
+        """The data array. Kept as whatever was passed in (dask array or a
+        zero-arg callable) until first accessed, so a large dask-backed
+        ArrayTimestamps doesn't get pulled into memory just by loading it --
+        mirrors Array.data. A callable is invoked once and the result cached.
+        """
+        if callable(self._data):
+            self._data = self._data()
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = value
+
+    @property
+    def timestamps(self):
+        """The timestamp array. Materialized into a concrete numpy array on
+        first access and cached from then on -- mirrors Array.index: cheap
+        enough (a 1-D array) to resolve eagerly once touched, unlike the
+        (potentially large) .data payload.
+        """
+        ts = self._timestamps
+        if callable(ts):
+            ts = ts()
+        self._timestamps = np.asarray(ts)
+        return self._timestamps
+
+    @timestamps.setter
+    def timestamps(self, value):
+        self._timestamps = value
+
+    @property
     def grid(self):
         if hasattr(self.scan,"grid"):
             return self.scan.grid
         else:
             return None
-        
+
     @property
     def shape(self, *args, **kwargs):
         return self.data.shape
@@ -81,6 +113,55 @@ class ArrayTimestamps:
 
     def __len__(self):
         return len(self.timestamps)
+
+    def plot(
+        self,
+        axis=None,
+        linespec=".",
+        show_scan_steps=True,
+        timestamp_unit="s",
+        step_color="tab:blue",
+        step_alpha=0.12,
+        *args,
+        **kwargs,
+    ):
+        """Plot this array's data against its timestamps on a datetime axis.
+
+        Args:
+            axis: matplotlib axis to plot into (default: current axis).
+            linespec: matplotlib line/marker spec for the data points.
+            show_scan_steps: if True (default) and this array's scan has
+                timestamp_intervals defined, shade each step's time range
+                with a faint band behind the data points.
+            timestamp_unit: unit of the stored timestamps, forwarded to
+                ``pandas.to_datetime`` (default ``"s"`` for Unix epoch
+                seconds).
+            step_color, step_alpha: color/opacity of the scan-step shading.
+            *args, **kwargs: forwarded to ``axis.plot()``.
+        """
+        if axis is None:
+            axis = plt.gca()
+
+        intervals = getattr(self.scan, "timestamp_intervals", None)
+        if show_scan_steps and intervals is not None:
+            for start, stop in np.asarray(intervals):
+                axis.axvspan(
+                    pd.to_datetime(start, unit=timestamp_unit),
+                    pd.to_datetime(stop, unit=timestamp_unit),
+                    color=step_color,
+                    alpha=step_alpha,
+                    linewidth=0,
+                    zorder=0,
+                )
+
+        x = pd.to_datetime(self.timestamps, unit=timestamp_unit)
+        y = self.data
+        axis.plot(x, y, linespec, *args, zorder=2, **kwargs)
+        axis.set_xlabel("time")
+        if self.name and self.name != "none":
+            axis.set_ylabel(self.name)
+        axis.figure.autofmt_xdate()
+        return axis
 
     #   >> storing
 
