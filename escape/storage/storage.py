@@ -22,6 +22,8 @@ from numbers import Number
 import re
 from .. import utilities
 import h5py
+import zarr
+from zarr.errors import ContainsArrayError, ContainsGroupError
 import hickle
 from matplotlib import pyplot as plt
 import pandas as pd
@@ -888,7 +890,7 @@ class Array:
                 parameter=self.scan.parameter,
             )
 
-    def store(self, parent_h5py=None, name=None, unit=None, lock="auto", **kwargs):
+    def store(self, parent_h5py=None, name=None, unit=None, lock="auto", overwrite=False, **kwargs):
         """a way to store data, especially expensively computed data, into a new file."""
         if lock == "auto":
             lock = get_lock()
@@ -896,7 +898,9 @@ class Array:
             self.h5 = ArrayH5Dataset(parent_h5py, name)
 
         with ProgressBar():
-            self.h5.append(self.data, self.index, self.scan, lock=lock, **kwargs)
+            self.h5.append(
+                self.data, self.index, self.scan, lock=lock, overwrite=overwrite, **kwargs
+            )
         self._data = self.h5.get_data_da()
         self._index = self.h5.index
         self.scan._save_to_h5(self.h5.grp)
@@ -907,12 +911,9 @@ class Array:
                 name = self.name
             self.h5 = ArrayH5Dataset(parent_h5py, name)
         else:
-            try:
-                logger.info(
-                    f"h5 storage already set at {name} in {self.h5.file.filename}"
-                )
-            except:
-                logger.info(f"h5 storage already set for {name}")
+            logger.info(
+                f"h5 storage already set at {name!r} in {self.h5.grp.name!r}"
+            )
 
     def store_file(self, parent_h5py=None, name=None, unit=None, **kwargs):
         """a way to store data, especially expensively computed data, into a new file."""
@@ -3298,25 +3299,47 @@ def compute(*args, inplace=False):
     return tuple(out)
 
 
-def store(arrays, lock="auto", **kwargs):
+def store(arrays, lock="auto", overwrite=False, **kwargs):
     """
-    Storing of multiple escape arrays (as iterable, list or similar), efficient when they originate from the same ancestor
+    Storing of multiple escape arrays (as iterable, list or similar), efficient when they originate from the same ancestor.
+
+    Each array is prepped independently: one array failing (e.g. a storage
+    slot conflict, see ArrayStorageConflict) is reported and skipped rather
+    than aborting the whole batch and leaving arrays that *did* prep
+    successfully with bookkeeping out of sync with what was actually written
+    to disk. If anything failed, a summary RuntimeError is raised only after
+    every array has been given a chance to store.
     """
     if lock == "auto":
         lock = get_lock()
-    prep = [
-        array.h5.append(array.data, array.index, prep_run="store_numpy")
-        for array in arrays
-    ]
-    # return prep
-    if not any(prep):
-        print("Nothing to append")
-        # arrays_store = arrays
+
+    prepped = []
+    failures = []
+    for array in arrays:
+        try:
+            tprep = array.h5.append(
+                array.data, array.index, prep_run="store_numpy", overwrite=overwrite
+            )
+        except Exception as exc:
+            failures.append((array, exc))
+            continue
+        if tprep:
+            prepped.append((array, tprep))
+
+    for array, exc in failures:
+        name = getattr(array, "name", None) or getattr(array.h5, "grp", None)
+        logger.error("store(): failed to prepare %r for storage: %s", name, exc)
+
+    if not prepped:
+        msg = "Nothing to append"
+        if failures:
+            msg += f" ({len(failures)} array(s) failed, see error log above)"
+        print(msg)
     else:
         arrays_store, ndatas, dsets, n_news = zip(
-            *[(tarray, *tprep) for tarray, tprep in zip(arrays, prep) if tprep]
+            *[(tarray, *tprep) for tarray, tprep in prepped]
         )
-        
+
         if is_local_client_distributed():
             client = get_client()
             print("Found dask distributed client")
@@ -3332,15 +3355,22 @@ def store(arrays, lock="auto", **kwargs):
             print(f'storing data done in {time.time() - t_tmp} s.')
         else:
             with ProgressBar():
-                da.store(ndatas, dsets, lock=lock, **kwargs)        
-            
+                da.store(ndatas, dsets, lock=lock, **kwargs)
+
         for array, n_new in zip(arrays_store, n_news):
             array.h5._n_i.append(n_new)
             array.h5._n_d.append(n_new)
-    for array in arrays:
-        array._data = array.h5.get_data_da()
-        array._index = array.h5.index
-        array.scan._save_to_h5(array.h5.grp)
+        for array in arrays_store:
+            array._data = array.h5.get_data_da()
+            array._index = array.h5.index
+            array.scan._save_to_h5(array.h5.grp)
+
+    if failures:
+        raise RuntimeError(
+            f"store(): {len(failures)} of {len(arrays)} array(s) failed to "
+            f"store ({len(prepped)} succeeded); see error log above for "
+            f"per-array details."
+        )
 
 
 def store_all(
@@ -3871,6 +3901,24 @@ def broadcast_to(ndarray_list, arraydef):
     return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
 
 
+class ArrayStorageConflict(Exception):
+    """Raised when ArrayH5Dataset can't claim the next storage slot because
+    something already occupies it in the backing store, even though this
+    object's bookkeeping was just resynced from that same store.
+
+    This normally means a concurrent writer (another process/kernel/job) is
+    targeting the same result file, or two different Array objects ended up
+    bound to the same storage group. See ``ArrayH5Dataset.resync()``,
+    ``ArrayH5Dataset.clear_stored_data()``, and ``DataSet.clear_results_file()``.
+    """
+
+
+def _is_storage_slot_conflict(exc):
+    if isinstance(exc, (ContainsArrayError, ContainsGroupError)):
+        return True
+    return "already exists" in str(exc)
+
+
 class ArrayH5Dataset:
     def __init__(self, parent, name):
         self.parent = parent
@@ -3908,12 +3956,28 @@ class ArrayH5Dataset:
                 "Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!"
             )
 
+    def resync(self):
+        """Refresh slot bookkeeping (_n_i/_n_d) from the actual current state
+        of the backing store, instead of trusting whatever was last seen.
+
+        Storage slot numbers used to be computed once at construction time
+        and then trusted forever, which silently went stale whenever the
+        store changed underneath a long-lived object -- e.g. a kernel that
+        reloaded/cleared its DataSet several times without restarting, or a
+        second process writing to the same result file. append() always
+        calls this before deciding the next slot, so it's rarely needed
+        directly; it's exposed for diagnosing/recovering from a suspected
+        desync (see ArrayStorageConflict).
+        """
+        self._check_stored_data()
+
     def clear_stored_data(self):
         for key in self.grp.keys():
             try:
                 del self.grp[key]
             except:
                 print(f"Did not succeed to delete key {key}!")
+        self.resync()
 
     @property
     def index(self):
@@ -3924,13 +3988,45 @@ class ArrayH5Dataset:
         else:
             return np.asarray([], dtype=int)
 
-    def append(self, data, event_ids, scan=None, prep_run=False, lock="auto", **kwargs):
+    def _write_slot(self, key, writer, overwrite):
+        """Run *writer* (a zero-arg callable performing one slot write) with
+        clear, actionable errors instead of a raw backend traceback when the
+        slot unexpectedly already exists."""
+        try:
+            return writer()
+        except Exception as exc:
+            if not _is_storage_slot_conflict(exc):
+                raise
+            if overwrite:
+                logger.warning(
+                    "Slot %r already exists in %r; overwrite=True, replacing it.",
+                    key, self.grp.name,
+                )
+                del self.grp[key]
+                return writer()
+            raise ArrayStorageConflict(
+                f"Slot {key!r} already exists in {self.grp.name!r}, but this "
+                f"object's bookkeeping (just resynced from the store) didn't "
+                f"know about it. Likely causes: another process/kernel/job is "
+                f"concurrently writing to the same result file, or this slot "
+                f"was left over from a previous, differently-shaped write. "
+                f"Pass overwrite=True to replace it, or call "
+                f"`.h5.clear_stored_data()` (single array) / "
+                f"`DataSet.clear_results_file()` (whole result file) to start "
+                f"clean."
+            ) from exc
+
+    def append(
+        self, data, event_ids, scan=None, prep_run=False, lock="auto",
+        overwrite=False, **kwargs
+    ):
         """
         expects to extend a former dataset, i.e. data includes data already existing,
         this will likely change in future to also allow real appending of entirely new data.
         """
         if lock == "auto":
             lock = get_lock()
+        self.resync()
         n_new = len(self._n_i)
         ids_stored = self.index
         in_previous_indexes = np.isin(event_ids, ids_stored)
@@ -3951,8 +4047,20 @@ class ArrayH5Dataset:
 
             new_event_ids = event_ids[len(ids_stored) :]
             new_data = data[len(ids_stored) :, ...]
+        else:
+            raise Exception(
+                f"Cannot append to {self.grp.name!r}: the new event_ids "
+                f"partially, but not fully, overlap with what's already "
+                f"stored there (neither a clean append nor a clean extend). "
+                f"This usually means data from two different sources/runs "
+                f"is being written to the same channel."
+            )
 
-        self.grp[f"index_{n_new:04d}"] = new_event_ids
+        self._write_slot(
+            f"index_{n_new:04d}",
+            lambda: self.grp.__setitem__(f"index_{n_new:04d}", new_event_ids),
+            overwrite,
+        )
 
         if isinstance(data, np.ndarray):
             if prep_run:
@@ -3962,42 +4070,43 @@ class ArrayH5Dataset:
                     raise Exception(
                         "Trying dry_run on numpy array data on {self.grp.name}."
                     )
-            self.grp[f"data_{n_new:04d}"] = new_data
+            self._write_slot(
+                f"data_{n_new:04d}",
+                lambda: self.grp.__setitem__(f"data_{n_new:04d}", new_data),
+                overwrite,
+            )
         elif isinstance(data, da.Array):
             # ToDo, smarter chunking when writing small data
             new_chunks = tuple(c[0] for c in new_data.chunks)
+            compression = self.parent.attrs.get("default_dataset_compression")
+            compression_opts = self.parent.attrs.get("default_dataset_compression_opts")
 
-            try:
-                if "default_dataset_compression" in self.grp.file.attrs:
-                    compression = self.grp.file.attrs["default_dataset_compression"]
-                else:
-                    compression = None
-
-                if "default_dataset_compression_opts" in self.grp.file.attrs:
-                    compression_opts = self.grp.file.attrs[
-                        "default_dataset_compression_opts"
-                    ]
-                else:
-                    compression_opts = None
-
-                dset = self.grp.create_dataset(
-                    f"data_{n_new:04d}",
-                    shape=new_data.shape,
-                    chunks=new_chunks,
-                    dtype=new_data.dtype,
-                    compression=compression,
-                    compression_opts=compression_opts,
+            def _create(with_compression):
+                create_kwargs = dict(
+                    shape=new_data.shape, chunks=new_chunks, dtype=new_data.dtype
                 )
-            except:
-                compression = None
-                compression_opts = None
+                if with_compression and compression is not None:
+                    create_kwargs["compression"] = compression
+                    if compression_opts is not None:
+                        create_kwargs["compression_opts"] = compression_opts
+                return self.grp.create_dataset(f"data_{n_new:04d}", **create_kwargs)
 
-                dset = self.grp.create_dataset(
-                    f"data_{n_new:04d}",
-                    shape=new_data.shape,
-                    chunks=new_chunks,
-                    dtype=new_data.dtype,
-                )
+            def _create_with_compression_fallback():
+                try:
+                    return _create(with_compression=True)
+                except Exception as exc:
+                    if _is_storage_slot_conflict(exc):
+                        raise
+                    logger.info(
+                        "Compression setting %r not supported by this storage "
+                        "backend (%s); creating %r uncompressed.",
+                        compression, exc, f"data_{n_new:04d}",
+                    )
+                    return _create(with_compression=False)
+
+            dset = self._write_slot(
+                f"data_{n_new:04d}", _create_with_compression_fallback, overwrite
+            )
 
             if prep_run:
                 return new_data, dset, n_new

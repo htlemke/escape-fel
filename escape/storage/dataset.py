@@ -3,6 +3,7 @@ import copy
 from functools import partial
 import os
 import pickle
+import sys
 import warnings
 from dask.distributed import Client, LocalCluster
 import hickle
@@ -21,6 +22,39 @@ import oschmod
 import dask
 
 logger = logging.getLogger(__name__)
+
+
+def _dedupe_array_for_alias(data, name):
+    """If *data* is already bound to h5/zarr storage under a name other than
+    *name*, this exact Array/ArrayTimestamps instance is being registered a
+    second time under a new alias -- i.e. two names in this DataSet point at
+    the same underlying data_raw source. Sharing one storage slot between two
+    names corrupts ArrayH5Dataset's slot bookkeeping (both "owners" think
+    they hold the next free slot) and silently drops one alias's data, so
+    instead we warn and hand back an independent copy that stores separately
+    under *name* (duplicating the source data on disk, once per alias).
+    """
+    if not hasattr(data, "h5"):
+        return data
+    existing_name = data.h5.grp.name.lstrip("/")
+    if existing_name == name:
+        return data
+    warnings.warn(
+        f"{name!r} and {existing_name!r} are two aliases for the same "
+        f"underlying data_raw source array. Storing both will duplicate "
+        f"this data on disk -- use a single name for this channel unless "
+        f"that duplication is intended.",
+        stacklevel=3,
+    )
+    new_array = copy.copy(data)
+    del new_array.h5
+    if hasattr(new_array, "_scan"):
+        new_array._scan = None
+    if hasattr(new_array, "_touched"):
+        new_array._touched = False
+    if hasattr(new_array, "_tools"):
+        new_array._tools = None
+    return new_array
 
 
 class DataSet:
@@ -113,16 +147,15 @@ class DataSet:
                 elif isinstance(self.results_file, zarr.Group):
                     as_pickle = True
 
-            if isinstance(data, escape.Array):
+            if isinstance(data, (escape.Array, escape.ArrayTimestamps)):
+                if self.results_file is not None:
+                    data = _dedupe_array_for_alias(data, name)
+                    self.datasets[name] = data
                 data.name = name
                 if self.results_file is not None:
-                    self.datasets[name].set_h5_storage(self.results_file, name)
+                    data.set_h5_storage(self.results_file, name)
             elif isinstance(data, Proxy):
                 data = copy.copy(data)
-            elif isinstance(data, escape.ArrayTimestamps):
-                data.name = name
-                if self.results_file is not None:
-                    self.datasets[name].set_h5_storage(self.results_file, name)
             else:
                 if as_pickle:
                     # self.results_file.require_dataset(name)
@@ -199,6 +232,55 @@ class DataSet:
             except:
                 pass
         return escape.store([self.datasets[k] for k in ks], lock=lock, **kwargs)
+
+    def clear_results_file(self, names=None, confirm=True):
+        """Delete previously stored array data from this DataSet's results
+        file, so a subsequent store() call starts from empty slots instead of
+        hitting an ArrayStorageConflict.
+
+        Args:
+            names: channel name(s) to clear. Defaults to every channel
+                currently backed by this results_file.
+            confirm: if True (default) and running interactively, asks for
+                confirmation before deleting anything. Pass False to skip the
+                prompt (e.g. in scripts/batch jobs where the decision is
+                already made) -- and note a non-interactive stdin (no tty)
+                is treated as "no" rather than blocking, so unattended runs
+                fail safe instead of hanging.
+        """
+        if self.results_file is None:
+            raise RuntimeError("This DataSet has no results_file to clear.")
+        if names is None:
+            names = [k for k, v in self.datasets.items() if hasattr(v, "h5")]
+        elif isinstance(names, str):
+            names = [names]
+        targets = [n for n in names if n in self.datasets and hasattr(self.datasets[n], "h5")]
+        if not targets:
+            print("Nothing to clear.")
+            return
+        location = getattr(
+            self.results_file, "filename",
+            getattr(getattr(self.results_file, "store", None), "path", "<unknown>"),
+        )
+        if confirm:
+            if not sys.stdin.isatty():
+                print(
+                    f"clear_results_file: refusing to clear {len(targets)} "
+                    f"channel(s) in {location} without confirmation on a "
+                    f"non-interactive stdin; pass confirm=False to proceed."
+                )
+                return
+            resp = input(
+                f"About to permanently delete stored data for {len(targets)} "
+                f"channel(s) in {location}: {targets[:5]}"
+                f"{'...' if len(targets) > 5 else ''}. Proceed? [y/N] "
+            )
+            if resp.strip().lower() not in ("y", "yes"):
+                print("Aborted, nothing cleared.")
+                return
+        for n in targets:
+            self.datasets[n].h5.clear_stored_data()
+        print(f"Cleared {len(targets)} channel(s) from {location}.")
 
     def compute_datasets_max_element_size(
         self, max_element_size=5000, verbose=0, **kwargs
