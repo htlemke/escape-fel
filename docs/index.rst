@@ -55,3 +55,4 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    :hidden:
 
    development/releasing
+   development/daq_live_parsing
