@@ -11,9 +11,8 @@ being written by the DAQ showed it fail cleanly (``bad object header
 version number``, then ``addr overflow``) right up until the moment the
 writer closed it, at which point it opens fine every time after --
 ``Path.exists()`` alone would have reported "ready" over a second before
-that. See ``_h5_file_ready``/``count_ready_steps`` below, which this
-module's polling loop uses instead of the existence-only check the
-existing ``wait_for_data_files`` option relies on.
+that. See ``cluster.h5_file_ready``/``count_ready_steps`` below (the
+existing ``wait_for_data_files`` option now uses the same check).
 
 Run as a long-lived process on a server (see the ``__main__`` CLI at the
 bottom), polling for newly-*ready* steps, reparsing just the growing
@@ -27,30 +26,9 @@ acquisition, without re-parsing raw files from scratch each time
 the whole run to finish.
 """
 import time
-from pathlib import Path
-
-import h5py
 
 from .parse import load_dataset_from_scan, interpret_raw_data_definition
-from .cluster import readScanEcoJson_v01
-
-
-def _h5_file_ready(path):
-    """True if *path* can be opened cleanly as HDF5 right now.
-
-    Not just ``Path.exists()`` -- see this module's docstring for why that
-    alone isn't a reliable completeness signal for a file the DAQ may still
-    be writing.
-    """
-    p = Path(path)
-    if not p.exists():
-        return False
-    try:
-        with h5py.File(p, "r"):
-            pass
-        return True
-    except Exception:
-        return False
+from .cluster import readScanEcoJson_v01, h5_file_ready
 
 
 def count_ready_steps(scan_info_file, exclude_from_files=()):
@@ -83,10 +61,150 @@ def count_ready_steps(scan_info_file, exclude_from_files=()):
     )
     n_ready = 0
     for files_step in s["scan_files"]:
-        if not files_step or not all(_h5_file_ready(f) for f in files_step):
+        if not files_step or not all(h5_file_ready(f) for f in files_step):
             break
         n_ready += 1
     return n_ready, len(s["scan_files"])
+
+
+def daq_cache_writer(
+    run_number=None,
+    pgroup=None,
+    exp_name=None,
+    instrument="bernina",
+    metadata_file=None,
+    poll_interval=10,
+    idle_polls_before_stop=5,
+    max_polls=None,
+    parse_version=3,
+    verbose=1,
+    **load_kwargs,
+):
+    """Warm the ``aux/`` parse-result cache for a run while it's acquiring.
+
+    Meant to run as a short-lived subprocess started by the DAQ client once
+    per scan (see ``docs/development/daq_live_parsing.md`` for the
+    integration guide this was built for) -- *not* by analysis users. Its
+    only job is to leave a ``checknstore_parsing_result="same_directory"``
+    cache next to the scan's ``scan_info_rel.json`` (i.e. in the run's own
+    ``aux/`` directory, which the acquisition process -- unlike analysis
+    users -- can write to) so that later, ``load_dataset_from_scan()``'s
+    default ``checknstore_parsing_result="auto"`` finds it automatically and
+    skips the expensive raw-HDF5-structure scan entirely, during or after
+    acquisition.
+
+    Deliberately does *not* build or store a results file (contrast with
+    ``live_reduce_scan``, which does, and returns the reduced DataSet for
+    read-back) -- this only needs load_dataset_from_scan()'s side effect of
+    writing the cache; the DataSet it builds along the way is discarded.
+
+    Parameters
+    ----------
+    run_number, pgroup, exp_name, instrument, metadata_file :
+        Same as ``load_dataset_from_scan`` -- used once, up front, to locate
+        the scan-info JSON via ``interpret_raw_data_definition()``.
+    poll_interval : float, optional
+        Seconds between polls. Defaults to ``10``.
+    idle_polls_before_stop : int, optional
+        Consecutive polls with neither a newly-ready step nor growth in
+        scan_info_rel.json's total step count before concluding acquisition
+        has finished and exiting (see ``live_reduce_scan``'s docstring for
+        why both are checked, not just readiness). Defaults to ``5``.
+    max_polls : int or None, optional
+        Hard cap on polls regardless of activity, as a safety net.
+    parse_version : {1, 2, 3}, optional
+        Forwarded to every call. Defaults to ``3``.
+    **load_kwargs :
+        Forwarded to every ``load_dataset_from_scan()`` call (e.g.
+        ``alias_mappings``, ``exclude_from_files``).
+    """
+    metadata_files = interpret_raw_data_definition(
+        metadata_file=metadata_file,
+        run_numbers=[run_number] if run_number is not None else None,
+        pgroup=pgroup,
+        exp_name=exp_name,
+        instrument=instrument,
+        verbose=bool(verbose),
+    )
+    if not metadata_files:
+        raise FileNotFoundError(
+            "Could not locate a scan-info JSON for this run -- if "
+            "acquisition hasn't started yet, wait for its aux/ directory "
+            "to appear before calling daq_cache_writer()."
+        )
+    scan_info_file = metadata_files[0]
+    exclude_from_files = load_kwargs.get("exclude_from_files", [])
+
+    n_cached = 0
+    n_total_seen = 0
+    idle = 0
+    poll_n = 0
+
+    while True:
+        n_ready, n_total = count_ready_steps(scan_info_file, exclude_from_files)
+        if verbose:
+            print(
+                f"poll {poll_n}: {n_ready}/{n_total} step(s) ready "
+                f"(previously cached through step {n_cached})",
+                flush=True,
+            )
+
+        got_new_ready_steps = n_ready > n_cached
+        if got_new_ready_steps:
+            try:
+                load_dataset_from_scan(
+                    metadata_file=scan_info_file,
+                    result_filename=None,
+                    checknstore_parsing_result="same_directory",
+                    clear_parsing_result=False,
+                    step_selection=slice(0, n_ready),
+                    parse_version=parse_version,
+                    merge_data_sources=False,
+                    verbose=verbose,
+                    **load_kwargs,
+                )
+            except Exception as exc:
+                print(f"poll {poll_n}: cache-warming parse failed: {exc!r}", flush=True)
+            n_cached = n_ready
+
+        if got_new_ready_steps or n_total > n_total_seen:
+            idle = 0
+        else:
+            idle += 1
+        n_total_seen = max(n_total_seen, n_total)
+
+        poll_n += 1
+        if max_polls and poll_n >= max_polls:
+            if verbose:
+                print(f"reached max_polls={max_polls}, stopping.", flush=True)
+            break
+        if idle >= idle_polls_before_stop:
+            if verbose:
+                print(
+                    f"no new ready step or scan-info growth for {idle} "
+                    f"polls -- assuming acquisition finished.",
+                    flush=True,
+                )
+            break
+        time.sleep(poll_interval)
+
+    # Final unrestricted pass so the last few steps (whichever completed
+    # right as this loop was concluding "finished") are cached too.
+    try:
+        load_dataset_from_scan(
+            metadata_file=scan_info_file,
+            result_filename=None,
+            checknstore_parsing_result="same_directory",
+            clear_parsing_result=False,
+            parse_version=parse_version,
+            merge_data_sources=False,
+            verbose=verbose,
+            **load_kwargs,
+        )
+    except Exception as exc:
+        print(f"final cache-warming pass failed: {exc!r}", flush=True)
+    if verbose:
+        print("daq_cache_writer done.", flush=True)
 
 
 def live_reduce_scan(
@@ -286,6 +404,17 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--mode",
+        default="live-reduce",
+        choices=["live-reduce", "daq-cache"],
+        help=(
+            "'live-reduce' (default): build/extend a full results file, for "
+            "analysis-side use. 'daq-cache': only warm the aux/ parse-result "
+            "cache, no results file -- this is the one meant to be launched "
+            "by the DAQ client as a subprocess during acquisition."
+        ),
+    )
     ap.add_argument("--run-number", type=int, required=True)
     ap.add_argument("--pgroup")
     ap.add_argument("--exp-name")
@@ -301,18 +430,30 @@ if __name__ == "__main__":
     ap.add_argument("--no-merge-data-sources", action="store_true")
     args = ap.parse_args()
 
-    live_reduce_scan(
-        run_number=args.run_number,
-        pgroup=args.pgroup,
-        exp_name=args.exp_name,
-        instrument=args.instrument,
-        result_filename=args.result_filename,
-        results_directory=args.results_directory,
-        result_type=args.result_type,
-        max_element_size=args.max_element_size,
-        poll_interval=args.poll_interval,
-        idle_polls_before_final_pass=args.idle_polls_before_final_pass,
-        max_polls=args.max_polls,
-        parse_version=args.parse_version,
-        merge_data_sources=not args.no_merge_data_sources,
-    )
+    if args.mode == "daq-cache":
+        daq_cache_writer(
+            run_number=args.run_number,
+            pgroup=args.pgroup,
+            exp_name=args.exp_name,
+            instrument=args.instrument,
+            poll_interval=args.poll_interval,
+            idle_polls_before_stop=args.idle_polls_before_final_pass,
+            max_polls=args.max_polls,
+            parse_version=args.parse_version,
+        )
+    else:
+        live_reduce_scan(
+            run_number=args.run_number,
+            pgroup=args.pgroup,
+            exp_name=args.exp_name,
+            instrument=args.instrument,
+            result_filename=args.result_filename,
+            results_directory=args.results_directory,
+            result_type=args.result_type,
+            max_element_size=args.max_element_size,
+            poll_interval=args.poll_interval,
+            idle_polls_before_final_pass=args.idle_polls_before_final_pass,
+            max_polls=args.max_polls,
+            parse_version=args.parse_version,
+            merge_data_sources=not args.no_merge_data_sources,
+        )

@@ -8,7 +8,14 @@ from unicodedata import name
 import numpy as np
 from escape.storage.storage import concatenate, Array, Scan
 from ..parse.swissfel import readScanEcoJson_v01, parseScanEco_v01
-from .cluster import parseScanEcoV01, parseScanEcoV02, parseScanEcoV03
+from .cluster import (
+    parseScanEcoV01,
+    parseScanEcoV02,
+    parseScanEcoV03,
+    h5_file_ready,
+    _resolve_cache_path_v02,
+    _resolve_cache_path_v03,
+)
 from pathlib import Path
 import json
 import pathlib
@@ -234,7 +241,7 @@ def _wait_for_data_files_on_disk(
                         scan_info_filepath.parent / Path(tp.format(fp.parent.name))
                         for tp in search_paths
                     ]
-                if not any((path / fn).exists() for path in searchpaths):
+                if not any(h5_file_ready(path / fn) for path in searchpaths):
                     missing.append(fp)
 
         if not missing:
@@ -261,6 +268,36 @@ def _wait_for_data_files_on_disk(
         time.sleep(poll_interval)
 
 
+def _resolve_auto_parsing_cache(checknstore_parsing_result, metadata_file, parse_version):
+    """Resolve ``checknstore_parsing_result="auto"`` for one metadata file.
+
+    A DAQ-side process can maintain a parse-result cache right next to the
+    scan-info JSON (``checknstore_parsing_result="same_directory"``, i.e. in
+    the run's ``aux/`` directory) throughout acquisition -- see
+    ``escape.swissfel.live_reduce``'s ``daq_cache_writer`` for exactly that.
+    When that cache already exists, later analysis-side calls should use it
+    automatically rather than falling back to no caching (the previous
+    default) or scanning from scratch. This only ever *reads* that
+    location; it never tries to create it there, since ``aux/`` is normally
+    only writable by the DAQ/acquisition process, not by analysis users.
+
+    Any value other than the literal string ``"auto"`` passes through
+    unchanged -- this is purely about resolving the new default.
+    """
+    if checknstore_parsing_result != "auto":
+        return checknstore_parsing_result
+
+    scan_info_filepath = Path(metadata_file)
+    if parse_version == 1:
+        cache_path = scan_info_filepath.with_suffix(".parse_result.json")
+    elif parse_version == 2:
+        cache_path = _resolve_cache_path_v02("same_directory", scan_info_filepath)
+    else:
+        cache_path = _resolve_cache_path_v03("same_directory", scan_info_filepath)
+
+    return "same_directory" if cache_path.exists() else False
+
+
 def load_dataset_from_scan(
     metadata_file=None,
     run_number=None,
@@ -285,7 +322,7 @@ def load_dataset_from_scan(
     createEscArrays=True,
     lazyEscArrays=True,
     exclude_from_files=[],
-    checknstore_parsing_result=False,
+    checknstore_parsing_result="auto",
     clear_parsing_result=False,
     analyze_namespace_info=False,
     name="delme",
@@ -374,9 +411,20 @@ def load_dataset_from_scan(
         front.  Pass ``False`` to compute arrays eagerly as before.
     exclude_from_files : list of str, optional
         Channel names or file patterns to skip during parsing.
-    checknstore_parsing_result : bool, optional
+    checknstore_parsing_result : bool or str, optional
         Cache the intermediate parsing result on disk and reuse it on
-        subsequent calls with the same inputs.  Defaults to ``False``.
+        subsequent calls with the same inputs. ``"auto"`` (default): for
+        each run, check whether a ``"same_directory"`` cache (i.e. one
+        living in the run's own ``aux/`` directory, next to its scan-info
+        JSON) already exists -- e.g. one a DAQ-side process maintained
+        throughout acquisition, see ``escape.swissfel.live_reduce``'s
+        ``daq_cache_writer`` -- and use it automatically if so, without
+        ever trying to create one there itself (``aux/`` is normally not
+        writable by analysis users). Falls back to ``False`` (no caching)
+        if nothing is found there, i.e. today's behavior if no DAQ-side
+        cache exists. Pass ``"same_directory"``, ``"work_directory"``, or
+        an explicit path to force a specific cache location and skip the
+        ``aux/``-first check; ``False`` disables caching outright.
     clear_parsing_result : bool, optional
         Clear a cached parsing result before re-parsing.  Defaults to
         ``False``.
@@ -576,6 +624,16 @@ def load_dataset_from_scan(
                     verbose=True,
                 )
 
+            effective_checknstore_parsing_result = _resolve_auto_parsing_cache(
+                checknstore_parsing_result, metadata_file, parse_version
+            )
+            if (
+                checknstore_parsing_result == "auto"
+                and effective_checknstore_parsing_result == "same_directory"
+                and verbose
+            ):
+                print(f"Using aux/ parse-result cache for {metadata_file}")
+
             td, s = _parser(
                 metadata_file,
                 search_paths=search_paths,
@@ -583,7 +641,7 @@ def load_dataset_from_scan(
                 createEscArrays=createEscArrays,
                 lazyEscArrays=lazyEscArrays,
                 exclude_from_files=exclude_from_files,
-                checknstore_parsing_result=checknstore_parsing_result,
+                checknstore_parsing_result=effective_checknstore_parsing_result,
                 clear_parsing_result=clear_parsing_result,
                 return_json_info=True,
                 step_selection=step_selection,
@@ -627,7 +685,9 @@ def load_dataset_from_scan(
                     createEscArrays=createEscArrays,
                     lazyEscArrays=lazyEscArrays,
                     exclude_from_files=exclude_from_files,
-                    checknstore_parsing_result=checknstore_parsing_result,
+                    checknstore_parsing_result=_resolve_auto_parsing_cache(
+                        checknstore_parsing_result, scan_info_filepath, parse_version
+                    ),
                     clear_parsing_result=clear_parsing_result,
                     return_json_info=True,
                     step_selection=step_selection,

@@ -218,6 +218,31 @@ def parse_filelist(flist):
     return dask.compute([parse_bs_h5_file(fina) for fina in flist])[0]
 
 
+def h5_file_ready(path):
+    """True if *path* can be opened cleanly as HDF5 right now.
+
+    Not just ``Path.exists()``: a file the DAQ is still writing can exist,
+    with a plausible-looking size, for well over a second before it's
+    actually complete. Racing this check against a live BSDATA.h5 write
+    showed it fail cleanly and repeatedly (``bad object header version
+    number``, then an ``addr overflow`` RuntimeError right near the end)
+    right up until the instant the writer closed the file, at which point
+    it opens fine every time after -- ``Path.exists()`` alone would have
+    reported "ready" well before that. Used by both
+    ``_wait_for_data_files_on_disk`` below and
+    ``escape.swissfel.live_reduce``.
+    """
+    p = pathlib.Path(path)
+    if not p.exists():
+        return False
+    try:
+        with h5py.File(p, "r"):
+            pass
+        return True
+    except Exception:
+        return False
+
+
 def readScanEcoJson_v01(file_name_json, exclude_from_files=None):
     p = pathlib.Path(file_name_json)
     assert p.is_file(), "Input string does not describe a valid file path."
