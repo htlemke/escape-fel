@@ -8,3 +8,4 @@ dist/
 build/
 *.egg-info/
 CLAUDE.local.md
+escape/delme/
