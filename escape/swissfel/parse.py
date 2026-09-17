@@ -300,6 +300,7 @@ def load_dataset_from_scan(
     wait_for_data_files=False,
     wait_poll_interval=10,
     wait_timeout=None,
+    merge_data_sources=False,
 ):
     """Load detector and scan-parameter data from one or more SwissFEL scan runs.
 
@@ -447,6 +448,20 @@ def load_dataset_from_scan(
         Give up and raise ``TimeoutError`` after this many seconds of
         waiting per metadata file when ``wait_for_data_files`` is ``True``.
         ``None`` (default) waits indefinitely.
+    merge_data_sources : bool, optional
+        If ``True``, also fold in the run's CA/EPICS channel-monitor dump
+        (``namespace_monitor.h5``, next to the scan-info JSON's ``aux/``
+        directory) as :class:`~escape.storage.storage_timestamps.ArrayTimestamps`
+        channels, loaded lazily via :meth:`DataSet.load_from_result_file`
+        (cheap even for the tens-of-thousands-of-channels dumps this file
+        typically is -- see that class's lazy-loading notes). Three sources
+        are layered by name, each superseding the previous on a collision:
+        run-start status (loaded first) < monitor channels < this run's own
+        beam-synchronous :class:`~escape.Array` channels (highest priority,
+        always win). Missing or unreadable ``namespace_monitor.h5`` is
+        silently skipped, same as the pre-existing ``scan_monitor.pkl``
+        handling. Defaults to ``False`` (today's behavior: status and
+        per-pulse Array data only, no monitor merge).
 
     Returns
     -------
@@ -711,6 +726,14 @@ def load_dataset_from_scan(
         ds._metafile_parse_results = s_collection
         ds._alias_mappings = alias_mappings
 
+        if merge_data_sources:
+            # Names already claimed by this run's own beam-synchronous Array
+            # data -- captured now, before status/monitor loading adds more
+            # keys, so those two can freely overwrite each other but never
+            # this set (Array data has final say, see merge_data_sources'
+            # docstring for the full precedence).
+            bs_names = set(ds.datasets.keys())
+
         try:
             if type(s["scan_parameters"]["status"]) is str:
                 with open(
@@ -746,6 +769,27 @@ def load_dataset_from_scan(
             traceback.print_exc()
             print("No status in dataset found.")
             pass
+
+        if merge_data_sources:
+            try:
+                monitor_path = Path(metadata_file).parent / Path(
+                    "../aux/namespace_monitor.h5"
+                )
+                monitor_ds = DataSet.load_from_result_file(monitor_path.as_posix())
+                n_added = 0
+                for mname, mval in monitor_ds.datasets.items():
+                    if mname in bs_names:
+                        continue
+                    ds.datasets[mname] = mval
+                    dict2structure({mname: mval}, base=ds)
+                    n_added += 1
+                print(
+                    f"merged {n_added} namespace_monitor.h5 channel(s) "
+                    f"({len(monitor_ds.datasets) - n_added} shadowed by "
+                    f"this run's own Array data)"
+                )
+            except Exception as exc:
+                print(f"No namespace_monitor.h5 found or failed to merge it: {exc}")
 
         # monitor data hack
         try:
