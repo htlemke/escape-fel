@@ -775,7 +775,14 @@ def load_dataset_from_scan(
                 monitor_path = Path(metadata_file).parent / Path(
                     "../aux/namespace_monitor.h5"
                 )
-                monitor_ds = DataSet.load_from_result_file(monitor_path.as_posix())
+                # Not DataSet.load_from_result_file(): it requires an
+                # ".esc.<ext>" suffix, which this file (produced by the
+                # namespace-monitor daemon, not by escape itself) doesn't
+                # have. Opening the h5py.File ourselves and handing DataSet
+                # the live handle skips that suffix check entirely (see
+                # filespec_to_file's isinstance(file, h5py.File) branch).
+                monitor_h5 = h5py.File(monitor_path, "r")
+                monitor_ds = DataSet(results_file=monitor_h5, mode="r")
                 n_added = 0
                 for mname, mval in monitor_ds.datasets.items():
                     if mname in bs_names:
