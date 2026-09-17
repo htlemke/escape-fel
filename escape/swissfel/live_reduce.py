@@ -145,10 +145,14 @@ def live_reduce_scan(
     poll_interval : float, optional
         Seconds between polls. Defaults to ``15``.
     idle_polls_before_final_pass : int, optional
-        Consecutive polls with no newly-ready step before concluding
-        acquisition has finished and doing the final pass. Defaults to
-        ``4`` (so, by default, roughly ``4 * poll_interval`` seconds of
-        true silence).
+        Consecutive polls with neither a newly-ready step *nor* growth in
+        scan_info_rel.json's total step count before concluding acquisition
+        has finished and doing the final pass -- both are checked (not just
+        readiness) because a lagging data source can leave every step
+        unready for a while even though the scan is clearly still running
+        (watched lagging by as much as 35 steps early in a real run).
+        Defaults to ``4`` (so, by default, roughly ``4 * poll_interval``
+        seconds of genuine silence on both fronts).
     max_polls : int or None, optional
         Hard cap on polls regardless of activity, as a safety net. ``None``
         (default) relies on ``idle_polls_before_final_pass`` instead.
@@ -194,6 +198,7 @@ def live_reduce_scan(
     n_stored = 0
     idle = 0
     poll_n = 0
+    n_total_seen = 0
     d = None
 
     while True:
@@ -205,7 +210,8 @@ def live_reduce_scan(
                 flush=True,
             )
 
-        if n_ready > n_stored:
+        got_new_ready_steps = n_ready > n_stored
+        if got_new_ready_steps:
             d = load_dataset_from_scan(
                 metadata_file=scan_info_file,
                 result_filename=result_filename,
@@ -225,9 +231,20 @@ def live_reduce_scan(
             except Exception as exc:
                 print(f"poll {poll_n}: store failed: {exc!r}", flush=True)
             n_stored = n_ready
+
+        # Reset idleness on *any* sign of life, not just a newly-ready step:
+        # a live run caught early can sit at 0 ready steps for a while
+        # (bsread in particular can lag its first step significantly, up to
+        # 35 steps behind at one point in a run watched during development)
+        # while scan_info_rel.json is still visibly gaining new step entries
+        # -- treating that as "idle" would give up on a run that's very much
+        # still going, purely because its slowest source hasn't produced a
+        # single complete step yet.
+        if got_new_ready_steps or n_total > n_total_seen:
             idle = 0
         else:
             idle += 1
+        n_total_seen = max(n_total_seen, n_total)
 
         poll_n += 1
         if max_polls and poll_n >= max_polls:
@@ -237,8 +254,8 @@ def live_reduce_scan(
         if idle >= idle_polls_before_final_pass:
             if verbose:
                 print(
-                    f"no newly-ready step for {idle} polls -- assuming "
-                    f"acquisition finished.",
+                    f"no new ready step or scan-info growth for {idle} "
+                    f"polls -- assuming acquisition finished.",
                     flush=True,
                 )
             break
