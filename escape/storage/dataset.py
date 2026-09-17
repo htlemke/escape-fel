@@ -356,9 +356,13 @@ class DataSet:
             esc_type = grp.attrs.get("esc_type")
             if esc_type is not None:
                 if esc_type == "array_dataset":
-                    larray = escape.Array.load_from_h5(self.results_file, tname)
-                    if larray:
-                        self.append(larray, name=tname)
+                    # Deferred for the same reason as array_timestamps_dataset
+                    # below -- see that branch's comment.
+                    larray = Proxy(
+                        partial(escape.Array.load_from_h5, self.results_file, tname)
+                    )
+                    self.datasets[tname] = larray
+                    dict2structure({tname: larray}, base=self)
                     self._esc_types[tname] = "array_dataset"
                 elif esc_type == "array_timestamps_dataset":
                     # Deferred: constructing an ArrayTimestamps (dask .data

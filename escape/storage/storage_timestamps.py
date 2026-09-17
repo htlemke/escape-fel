@@ -13,6 +13,7 @@ import logging
 import pandas as pd
 
 from .storage import Grid
+from ..utilities import hist_asciicontrast, Hist_ascii
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,46 @@ class ArrayTimestamps:
 
     def __len__(self):
         return len(self.timestamps)
+
+    def __repr__(self):
+        s = "<%s.%s object at %s>" % (
+            self.__class__.__module__,
+            self.__class__.__name__,
+            hex(id(self)),
+        )
+        s += " {}; {} record(s)".format(self.name, len(self))
+        s += "\n"
+        # Mirrors Array.__repr__: only show data content if it's already a
+        # concrete numpy array -- a dask-backed (not yet touched) .data
+        # stays untouched here rather than forcing a compute just to print.
+        if not isinstance(self.data, np.ndarray):
+            return s
+        d = np.asarray(self.data)
+        try:
+            if len(self) == 1:
+                t = pd.to_datetime(self.timestamps[0], unit="s")
+                s += f"{t}: {d.ravel()[0]:.6g}\n"
+                return s
+
+            hrange = [0, 1] if d.dtype == bool else np.nanpercentile(d, [5, 95])
+            intervals = getattr(self.scan, "timestamp_intervals", None)
+            if intervals is not None and len(self.scan) > 1:
+                for n, tstep in enumerate(self.scan):
+                    tstart = pd.to_datetime(np.asarray(intervals)[n, 0], unit="s")
+                    s += (
+                        f"Step {n:04d} [{tstart}]:"
+                        + hist_asciicontrast(
+                            np.asarray(tstep.data).squeeze(),
+                            bins=40,
+                            range=hrange,
+                            disprange=False,
+                        )
+                        + "\n"
+                    )
+            s += Hist_ascii(d, range=hrange, bins=40).horizontal()
+        except Exception:
+            pass
+        return s
 
     def plot(
         self,

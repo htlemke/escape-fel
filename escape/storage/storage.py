@@ -948,7 +948,7 @@ class Array:
         if data is None:
             return None
         else:
-            return cls(
+            out = cls(
                 index=h5.index,
                 data=data,
                 parameter=parameter,
@@ -956,6 +956,11 @@ class Array:
                 grid_specs=grid_specs,
                 name=name,
             )
+            # Attach the ArrayH5Dataset already built above so a later
+            # set_h5_storage()/store() call (e.g. via DataSet.append) reuses
+            # it instead of re-constructing one (re-listing the same group).
+            out.h5 = h5
+            return out
 
     def ones(self, **kwargs):
         return Array(
