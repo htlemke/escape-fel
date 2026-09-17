@@ -267,7 +267,7 @@ class ArrayTimestamps:
         if data is None:
             return None
         else:
-            return cls(
+            out = cls(
                 timestamps=h5.timestamps,
                 data=data,
                 parameter=parameter,
@@ -275,6 +275,12 @@ class ArrayTimestamps:
                 grid_specs=grid_specs,
                 name=name,
             )
+            # Attach the ArrayH5Dataset already built above so a later
+            # set_h5_storage()/store() call (e.g. via DataSet.append) reuses
+            # it instead of re-constructing one (which would re-do the same
+            # group listing/attrs work a second time for no reason).
+            out.h5 = h5
+            return out
 
     #    << storing
 

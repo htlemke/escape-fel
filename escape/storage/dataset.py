@@ -358,11 +358,30 @@ class DataSet:
                     self.results_file[tname].attrs["esc_type"]
                     == "array_timestamps_dataset"
                 ):
-                    larray = escape.ArrayTimestamps.load_from_h5(
-                        self.results_file, tname
+                    # Deferred: constructing an ArrayTimestamps (dask .data
+                    # wrapper, scan metadata, ArrayH5Dataset bookkeeping) has
+                    # a real per-channel cost that's pure waste for channels
+                    # never touched -- irrelevant for a handful of channels,
+                    # but a results file can hold tens of thousands (e.g. a
+                    # namespace/CA-monitor dump), where paying it upfront for
+                    # every channel dominates load time. Registering a Proxy
+                    # here keeps this branch to the one already-cheap
+                    # `.attrs` read per channel done above to classify it;
+                    # the real load_from_h5() call only happens the first
+                    # time something on this specific channel is touched.
+                    # Note this can't cheaply pre-check for an empty channel
+                    # (load_from_h5 returning None) without resolving it, so
+                    # unlike the eager path, an empty channel is registered
+                    # and raises on first touch rather than being skipped.
+                    larray = Proxy(
+                        partial(
+                            escape.ArrayTimestamps.load_from_h5,
+                            self.results_file,
+                            tname,
+                        )
                     )
-                    if larray:
-                        self.append(larray, name=tname)
+                    self.datasets[tname] = larray
+                    dict2structure({tname: larray}, base=self)
                     self._esc_types[tname] = "array_timestamps_dataset"
                 else:
                     if self.results_file[tname].attrs["esc_type"] == "pickled":
