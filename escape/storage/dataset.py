@@ -46,14 +46,15 @@ def _dedupe_array_for_alias(data, name):
         f"that duplication is intended.",
         stacklevel=3,
     )
-    # Rebuild via the constructor rather than copy.copy(): Array/ArrayTimestamps
-    # carry a lazily-built Scan/ScanTimestamps that back-references its owning
-    # array, and a shallow copy here ended up sharing the *same* __dict__ as
-    # the original (observed empirically -- deleting/rebinding .h5 on the
-    # "copy" also mutated the original in place), so construct a fresh
-    # instance explicitly instead of trusting copy.copy's semantics for this
-    # class.
-    cls = type(data)
+    # Rebuild via the constructor rather than copy.copy(): *data* here is
+    # frequently a lazy_object_proxy.Proxy (lazyEscArrays=True) transparently
+    # wrapping the real Array/ArrayTimestamps -- type(data) is the proxy
+    # class, not the wrapped one, so `type(data)(...)` fails, and copy.copy()
+    # on the proxy returned an object that (via delegation) shared the same
+    # __dict__ as the original, so mutating "the copy"'s .h5 mutated the
+    # original in place too (observed empirically). Use the real target
+    # class explicitly instead of introspecting *data*'s type.
+    cls = escape.ArrayTimestamps if hasattr(data, "timestamps") else escape.Array
     if hasattr(data, "timestamps"):  # ArrayTimestamps
         new_array = cls(
             data=data.data,
