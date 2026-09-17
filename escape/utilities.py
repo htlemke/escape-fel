@@ -11,6 +11,7 @@ from pathlib import Path
 from .plot_utilities import *
 import pickle
 import signal
+import time
 import escape.cell2function as cell2function
 from rich.tree import Tree
 import os
@@ -1079,4 +1080,26 @@ def is_local_client_distributed():
         return True
     except ValueError:
         return False
+
+
+def resilient_write(write_fn, *args, max_retries=5, base_delay=0.5,
+                     retry_errnos=(122,), **kwargs):
+    """Call ``write_fn(*args, **kwargs)``, retrying with exponential backoff
+    on transient ``OSError``s such as EDQUOT (errno 122, "Disk quota
+    exceeded"). Shared HPC filesystems (e.g. GPFS) can flicker into a
+    transient quota/inode error under momentary contention that clears up
+    within seconds — this gives such writes a chance to succeed instead of
+    failing (and, in escape's parse-cache, silently forcing an expensive
+    full re-scan) the first time they hit that window.
+
+    Any ``OSError`` whose ``errno`` is not in `retry_errnos`, or the error
+    from the final attempt, is re-raised as-is.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            return write_fn(*args, **kwargs)
+        except OSError as e:
+            if e.errno not in retry_errnos or attempt == max_retries:
+                raise
+            time.sleep(base_delay * (2**attempt))
 

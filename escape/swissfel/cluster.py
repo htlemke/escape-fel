@@ -43,6 +43,8 @@ import getpass
 import escape.storage
 from rich.progress import track
 import oschmod
+from collections import OrderedDict
+from ..utilities import resilient_write
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +416,7 @@ def parseScanEcoV01(
         if parse_res_file is not None and dstores_flat:
             try:
                 print(f'Writing parse result ({len(fls["toparse"])} new file(s)) → {parse_res_file}')
-                _atomic_write_json(parse_res_file, dstores_flat)
+                resilient_write(_atomic_write_json, parse_res_file, dstores_flat)
             except Exception as exc:
                 logger.warning("Cannot write parse result cache: %s", exc)
 
@@ -644,14 +646,53 @@ def _atomic_write_json(path, data):
 # =============================================================================
 
 
+_H5_HANDLE_CACHE_MAXSIZE = 64
+_h5_handle_cache: "OrderedDict[str, h5py.File]" = OrderedDict()
+_h5_handle_lock = Lock()
+
+
+def _get_cached_h5_file(file_path):
+    """Return an open, process-local, cached ``h5py.File`` for `file_path`,
+    opening one and evicting the least-recently-used handle if the cache is
+    full. Must be called while holding `_h5_handle_lock`."""
+    fh = _h5_handle_cache.get(file_path)
+    if fh is not None:
+        _h5_handle_cache.move_to_end(file_path)
+        return fh
+    if len(_h5_handle_cache) >= _H5_HANDLE_CACHE_MAXSIZE:
+        _, old_fh = _h5_handle_cache.popitem(last=False)
+        try:
+            old_fh.close()
+        except Exception:
+            pass
+    fh = h5py.File(file_path, "r")
+    _h5_handle_cache[file_path] = fh
+    return fh
+
+
 class _H5ProxyV02:
-    """Serialisable, file-closing proxy to an HDF5 dataset.
+    """Serialisable proxy to an HDF5 dataset, backed by a process-local
+    cache of open file handles (`_h5_handle_cache`).
 
     Implements the array-like interface expected by ``dask.array.from_array``.
-    Opens the HDF5 file on every ``__getitem__`` call and closes it
-    immediately, so no file handle is kept alive between chunk reads.
+    Earlier versions opened and closed the HDF5 file on every ``__getitem__``
+    call; profiling showed that pattern spent the majority of a cold parse's
+    wall time in ``h5py.File.close()`` alone (each close flushes HDF5
+    metadata and releases the file's lock/token, which on a clustered
+    filesystem like GPFS is a metadata-server round trip, not a cheap local
+    syscall) — reusing a handle across chunk reads removes that cost.
 
-    Because it contains only plain Python types it is picklable and therefore
+    All cache access and the actual read are serialised under one
+    process-wide lock (`_h5_handle_lock`). This is deliberately conservative:
+    the stock HDF5 C library is not guaranteed thread-safe for concurrent API
+    calls from multiple threads unless built with that option enabled, so
+    reads are not parallelised across threads within a process here — only
+    the open/close overhead is amortised. Cross-process parallelism (a
+    process-pool or distributed scheduler) is unaffected, since the cache and
+    lock are plain process-local globals, never pickled.
+
+    Because the proxy instance itself contains only plain Python types
+    (unrelated to the module-level handle cache) it remains picklable and
     compatible with every dask scheduler (sync, threads, processes,
     distributed).
     """
@@ -676,7 +717,8 @@ class _H5ProxyV02:
             import bitshuffle.h5  # noqa: F401 — side-effect only: registers HDF5 filter
         except ImportError:
             pass
-        with h5py.File(self.file_path, "r") as fh:
+        with _h5_handle_lock:
+            fh = _get_cached_h5_file(self.file_path)
             return fh[self.dset_path][key]
 
     def __dask_tokenize__(self):
@@ -1099,7 +1141,7 @@ def parseScanEcoV02(
     if cache_path is not None and scan_results:
         try:
             print(f"Writing parse result ({len(files_to_scan)} new file(s)) → {cache_path}")
-            _atomic_write_json(cache_path, dstores_flat)
+            resilient_write(_atomic_write_json, cache_path, dstores_flat)
         except Exception as exc:
             logger.warning("Cannot write parse result cache: %s", exc)
 
@@ -1617,7 +1659,8 @@ def parseScanEcoV03(
     if cache_path is not None and (scan_results or cached_dead_ends_by_kind):
         try:
             print(f"Writing parse result ({len(files_to_scan)} new file(s)) → {cache_path}")
-            _atomic_write_json(
+            resilient_write(
+                _atomic_write_json,
                 cache_path,
                 {
                     "dstores_flat": dstores_flat,

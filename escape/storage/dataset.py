@@ -9,7 +9,7 @@ import hickle
 from hickle.fileio import file_opener
 import escape
 from pathlib import Path
-from escape.utilities import StructureGroup, dict2structure
+from escape.utilities import StructureGroup, dict2structure, resilient_write
 from lazy_object_proxy import Proxy
 
 from rich.tree import Tree
@@ -126,12 +126,14 @@ class DataSet:
             else:
                 if as_pickle:
                     # self.results_file.require_dataset(name)
-                    self.results_file[name] = np.bytes_(pickle.dumps(data))
+                    resilient_write(
+                        self.results_file.__setitem__, name, np.bytes_(pickle.dumps(data))
+                    )
                     self.results_file[name].attrs["esc_type"] = "pickled"
                     self._esc_types[name] = "pickled"
                 if as_hickle:
                     # self.results_file.require_dataset(name)
-                    hickle.dump(data, self.results_file, path=f"/{name}")
+                    resilient_write(hickle.dump, data, self.results_file, path=f"/{name}")
                     self.results_file[name].attrs["esc_type"] = "hickled"
                     self._esc_types[name] = "hickled"
                 elif as_datastorage:
