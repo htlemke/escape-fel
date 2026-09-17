@@ -347,17 +347,20 @@ class DataSet:
         return base
 
     def _init_datasets(self, lazy_loading=False):
+        # grp/attrs/esc_type are each looked up once per channel and reused
+        # below -- re-indexing self.results_file[tname]/.attrs[...] several
+        # times per channel (as this loop used to) is pure h5py call
+        # overhead that adds up fast on a results file with many channels.
         for tname in self.results_file.keys():
-            if "esc_type" in self.results_file[tname].attrs.keys():
-                if self.results_file[tname].attrs["esc_type"] == "array_dataset":
+            grp = self.results_file[tname]
+            esc_type = grp.attrs.get("esc_type")
+            if esc_type is not None:
+                if esc_type == "array_dataset":
                     larray = escape.Array.load_from_h5(self.results_file, tname)
                     if larray:
                         self.append(larray, name=tname)
                     self._esc_types[tname] = "array_dataset"
-                elif (
-                    self.results_file[tname].attrs["esc_type"]
-                    == "array_timestamps_dataset"
-                ):
+                elif esc_type == "array_timestamps_dataset":
                     # Deferred: constructing an ArrayTimestamps (dask .data
                     # wrapper, scan metadata, ArrayH5Dataset bookkeeping) has
                     # a real per-channel cost that's pure waste for channels
@@ -384,18 +387,16 @@ class DataSet:
                     dict2structure({tname: larray}, base=self)
                     self._esc_types[tname] = "array_timestamps_dataset"
                 else:
-                    if self.results_file[tname].attrs["esc_type"] == "pickled":
+                    if esc_type == "pickled":
                         if lazy_loading:
                             self.datasets[tname] = Proxy(
-                                partial(pickle.loads, self.results_file[tname][()])
+                                partial(pickle.loads, grp[()])
                             )
                         else:
-                            self.datasets[tname] = pickle.loads(
-                                self.results_file[tname][()]
-                            )
+                            self.datasets[tname] = pickle.loads(grp[()])
                             dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "pickled"
-                    elif self.results_file[tname].attrs["esc_type"] == "hickled":
+                    elif esc_type == "hickled":
                         if lazy_loading:
                             self.datasets[tname] = Proxy(
                                 partial(
@@ -408,10 +409,10 @@ class DataSet:
                             )
                             dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "hickled"
-                    elif self.results_file[tname].attrs["esc_type"] == "datastorage":
+                    elif esc_type == "datastorage":
                         from datastorage.datastorage import unwrapArray
 
-                        self.datasets[tname] = unwrapArray(self.results_file[tname])
+                        self.datasets[tname] = unwrapArray(grp)
                         dict2structure({tname: self.datasets[tname]}, base=self)
                         self._esc_types[tname] = "datastorage"
 
