@@ -46,6 +46,43 @@ from rich.tree import Tree
 logger = logging.getLogger(__name__)
 
 
+_RESULT_FILE_TYPE_SUFFIXES = {"h5": ".h5", "zarr": ".zarr"}
+
+
+def _normalize_result_filepath(path, result_type):
+    """Ensure *path* ends with the ``.esc.<result_type>`` suffix pair that
+    :func:`~escape.storage.dataset.filespec_to_file` expects.
+
+    A path with no recognized suffix at all (e.g. ``"run70"``) gets one
+    added silently. A path with a suffix that doesn't match *result_type*
+    (e.g. ``.h5`` while ``result_type="zarr"``, or a missing ``.esc``) has
+    its trailing ``.esc``/``.h5``/``.zarr`` suffixes stripped and replaced,
+    with a warning, since silently writing to a different path than the one
+    given is otherwise easy to miss.
+    """
+    path = Path(path)
+    type_suffix = _RESULT_FILE_TYPE_SUFFIXES[result_type]
+    canonical_suffixes = [".esc", type_suffix]
+    if path.suffixes[-2:] == canonical_suffixes:
+        return path
+
+    stem = path.name
+    had_suffix = False
+    while Path(stem).suffix in (".esc", ".h5", ".zarr"):
+        had_suffix = True
+        stem = Path(stem).stem
+
+    new_path = path.with_name(stem + "".join(canonical_suffixes))
+    if had_suffix:
+        warnings.warn(
+            f"result_file {path.name!r} does not have the expected "
+            f"'.esc{type_suffix}' suffix for result_type={result_type!r} "
+            f"— using {new_path.name!r} instead.",
+            stacklevel=2,
+        )
+    return new_path
+
+
 def _extract_run_number(metadata_file):
     """Return the run number embedded in a metadata file path, or None.
 
@@ -578,6 +615,34 @@ def load_dataset_from_scan(
         result_filename = Path(metadata_files[0]).stem
     else:
         result_filename = Path(result_filename).stem
+
+    if (
+        result_file is not None
+        and isinstance(result_file, (str, Path))
+        and result_type in _RESULT_FILE_TYPE_SUFFIXES
+    ):
+        # A path was given directly (as opposed to an already-open
+        # h5py.File/zarr.Group, or letting results_directory/result_filename
+        # build the path below) -- normalize its extension and open it
+        # ourselves in a create-capable mode. Without this, the path went
+        # straight through to DataSet(results_file=...) with its default
+        # mode="r", which fails outright for a not-yet-existing result file
+        # (e.g. zarr.open(..., mode="r") -> PathNotFoundError).
+        result_filepath = _normalize_result_filepath(result_file, result_type)
+        if clear_result_file and result_filepath.exists():
+            if result_type == "h5":
+                result_filepath.unlink()
+            elif result_type == "zarr":
+                shutil.rmtree(result_filepath)
+        if result_type == "h5":
+            result_file = h5py.File(result_filepath, "a")
+        elif result_type == "zarr":
+            result_file = zarr.open(result_filepath, mode="a")
+        if perm_result_file:
+            try:
+                oschmod.set_mode_recursive(result_filepath, perm_result_file)
+            except Exception:
+                print(f"Warning: could not set permissions {perm_result_file}!")
 
     if result_filename and (not result_file):
         if result_type == "h5":
