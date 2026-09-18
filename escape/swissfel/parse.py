@@ -535,18 +535,23 @@ def load_dataset_from_scan(
         ``None`` (default) waits indefinitely.
     merge_data_sources : bool, optional
         If ``True``, also fold in the run's CA/EPICS channel-monitor dump
-        (``namespace_monitor.h5``, next to the scan-info JSON's ``aux/``
-        directory) as :class:`~escape.storage.storage_timestamps.ArrayTimestamps`
+        (path taken from ``scan_parameters["monitors"]`` in the scan-info
+        JSON, same as how ``"status"`` is resolved just above -- this has
+        already changed once in practice, from ``namespace_monitor.h5`` to
+        ``namespace_monitor.ixp.h5``, so the filename is always read from
+        the JSON rather than assumed, with the pre-``ixp`` name as a
+        fallback only for older runs whose JSON predates this key) as
+        :class:`~escape.storage.storage_timestamps.ArrayTimestamps`
         channels, loaded lazily via :meth:`DataSet.load_from_result_file`
         (cheap even for the tens-of-thousands-of-channels dumps this file
         typically is -- see that class's lazy-loading notes). Three sources
         are layered by name, each superseding the previous on a collision:
         run-start status (loaded first) < monitor channels < this run's own
         beam-synchronous :class:`~escape.Array` channels (highest priority,
-        always win). Missing or unreadable ``namespace_monitor.h5`` is
-        silently skipped, same as the pre-existing ``scan_monitor.pkl``
-        handling. Defaults to ``False`` (today's behavior: status and
-        per-pulse Array data only, no monitor merge).
+        always win). A missing or unreadable monitor file is silently
+        skipped, same as the pre-existing ``scan_monitor.pkl`` handling.
+        Defaults to ``False`` (today's behavior: status and per-pulse Array
+        data only, no monitor merge).
 
     Returns
     -------
@@ -897,8 +902,18 @@ def load_dataset_from_scan(
 
         if merge_data_sources:
             try:
+                # Read the monitor file's path from scan_parameters, same as
+                # "status" just above -- its filename has already changed
+                # once (namespace_monitor.h5 -> namespace_monitor.ixp.h5,
+                # observed live on run0077), and the JSON is exactly what
+                # tells us the current name instead of us having to guess
+                # or hardcode it. Fall back to the pre-ixp default only for
+                # older runs whose JSON predates this key entirely.
+                monitor_rel_path = s["scan_parameters"].get(
+                    "monitors", "aux/namespace_monitor.h5"
+                )
                 monitor_path = Path(metadata_file).parent / Path(
-                    "../aux/namespace_monitor.h5"
+                    "../" + monitor_rel_path
                 )
                 # Not DataSet.load_from_result_file(): it requires an
                 # ".esc.<ext>" suffix, which this file (produced by the
@@ -916,12 +931,12 @@ def load_dataset_from_scan(
                     dict2structure({mname: mval}, base=ds)
                     n_added += 1
                 print(
-                    f"merged {n_added} namespace_monitor.h5 channel(s) "
+                    f"merged {n_added} channel(s) from {monitor_rel_path} "
                     f"({len(monitor_ds.datasets) - n_added} shadowed by "
                     f"this run's own Array data)"
                 )
             except Exception as exc:
-                print(f"No namespace_monitor.h5 found or failed to merge it: {exc}")
+                print(f"No namespace monitor file found or failed to merge it: {exc}")
 
         # monitor data hack
         try:
