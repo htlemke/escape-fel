@@ -515,7 +515,7 @@ def _make_ipywidgets_freq_analyzer_class():
             self._range_toggle.observe(self._on_range_toggle, names="value")
 
             self._run_btn = widgets.Button(description="Run", button_style="success")
-            self._run_btn.on_click(lambda b: self.run())
+            self._run_btn.on_click(lambda b: self._on_run_clicked())
 
             self._code_html = widgets.HTML(_pre_scroll_html(""))
 
@@ -555,6 +555,15 @@ def _make_ipywidgets_freq_analyzer_class():
         def _on_span(self, xmin, xmax):
             self.engine.set_range(xmin, xmax)
             self._xmin_box.value, self._xmax_box.value = xmin, xmax
+
+        def _on_run_clicked(self):
+            # A button callback arrives as a comm message, so the output
+            # figure ``engine.run`` creates would be displayed with no cell
+            # to attach to (invisible under ipympl) -- route it into the
+            # figure's output host instead. See plot_utilities._run_in_output_host.
+            from escape.plot_utilities import _run_in_output_host
+
+            _run_in_output_host(self.ax.figure, self.run)
 
         def run(self):
             result = self.engine.run()
