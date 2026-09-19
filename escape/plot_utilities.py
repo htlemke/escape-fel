@@ -1658,16 +1658,43 @@ def _ensure_output_host(fig):
 
 
 def _run_in_output_host(fig, fn):
-    """Run ``fn()`` with ``fig``'s output host (see
-    :func:`_ensure_output_host`) as the display target, so whatever it
-    displays or prints -- the panel itself, "needs lmfit" notes, a
-    traceback -- shows up under the figure's cell."""
+    """Run ``fn()`` and show whatever it displays or prints -- the panel
+    itself, "needs lmfit" notes, a traceback -- in ``fig``'s output host
+    (see :func:`_ensure_output_host`), i.e. under the figure's cell.
+
+    Captures ``fn``'s output and appends it to the host's ``outputs`` trait
+    directly, rather than the usual ``with host:`` context: that relies on
+    the frontend matching the output message's parent id to the widget's
+    ``msg_id``, which for output produced while handling a comm message
+    (this case) doesn't reliably work across JupyterLab/widget-manager
+    versions. Writing to ``outputs`` is just widget state, so there's no
+    routing to get wrong.
+    """
     host = getattr(fig, "_escape_output_host", None)
     if host is None:
         fn()
         return
-    with host:
-        fn()
+    from IPython.utils.capture import capture_output
+
+    error = None
+    with capture_output() as cap:
+        try:
+            fn()
+        except Exception:
+            import traceback
+
+            error = traceback.format_exc()
+    outs = []
+    if cap.stdout:
+        outs.append({"output_type": "stream", "name": "stdout", "text": cap.stdout})
+    if cap.stderr:
+        outs.append({"output_type": "stream", "name": "stderr", "text": cap.stderr})
+    for o in cap.outputs:
+        outs.append({"output_type": "display_data", "data": o.data, "metadata": o.metadata})
+    if error:
+        outs.append({"output_type": "stream", "name": "stderr", "text": error})
+    if outs:
+        host.outputs = tuple(host.outputs) + tuple(outs)
 
 
 def _attach_fit_button_ipympl(fig):
