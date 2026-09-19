@@ -82,7 +82,8 @@ instead of its data values:
 sig_filt = sig.filter(1000, 2000, use_index_data=True)  # keep pulse IDs 1000–2000
 ```
 
-To pick the range graphically instead, `sig.filter_interactive()` plots the
+To pick the range graphically instead, `sig.filter_interactive()` (or just
+`sig.filter()` with no thresholds) plots the
 histogram with a draggable span (or type exact min/max values). It needs an
 interactive matplotlib backend (`%matplotlib widget` or `qt`) and returns a
 {class}`~escape.hist_select.HistogramFilter`; its `.result` is the filtered
@@ -159,11 +160,23 @@ pulse_bins = np.arange(0, 100000, 1000)
 sig_by_pulse = sig.digitize(pulse_bins, use_index_data=True)
 ```
 
-`sig.digitize_interactive()` does the same graphically: drag a span on the
-histogram for the region to digitize, then choose either a **number of bins**
-or a **bin size** (radio buttons + value box). The bin edges are drawn over
-the histogram and `.result` gives the digitized Array
-({class}`~escape.hist_select.HistogramDigitizer`; `.bins` holds the edges):
+`sig.digitize_interactive()` (or just `sig.digitize()` with no bins) does the
+same graphically: drag a span on the histogram for the region to digitize, then
+choose how to bin it with the radio buttons and the value box:
+
+- **bin size (rounded)** (default) — bins of that size on a grid anchored at
+  zero, i.e. every edge is a multiple of the size (as in
+  {func}`escape.utilities.roundto`); the selection snaps to the nearest grid
+  edges. Pass `align="center"` to put bin *centers* on the multiples instead.
+- **bin size** — equal bins starting exactly at the selection's min.
+- **number of bins** — equal bins spanning exactly the selection.
+
+Typing an integer (`20`) in the value box switches to *number of bins*, a
+non-integer (`0.1`, or `5.` for a whole-number size) to a bin size.
+
+The bin edges are drawn over the histogram and `.result` gives the digitized
+Array ({class}`~escape.hist_select.HistogramDigitizer`; `.bins` holds the
+edges):
 
 ```python
 sel = sig.digitize_interactive(n_bins=20)

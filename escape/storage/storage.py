@@ -349,7 +349,7 @@ class Array:
     def filter(self, *args, **kwargs):
         return filter(self, *args, **kwargs)
 
-    def digitize(self, bins, **kwargs):
+    def digitize(self, bins=None, **kwargs):
         return digitize(self, bins, **kwargs)
 
     def filter_interactive(self, **kwargs):
@@ -3668,7 +3668,7 @@ def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
 
 def digitize(
     array,
-    bins,
+    bins=None,
     include_outlier_bins=False,
     sort_groups_by_index=True,
     right=False,
@@ -3706,6 +3706,13 @@ def digitize(
         use_index_data (bool, optional): if True, digitize based on the array's
             index values rather than its data values. Defaults to False.
 
+    Without ``bins`` (``array.digitize()``), this falls back to the graphical
+    selection of :meth:`Array.digitize_interactive` and returns its
+    :class:`~escape.hist_select.HistogramDigitizer` (not an Array) -- fetch
+    the digitized Array from its ``.result``. ``include_outlier_bins``,
+    ``sort_groups_by_index``, ``right`` and any extra keyword arguments are
+    passed on to it.
+
     Raises:
         NotImplementedError: error if no 1d escape.Array is provided as array
             argument.
@@ -3713,6 +3720,19 @@ def digitize(
     Returns:
         escape.Array: Digitized/ resorted escape.Array
     """
+    if bins is None:
+        if use_index_data or foo is not np.digitize:
+            raise NotImplementedError(
+                "Interactive digitizing (digitize() without bins) supports "
+                "neither use_index_data=True nor a custom foo; pass the bins "
+                "explicitly."
+            )
+        return array.digitize_interactive(
+            include_outlier_bins=include_outlier_bins,
+            sort_groups_by_index=sort_groups_by_index,
+            right=right,
+            **kwargs,
+        )
 
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
@@ -3883,7 +3903,20 @@ def filter(
     small (<= ``DASK_EAGER_COMPUTE_WARN_BYTES``, and of known size),
     otherwise a ``NotImplementedError`` is raised -- call ``.compute()`` on
     the array first in that case.
+
+    Called without any thresholds (``array.filter()``), this falls back to the
+    graphical selection of :meth:`Array.filter_interactive` and returns its
+    :class:`~escape.hist_select.HistogramFilter` (not an Array) -- fetch the
+    filtered Array from its ``.result``. Keyword arguments other than the ones
+    above are passed on to it.
     """
+    if not args:
+        if use_index_data:
+            raise NotImplementedError(
+                "Interactive filtering (filter() without thresholds) does not "
+                "support use_index_data=True; pass the thresholds explicitly."
+            )
+        return array.filter_interactive(**kwargs)
     if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
         raise NotImplementedError(
             "Only 1d escape arrays can be filtered in a sensible way."
