@@ -1635,6 +1635,21 @@ def _attach_fit_button_qt(fig):
     action.setToolTip("Attach an interactive lmfit fitting panel to the active axes")
 
 
+def _make_resizable(panel):
+    """Let the user drag the bottom-right corner of an ipywidgets ``panel``
+    (Fit/Peak/Freq) to resize it. ipywidgets' ``Layout`` has no ``resize``
+    property, so this tags the panel with a CSS class and ships the rule
+    in a hidden ``HTML`` child; ``overflow: auto`` (required for the browser
+    to draw the resize handle) also makes the panel scroll instead of clip
+    when it's dragged smaller than its content."""
+    panel.add_class("escape-resizable")
+    css = widgets.HTML(
+        "<style>.escape-resizable{resize:both !important;overflow:auto !important;"
+        "min-width:260px;min-height:80px;max-width:100%;}</style>"
+    )
+    panel.children = (css,) + tuple(panel.children)
+
+
 def _ensure_output_host(fig):
     """Create (once per figure) and display an empty ``ipywidgets.Output``
     right where ``fig`` is being set up -- i.e. inside the notebook cell
@@ -1888,6 +1903,7 @@ class IpywidgetsPeakAnalyzer(widgets.VBox):
             ],
             layout=widgets.Layout(border="solid 1px #ccc", padding="6px", width="520px"),
         )
+        _make_resizable(self)
         display(self)
         self.engine.update()
 

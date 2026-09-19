@@ -352,6 +352,26 @@ class Array:
     def digitize(self, bins, **kwargs):
         return digitize(self, bins, **kwargs)
 
+    def filter_interactive(self, **kwargs):
+        """Plot this 1-D Array's histogram and pick the :meth:`filter` range
+        by dragging a span on it (or typing min/max). Returns a
+        :class:`~escape.hist_select.HistogramFilter`; its ``.result`` is the
+        filtered Array for the current selection. Needs an interactive
+        matplotlib backend."""
+        from ..hist_select import HistogramFilter
+
+        return HistogramFilter(self, **kwargs)
+
+    def digitize_interactive(self, **kwargs):
+        """Plot this 1-D Array's histogram, pick the region to :meth:`digitize`
+        by dragging a span on it, and specify the bins as a number of bins or
+        a bin size. Returns a :class:`~escape.hist_select.HistogramDigitizer`;
+        its ``.result`` is the digitized Array. Keyword arguments (``n_bins``,
+        ``right``, ``include_outlier_bins``, ...) are documented there."""
+        from ..hist_select import HistogramDigitizer
+
+        return HistogramDigitizer(self, **kwargs)
+
     def get_modulo_array(self, mod, offset=0):
         index = self.index
         out_bool = np.mod(index, mod) == offset

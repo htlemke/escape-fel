@@ -82,6 +82,17 @@ instead of its data values:
 sig_filt = sig.filter(1000, 2000, use_index_data=True)  # keep pulse IDs 1000–2000
 ```
 
+To pick the range graphically instead, `sig.filter_interactive()` plots the
+histogram with a draggable span (or type exact min/max values). It needs an
+interactive matplotlib backend (`%matplotlib widget` or `qt`) and returns a
+{class}`~escape.hist_select.HistogramFilter`; its `.result` is the filtered
+Array for whatever is selected when you ask for it:
+
+```python
+sel = sig.filter_interactive()   # drag the span on the histogram ...
+sig_filt = sel.result            # ... then fetch the filtered Array
+```
+
 ## Matching and Aligning Arrays
 
 ### `match_arrays`
@@ -146,6 +157,17 @@ rather than its data values:
 ```python
 pulse_bins = np.arange(0, 100000, 1000)
 sig_by_pulse = sig.digitize(pulse_bins, use_index_data=True)
+```
+
+`sig.digitize_interactive()` does the same graphically: drag a span on the
+histogram for the region to digitize, then choose either a **number of bins**
+or a **bin size** (radio buttons + value box). The bin edges are drawn over
+the histogram and `.result` gives the digitized Array
+({class}`~escape.hist_select.HistogramDigitizer`; `.bins` holds the edges):
+
+```python
+sel = sig.digitize_interactive(n_bins=20)
+sig_binned = sel.result
 ```
 
 ## Re-Sorting with Another Array

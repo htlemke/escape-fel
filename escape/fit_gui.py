@@ -713,17 +713,18 @@ def _make_ipywidgets_fitter_class():
             super().__init__(
                 [
                     widgets.HTML("<b>lmfit</b>"),
-                    widgets.HBox([self._component_dd, self._add_btn, self._clear_btn]),
+                    widgets.HBox([self._component_dd, self._add_btn, self._clear_btn], layout=widgets.Layout(flex_flow="row wrap")),
                     self._expr_text,
-                    widgets.HBox([self._xmin_box, self._xmax_box, self._range_toggle]),
-                    widgets.HBox([self._guess_btn, self._preview_btn, self._run_btn, self._clear_overlay_btn]),
+                    widgets.HBox([self._xmin_box, self._xmax_box, self._range_toggle], layout=widgets.Layout(flex_flow="row wrap")),
+                    widgets.HBox([self._guess_btn, self._preview_btn, self._run_btn, self._clear_overlay_btn], layout=widgets.Layout(flex_flow="row wrap")),
                     tabs,
                 ],
                 layout=widgets.Layout(border="solid 1px #ccc", padding="6px", width=width),
             )
 
-            from escape.plot_utilities import _close_sidecar, _open_sidecar, _suppress_inline_redisplay
+            from escape.plot_utilities import _close_sidecar, _make_resizable, _open_sidecar, _suppress_inline_redisplay
 
+            _make_resizable(self)
             key = f"fit_gui-{id(self.ax)}"
             _close_sidecar(key)
             if detach:

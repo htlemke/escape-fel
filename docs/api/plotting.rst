@@ -32,6 +32,17 @@ Interactive ROI Selectors
 .. autoclass:: escape.plot_utilities.MultipleRoiSelector
    :members:
 
+Histogram Range Selectors
+--------------------------
+
+Returned by :meth:`escape.Array.filter_interactive` and
+:meth:`escape.Array.digitize_interactive`.
+
+.. autoclass:: escape.hist_select.HistogramFilter
+   :members:
+.. autoclass:: escape.hist_select.HistogramDigitizer
+   :members:
+
 Image-Stack & Step Viewers
 ----------------------------
 

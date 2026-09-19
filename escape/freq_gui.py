@@ -525,16 +525,17 @@ def _make_ipywidgets_freq_analyzer_class():
                 [
                     widgets.HTML("<b>frequency analysis</b>"),
                     self._method_dd,
-                    widgets.HBox([self._nperseg_box, self._noverlap_box, self._nscales_box, self._wavelet_dd]),
-                    widgets.HBox([self._xmin_box, self._xmax_box, self._range_toggle]),
+                    widgets.HBox([self._nperseg_box, self._noverlap_box, self._nscales_box, self._wavelet_dd], layout=widgets.Layout(flex_flow="row wrap")),
+                    widgets.HBox([self._xmin_box, self._xmax_box, self._range_toggle], layout=widgets.Layout(flex_flow="row wrap")),
                     self._run_btn,
                     self._code_html,
                 ],
                 layout=widgets.Layout(border="solid 1px #ccc", padding="6px", width=width),
             )
 
-            from escape.plot_utilities import _close_sidecar, _open_sidecar, _suppress_inline_redisplay
+            from escape.plot_utilities import _close_sidecar, _make_resizable, _open_sidecar, _suppress_inline_redisplay
 
+            _make_resizable(self)
             key = f"freq_gui-{id(self.ax)}"
             _close_sidecar(key)
             if detach:
