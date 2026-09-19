@@ -1635,13 +1635,49 @@ def _attach_fit_button_qt(fig):
     action.setToolTip("Attach an interactive lmfit fitting panel to the active axes")
 
 
+def _ensure_output_host(fig):
+    """Create (once per figure) and display an empty ``ipywidgets.Output``
+    right where ``fig`` is being set up -- i.e. inside the notebook cell
+    that's currently executing -- to host the ipywidgets panels the ipympl
+    toolbar buttons open.
+
+    Without it those panels are invisible: a toolbar click arrives as a
+    comm message, so anything ``display()``-ed while handling it is tagged
+    with that comm message as its parent instead of the executing cell,
+    and JupyterLab has no output area to show it in -- it's silently
+    dropped (the widgets get created, nothing appears). An ``Output``
+    widget already sitting in the cell is the standard place to route
+    output from such a callback; it renders as nothing until filled.
+    """
+    host = getattr(fig, "_escape_output_host", None)
+    if host is None:
+        host = widgets.Output()
+        display(host)
+        fig._escape_output_host = host
+    return host
+
+
+def _run_in_output_host(fig, fn):
+    """Run ``fn()`` with ``fig``'s output host (see
+    :func:`_ensure_output_host`) as the display target, so whatever it
+    displays or prints -- the panel itself, "needs lmfit" notes, a
+    traceback -- shows up under the figure's cell."""
+    host = getattr(fig, "_escape_output_host", None)
+    if host is None:
+        fn()
+        return
+    with host:
+        fn()
+
+
 def _attach_fit_button_ipympl(fig):
     toolbar = getattr(fig.canvas, "toolbar", None)
     if toolbar is None or not hasattr(toolbar, "toolitems"):
         return
+    _ensure_output_host(fig)
 
     def _on_click():
-        _defer_to_event_loop(lambda: _run_fit_button(fig))
+        _defer_to_event_loop(lambda: _run_in_output_host(fig, lambda: _run_fit_button(fig)))
 
     # a plain function assigned as an *instance* attribute stays unbound (no
     # implicit self) -- exactly the zero-arg callable handle_toolbar_button
@@ -1669,9 +1705,10 @@ def _attach_freq_button_ipympl(fig):
     toolbar = getattr(fig.canvas, "toolbar", None)
     if toolbar is None or not hasattr(toolbar, "toolitems"):
         return
+    _ensure_output_host(fig)
 
     def _on_click():
-        _defer_to_event_loop(lambda: _run_freq_button(fig))
+        _defer_to_event_loop(lambda: _run_in_output_host(fig, lambda: _run_freq_button(fig)))
 
     toolbar.escape_freq_button = _on_click
     toolbar.toolitems = list(toolbar.toolitems) + [
@@ -2082,9 +2119,10 @@ def _attach_peak_button_ipympl(fig):
     toolbar = getattr(fig.canvas, "toolbar", None)
     if toolbar is None or not hasattr(toolbar, "toolitems"):
         return
+    _ensure_output_host(fig)
 
     def _on_click():
-        _defer_to_event_loop(lambda: _run_peak_button(fig))
+        _defer_to_event_loop(lambda: _run_in_output_host(fig, lambda: _run_peak_button(fig)))
 
     toolbar.escape_peak_button = _on_click
     toolbar.toolitems = list(toolbar.toolitems) + [
