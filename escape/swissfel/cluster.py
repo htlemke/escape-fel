@@ -20,6 +20,8 @@ import dask
 
 from .. import Array, Scan
 import numpy as np
+from operator import getitem
+from dask.base import tokenize
 from copy import deepcopy as copy
 import logging
 import warnings
@@ -29,7 +31,9 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from tqdm.autonotebook import tqdm
 from threading import Thread, Lock
-from time import sleep
+import weakref
+from time import sleep, perf_counter
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import bitshuffle.h5
@@ -338,7 +342,7 @@ def parseScanEcoV01(
     dstores_flat = []
 
     # finding previously parsed files that didn't change in filesize.
-    if parse_res_file is not None and Path(parse_res_file).exists():
+    if parse_res_file is not None and _safe_exists(parse_res_file):
         try:
             print("Parse result file found.")
             with open(parse_res_file, "r") as fp:
@@ -631,6 +635,39 @@ def _try_set_world_writable(path):
         pass
 
 
+_WORK_ROOT = Path("/das/work")
+
+
+def _safe_exists(path) -> bool:
+    """``Path.exists()`` that reports False instead of raising (e.g. on
+    PermissionError from an unreadable directory)."""
+    try:
+        return Path(path).exists()
+    except OSError:
+        return False
+
+
+def _usable_work_cache_parent(scan_info_filepath):
+    """The pgroup work directory a ``"work_directory"`` cache would live in,
+    or ``None`` if there is none or it can't be written to.
+
+    Used to decide *silently* whether attempting a work-directory cache is
+    worthwhile (nothing is created here): the scan file must sit under a
+    ``pNNNNN`` pgroup directory, and ``<work root>/pNNN/pNNNNN`` must already
+    exist and be writable by the current user.
+    """
+    try:
+        for p in Path(scan_info_filepath).parent.resolve().parents:
+            if len(p.name) == 6 and p.name[0] == "p" and p.name[1:].isnumeric():
+                tp = _WORK_ROOT / p.name[:3] / p.name
+                if tp.is_dir() and os.access(tp, os.W_OK | os.X_OK):
+                    return tp
+                return None
+    except OSError:
+        pass
+    return None
+
+
 def _atomic_write_json(path, data):
     """Write JSON to `path` atomically via a temp file + os.replace().
 
@@ -890,6 +927,88 @@ def _build_step_darray_v02(ch_meta: dict):
     return index_arr, data_arr
 
 
+def _build_channel_darrays_v02(ch_metas: list):
+    """Build ``(index_darray, data_darray)`` for one channel across all steps.
+
+    Equivalent to calling :func:`_build_step_darray_v02` per step and
+    ``da.concatenate``-ing the results (same chunks, same values), but the
+    dask graph is assembled directly: one read task per chunk, no per-step
+    ``da.from_array``/``da.concatenate`` calls. Profiling a 121-step,
+    166-channel run showed those calls (and the metadata probe
+    ``from_array`` does by opening every file) taking ~90 % of the lazy load
+    time. Falls back to the per-step path if steps differ in dtype or
+    trailing shape, where ``da.concatenate`` would have to cast or raise.
+    """
+    data_dtypes = {np.dtype(m["data_dtype"]) for m in ch_metas}
+    index_dtypes = {np.dtype(m["index_dtype"]) for m in ch_metas}
+    data_tails = {tuple(m["data_shape"])[1:] for m in ch_metas}
+    index_ndims = {len(m["index_shape"]) for m in ch_metas}
+    index_tails = {tuple(m["index_shape"])[1:] for m in ch_metas}
+    if not (
+        len(data_dtypes) == len(index_dtypes) == len(data_tails) == 1
+        and len(index_ndims) == len(index_tails) == 1
+        and any(m["data_shape"][0] for m in ch_metas)
+    ):
+        parts = [_build_step_darray_v02(m) for m in ch_metas]
+        return (
+            da.concatenate([p[0] for p in parts]).ravel(),
+            da.concatenate([p[1] for p in parts], axis=0),
+        )
+
+    def _assemble(kind, dtype, tail, chunk_sizes_per_step, shapes, dsps):
+        name = "h5-" + tokenize(
+            kind, [(m["file_path"], dsp) for m, dsp in zip(ch_metas, dsps)], shapes
+        )
+        graph = {}
+        chunks0 = []
+        k = 0
+        for m, dsp, shape, chunk0 in zip(ch_metas, dsps, shapes, chunk_sizes_per_step):
+            proxy = _H5ProxyV02(m["file_path"], dsp, shape, dtype)
+            n = shape[0]
+            if n == 0:  # da.concatenate drops empty steps; so do we
+                continue
+            rest = (slice(None),) * len(tail)
+            for start in range(0, n, max(chunk0, 1)):
+                stop = min(start + chunk0, n)
+                graph[(name, k) + (0,) * len(tail)] = (
+                    getitem,
+                    proxy,
+                    (slice(start, stop),) + rest,
+                )
+                chunks0.append(stop - start)
+                k += 1
+        arr = da.Array(
+            graph,
+            name,
+            chunks=(tuple(chunks0),) + tuple((t,) for t in tail),
+            meta=np.empty((0,) * (1 + len(tail)), dtype=dtype),
+        )
+        if not np.dtype(dtype).isnative:
+            # da.concatenate (the per-step path) yields native byte order
+            arr = arr.astype(np.dtype(dtype).newbyteorder("="))
+        return arr
+
+    data_shapes = [tuple(m["data_shape"]) for m in ch_metas]
+    index_shapes = [tuple(m["index_shape"]) for m in ch_metas]
+    data = _assemble(
+        "data",
+        data_dtypes.pop(),
+        data_tails.pop(),
+        [min(m["data_chunk0"], sh[0]) for m, sh in zip(ch_metas, data_shapes)],
+        data_shapes,
+        [m["data_dsp"] for m in ch_metas],
+    )
+    index = _assemble(
+        "index",
+        index_dtypes.pop(),
+        index_tails.pop(),
+        [sh[0] for sh in index_shapes],  # index is read in one shot per step
+        index_shapes,
+        [m["index_dsp"] for m in ch_metas],
+    )
+    return index.ravel(), data
+
+
 def _build_escape_array_v02(
     ch: str,
     scan_info: dict,
@@ -905,8 +1024,7 @@ def _build_escape_array_v02(
     absent from all steps.
     """
     tparameter = copy(base_parameter)
-    index_parts = []
-    data_parts  = []
+    ch_metas = []
     step_lengths = []
 
     for sv, srb, ssi, step_dstore in zip(
@@ -918,19 +1036,16 @@ def _build_escape_array_v02(
         if ch not in step_dstore:
             continue
 
-        idx_arr, dat_arr = _build_step_darray_v02(step_dstore[ch])
-        index_parts.append(idx_arr)
-        data_parts.append(dat_arr)
-        step_lengths.append(dat_arr.shape[0])
+        ch_metas.append(step_dstore[ch])
+        step_lengths.append(tuple(step_dstore[ch]["data_shape"])[0])
 
         for par_name, val in zip(tparameter, copy(sv) + copy(srb) + [copy(ssi)]):
             tparameter[par_name]["values"].append(val)
 
-    if not data_parts:
+    if not ch_metas:
         return None
 
-    index = da.concatenate(index_parts).ravel()
-    data  = da.concatenate(data_parts, axis=0)
+    index, data = _build_channel_darrays_v02(ch_metas)
 
     try:
         return Array(
@@ -1061,7 +1176,7 @@ def parseScanEcoV02(
     dstores_flat: list = []
     cached_files: set = set()
 
-    if cache_path is not None and cache_path.exists():
+    if cache_path is not None and _safe_exists(cache_path):
         try:
             print(f"Parse result file found: {cache_path}")
             with cache_path.open() as fh:
@@ -1425,6 +1540,432 @@ def _resolve_cache_path_v03(mode, scan_info_filepath: Path, perm=None) -> Path:
     return parent / hashed_name
 
 
+def _scan_files_v03(
+    files,
+    dead_ends_by_kind,
+    n_scan_workers=None,
+    use_processes=False,
+    memlimit_MB=100,
+    poach_dead_ends=True,
+    verbose=0,
+):
+    """Scan *files* (any mix of file kinds) with a worker pool and
+    :func:`scan_h5_file_v03`, pruned via one dead-end registry per kind.
+
+    Registries are keyed by :func:`_file_kind` and never shared across kinds
+    -- see the module comment above for why that scoping is load-bearing (a
+    single shared registry let an empty PVDATA file poison "/" as a dead
+    end for every BSDATA/JF file scanned afterward in the same run).
+
+    Returns ``(scan_results, dead_ends_by_kind)``: per-file channel
+    metadata dicts, and *dead_ends_by_kind* updated with what was learned
+    (a new dict; the argument is not modified).
+    """
+    from concurrent.futures import (
+        ThreadPoolExecutor,
+        ProcessPoolExecutor,
+        as_completed,
+    )
+
+    scan_results: dict = {}
+    manager = None
+    if verbose:
+        print(f"Scanning {len(files)} file(s) …")
+    n_workers = n_scan_workers or _default_scan_workers(len(files), use_processes)
+
+    kinds_present = {_file_kind(fp) for fp in files}
+    if use_processes:
+        import multiprocessing
+
+        manager = multiprocessing.Manager()
+        registries = {
+            kind: _PathRegistry(
+                manager=manager,
+                initial_dead_ends=dead_ends_by_kind.get(kind, set()),
+            )
+            for kind in kinds_present
+        }
+        executor_cls = ProcessPoolExecutor
+    else:
+        registries = {
+            kind: _PathRegistry(initial_dead_ends=dead_ends_by_kind.get(kind, set()))
+            for kind in kinds_present
+        }
+        executor_cls = ThreadPoolExecutor
+
+    with executor_cls(max_workers=n_workers) as ex:
+        future_map = {
+            ex.submit(
+                scan_h5_file_v03,
+                fp,
+                registries[_file_kind(fp)],
+                ("data", "pulse_id"),
+                memlimit_MB,
+                poach_dead_ends,
+            ): fp
+            for fp in files
+        }
+        for fut in track(
+            as_completed(future_map),
+            total=len(files),
+            description="Scanning files …",
+        ):
+            scan_results[future_map[fut]] = fut.result()
+
+    updated = dict(dead_ends_by_kind)
+    for kind, reg in registries.items():
+        updated[kind] = reg.dead_ends_snapshot()
+    if manager is not None:
+        manager.shutdown()
+    if verbose:
+        n_dead = sum(len(v) for v in updated.values())
+        print(f"… scan complete ({n_dead} dead-end subtree(s) known across {len(updated)} file kind(s)).")
+    return scan_results, updated
+
+
+def _default_scan_workers(n_files, processes=False):
+    """Default worker count for the file-metadata scan.
+
+    h5py serialises every call behind one global lock and the tree walk is
+    CPU-bound Python, so threads beyond the usable CPUs only add
+    contention: measured on a 1-CPU allocation, the same 121 files took
+    7.7 s with 1 thread, 10 s with 8 and 12.5 s with 32 (and one-channel
+    probing was 2.2 s with any thread count). Thread mode is therefore
+    capped at 4; process mode at 32. Both by the CPUs this process may use.
+    """
+    try:
+        usable = len(os.sched_getaffinity(0))
+    except AttributeError:  # not available on every platform
+        usable = os.cpu_count() or 1
+    return max(1, min(n_files, usable, 32 if processes else 4))
+
+
+def probe_h5_file_channel_v03(fina, template: dict, memlimit_MB: float = 500, fh=None):
+    """Metadata of ONE channel of *fina*, read directly at the dataset paths
+    recorded in *template* (that channel's metadata from another file of the
+    same kind) instead of walking the file's whole HDF5 tree.
+
+    Returns the same metadata dict as :func:`scan_h5_file_v03` provides per
+    channel, or ``None`` if the datasets are missing or empty in this file
+    (the channel is then simply absent from that step, as after a walk).
+    Pass an already open ``h5py.File`` as *fh* to skip opening (and closing)
+    the file; the caller then owns the handle.
+    """
+    fina = Path(fina).resolve()
+    try:
+        tmtime = os.path.getmtime(fina)
+        tfsize = os.stat(fina).st_size
+        own = fh is None
+        if own:
+            fh = h5py.File(fina, "r")
+        try:
+            ds_data = fh[template["data_dsp"]]
+            ds_index = fh[template["index_dsp"]]
+            if ds_data.size == 0:
+                return None
+            elem_bytes = ds_data.dtype.itemsize * int(
+                np.prod(ds_data.shape[1:]) if ds_data.ndim > 1 else 1
+            )
+            return {
+                "file_path": fina.as_posix(),
+                "data_dsp": ds_data.name,
+                "data_shape": list(ds_data.shape),
+                "data_dtype": ds_data.dtype.str,
+                "data_chunk0": max(1, int(memlimit_MB * 1024 ** 2 / elem_bytes)),
+                "index_dsp": ds_index.name,
+                "index_shape": list(ds_index.shape),
+                "index_dtype": ds_index.dtype.str,
+                "file_mtime": tmtime,
+                "file_size": tfsize,
+            }
+        finally:
+            if own:
+                fh.close()
+    except KeyError:
+        return None
+    except Exception as exc:
+        logger.warning("Could not probe %s: %s", fina, exc)
+        return None
+
+
+def _close_h5_handles(handles: dict):
+    """Close and forget every h5py.File in *handles* (errors ignored)."""
+    for fh in list(handles.values()):
+        try:
+            fh.close()
+        except Exception:
+            pass
+    handles.clear()
+
+
+class _LazyScanState:
+    """Deferred metadata scan behind ``parseScanEcoV03(lazy_esc_array_parsing=True)``.
+
+    Holds the not-yet-scanned ("pending") files grouped by
+    :func:`_file_kind`. :meth:`announce_channels` walks only a
+    representative file per kind (or uses the parse-result cache) to learn
+    which channels each kind holds and where their datasets live.
+    :meth:`ensure_channel` -- called when a lazy array is first touched --
+    then reads just *that channel's* metadata from every pending file of its
+    kind by probing the known dataset paths (:func:`probe_h5_file_channel_v03`),
+    which costs roughly one file open per file instead of a walk over every
+    channel in it. Probed files stay open, so each further channel costs
+    little (measured: ~0.06 s per channel for 120 files, versus ~9 s for a
+    walk of them). As a safety net, once the time spent probing a kind
+    reaches twice what a full walk of its remaining files is estimated to
+    cost (measured on the representative file), the rest of the kind is
+    walked once (:meth:`resolve`) and every channel of it is known.
+
+    Results are merged into the shared ``dstores_flat`` the array builders
+    read from. The parse-result cache is rewritten after each step; probed
+    channels go into a separate ``"probed"`` section (never into
+    ``dstores_flat``) so a cache file is never mistaken for having every
+    channel of a file by loaders that don't know about probing.
+    """
+
+    #: Files of a kind walked, in order, hoping to find channels there
+    #: before the kind is declared channel-less (e.g. PVDATA).
+    REP_TRIES = 3
+    #: Walk-time estimate (s/file) for kinds not walked in this load.
+    WALK_SEC_PER_FILE_GUESS = 0.05
+    #: Most probed files kept open at once (all are closed when reached).
+    MAX_OPEN_FILES = 512
+
+    def __init__(
+        self,
+        dstores_flat,
+        step_file_map,
+        files_to_scan,
+        dead_ends_by_kind,
+        cache_path,
+        scan_kwargs,
+        cached_probed=None,
+    ):
+        from collections import defaultdict
+        from threading import RLock
+
+        self._lock = RLock()
+        self.dstores_flat = dstores_flat
+        self.dead_ends = dead_ends_by_kind
+        self.cache_path = cache_path
+        self.scan_kwargs = scan_kwargs
+        self.file_step = {
+            fp: i
+            for i, step_files in enumerate(step_file_map)
+            for fp in step_files
+            if fp is not None
+        }
+        self.pending = defaultdict(list)  # kind -> new files not fully walked
+        for fp in files_to_scan:
+            self.pending[_file_kind(fp)].append(fp)
+        # kind -> channel names, known from the cache and/or representative walks
+        self.kind_channels = defaultdict(set)
+        for step in dstores_flat:
+            for ch, meta in step.items():
+                self.kind_channels[_file_kind(meta["file_path"])].add(ch)
+        self.no_channels = set()  # kinds in which no channel was found
+        self.walk_sec = {}  # kind -> measured seconds per file for a walk
+        self.probe_spent = defaultdict(float)  # kind -> seconds spent probing
+        self.probed_keys = set()  # (step_idx, channel) known only by probing
+        self._probed_done = set()  # (kind, channel) already probed
+        self._templates = {}
+        # Probed files stay open between probes (opening dominates the cost
+        # of a probe, and each newly touched channel probes the same files);
+        # closed when this state is released.
+        self._open_files = {}
+        self._open_lock = Lock()
+        weakref.finalize(self, _close_h5_handles, self._open_files)
+        self._restore_probed(cached_probed or {})
+
+    def _restore_probed(self, cached_probed):
+        for ch, per_file in cached_probed.items():
+            for fp_str, meta in per_file.items():
+                fp = Path(fp_str)
+                step = self.file_step.get(fp)
+                if step is None:
+                    continue
+                try:
+                    if os.stat(fp).st_size != meta.get("file_size"):
+                        continue
+                except OSError:
+                    continue
+                self.dstores_flat[step][ch] = meta
+                self.probed_keys.add((step, ch))
+
+    # -- fully walked files -------------------------------------------------
+    def _scan(self, files):
+        results, updated = _scan_files_v03(files, self.dead_ends, **self.scan_kwargs)
+        self.dead_ends.update(updated)
+        for fp, channels in results.items():
+            if channels:
+                step = self.file_step[fp]
+                self.dstores_flat[step].update(channels)
+                self.probed_keys.difference_update((step, ch) for ch in channels)
+        return results
+
+    def _walk_one(self, kind, fp):
+        """Walk a single file directly (no worker pool or progress display, so
+        the measured time is that of the walk itself -- it is the basis of the
+        walk-vs-probe estimate)."""
+        kw = self.scan_kwargs
+        registry = _PathRegistry(initial_dead_ends=self.dead_ends.get(kind, set()))
+        t0 = perf_counter()
+        channels = scan_h5_file_v03(
+            fp, registry, ("data", "pulse_id"), kw["memlimit_MB"], kw["poach_dead_ends"]
+        )
+        self.walk_sec[kind] = perf_counter() - t0
+        self.dead_ends[kind] = registry.dead_ends_snapshot()
+        if channels:
+            step = self.file_step[fp]
+            self.dstores_flat[step].update(channels)
+            self.probed_keys.difference_update((step, ch) for ch in channels)
+        return channels
+
+    def announce_channels(self):
+        """Learn each kind's channel names from at most REP_TRIES walked files."""
+        with self._lock:
+            for kind in list(self.pending):
+                if self.kind_channels.get(kind):
+                    continue  # channel names already known (from the cache)
+                files = self.pending[kind]
+                for fp in list(files[: self.REP_TRIES]):
+                    files.remove(fp)
+                    channels = self._walk_one(kind, fp)
+                    if channels:
+                        self.kind_channels[kind].update(channels)
+                        break
+                else:
+                    self.no_channels.add(kind)
+                    self.pending.pop(kind)  # never scanned: assumed channel-less
+
+    def kinds_of(self, ch):
+        return [k for k, chs in self.kind_channels.items() if ch in chs]
+
+    def _walk_estimate(self, kind):
+        return self.walk_sec.get(kind, self.WALK_SEC_PER_FILE_GUESS) * len(
+            self.pending.get(kind, ())
+        )
+
+    def _template(self, kind, ch):
+        key = (kind, ch)
+        if key not in self._templates:
+            self._templates[key] = next(
+                (
+                    step[ch]
+                    for step in self.dstores_flat
+                    if ch in step and _file_kind(step[ch]["file_path"]) == kind
+                ),
+                None,
+            )
+        return self._templates[key]
+
+    def _open_file(self, fp):
+        with self._open_lock:
+            fh = self._open_files.get(fp)
+            if fh is None:
+                if len(self._open_files) >= self.MAX_OPEN_FILES:
+                    _close_h5_handles(self._open_files)
+                fh = self._open_files[fp] = h5py.File(fp, "r")
+            return fh
+
+    def _probe_one(self, fp, template):
+        try:
+            fh = self._open_file(fp)
+        except OSError as exc:
+            logger.warning("Could not open %s: %s", fp, exc)
+            return None
+        return probe_h5_file_channel_v03(
+            fp, template, self.scan_kwargs["memlimit_MB"], fh=fh
+        )
+
+    def ensure_channel(self, ch):
+        for kind in self.kinds_of(ch):
+            self._resolve_channel(kind, ch)
+
+    def _resolve_channel(self, kind, ch):
+        with self._lock:
+            if (kind, ch) in self._probed_done:
+                return
+            files = [
+                fp
+                for fp in self.pending.get(kind, ())
+                if ch not in self.dstores_flat[self.file_step[fp]]
+            ]
+            if not files:
+                return
+            template = self._template(kind, ch)
+            if template is None or self.probe_spent[kind] >= 2 * self._walk_estimate(kind):
+                # Probing is not paying off (e.g. too many files to keep open,
+                # so every channel reopens them): walk the rest once instead.
+                self.resolve(kind)
+                return
+            t0 = perf_counter()
+            n = _default_scan_workers(len(files))
+            with ThreadPoolExecutor(max_workers=n) as ex:
+                metas = list(ex.map(lambda fp: self._probe_one(fp, template), files))
+            self.probe_spent[kind] += perf_counter() - t0
+            for fp, meta in zip(files, metas):
+                if meta:
+                    step = self.file_step[fp]
+                    self.dstores_flat[step][ch] = meta
+                    self.probed_keys.add((step, ch))
+            self._probed_done.add((kind, ch))
+            self._persist()
+
+    # -- whole kind ---------------------------------------------------------
+    def resolve(self, kind):
+        """Walk every still-pending file of *kind* (once) and update the cache."""
+        with self._lock:
+            files = self.pending.pop(kind, [])
+            if not files:
+                return
+            t0 = perf_counter()
+            results = self._scan(files)
+            self.walk_sec[kind] = (perf_counter() - t0) / len(files)
+            announced = self.kind_channels[kind]
+            found = {ch for chans in results.values() for ch in chans}
+            if found - announced:
+                logger.warning(
+                    "Lazy parsing: %d channel(s) of file kind %s were not present in "
+                    "its representative file and are not available in this "
+                    "dataset (e.g. %s); reload without lazy_esc_array_parsing "
+                    "to include them.",
+                    len(found - announced), kind, sorted(found - announced)[:3],
+                )
+            self._persist()
+
+    def _persist(self):
+        if self.cache_path is None:
+            return
+        flat, probed = [], {}
+        for i, step in enumerate(self.dstores_flat):
+            flat.append({c: m for c, m in step.items() if (i, c) not in self.probed_keys})
+        for i, c in self.probed_keys:
+            meta = self.dstores_flat[i][c]
+            probed.setdefault(c, {})[meta["file_path"]] = meta
+        try:
+            resilient_write(
+                _atomic_write_json,
+                self.cache_path,
+                {
+                    "dstores_flat": flat,
+                    "dead_ends_by_kind": {
+                        kind: sorted(paths) for kind, paths in self.dead_ends.items()
+                    },
+                    "probed": probed,
+                },
+            )
+        except Exception as exc:
+            logger.warning("Cannot write parse result cache: %s", exc)
+
+
+def _build_escape_array_lazy_v03(state, ch, *args):
+    """Lazy-array factory: scan the channel's file kind(s) if that hasn't
+    happened yet, then build the Array like the eager path does."""
+    state.ensure_channel(ch)
+    return _build_escape_array_v02(ch, *args)
+
+
 def parseScanEcoV03(
     file_name_json=None,
     search_paths=("./", "./scan_data/", "../scan_data"),
@@ -1443,6 +1984,7 @@ def parseScanEcoV03(
     poach_dead_ends=True,
     createEscArrays=True,
     lazyEscArrays=True,
+    lazy_esc_array_parsing=False,
     verbose=0,
 ):
     """Parse a SwissFEL eco scan and return a dict of escape.Array objects.
@@ -1462,6 +2004,10 @@ def parseScanEcoV03(
 
     New/changed parameters vs parseScanEcoV02
     ------------------------------------------
+    n_scan_workers : int, optional
+        Scan workers. Default: ``min(files, CPUs usable by this process,
+        4)`` threads (up to 32 processes with ``use_processes``): h5py
+        serialises its calls, so more threads only add contention.
     use_processes : bool
         False (default): scan files with a ThreadPoolExecutor, same as v02
         — h5py releases the GIL for I/O, so threads are as fast as
@@ -1484,6 +2030,31 @@ def parseScanEcoV03(
         is unchanged from v02 and shares none of v03's scanning speedup, so
         defaulting to lazy avoids paying that eager cost up front regardless
         of parser version.
+
+    lazy_esc_array_parsing : bool
+        Experimental, off by default. False (default): every new data file is opened up front to learn
+        each channel's shape/dtype (the dominant cost of a cold load).
+        True: only the channel *names* are determined up front, from one
+        representative file per file kind (BSDATA, JF..., see _file_kind);
+        the returned arrays are lazy proxies. The first time one is
+        touched (``.shape``, ``.data``, ``.index``, ``.scan``, ...) only
+        *that channel's* metadata is read from the kind's other files, by
+        probing the dataset paths known from the representative file
+        (about one file open per file, instead of a walk over every channel
+        in it; the files stay open for later channels). If probing a kind
+        ever costs twice what a walk of its remaining files is estimated to
+        cost, the rest of the kind is walked once instead. Files of kinds whose arrays are never touched are
+        never opened, and file kinds that contain no channels (e.g. PVDATA)
+        are skipped entirely. Assumes, like the dead-end pruning, that a
+        file kind's channel set and dataset paths are stable across the run
+        -- a channel that first appears in a later file is not announced
+        (a warning is logged if a walk finds one), and a channel whose
+        datasets are missing or empty in a file is absent from that step.
+        The parse-result cache is updated after every step; probed
+        channels are stored in a separate ``"probed"`` section. Implies
+        lazy arrays (``lazyEscArrays`` is ignored). To keep laziness end to
+        end the caller must not touch the arrays either (see
+        ``load_dataset_from_scan``).
 
     All other parameters match parseScanEcoV02.
     """
@@ -1527,14 +2098,16 @@ def parseScanEcoV03(
     # files in the same run have unrelated HDF5 layouts).
     dstores_flat: list = []
     cached_dead_ends_by_kind: dict = {}
+    cached_probed: dict = {}
     cached_files: set = set()
 
-    if cache_path is not None and cache_path.exists():
+    if cache_path is not None and _safe_exists(cache_path):
         try:
             print(f"Parse result file found: {cache_path}")
             with cache_path.open() as fh:
                 cached = json.load(fh)
             dstores_flat = cached.get("dstores_flat", [])
+            cached_probed = cached.get("probed", {})
             cached_dead_ends_by_kind = {
                 kind: set(paths)
                 for kind, paths in cached.get("dead_ends_by_kind", {}).items()
@@ -1551,6 +2124,7 @@ def parseScanEcoV03(
             logger.warning("Cannot read parse result cache (%s) — will re-scan all files.", exc)
             dstores_flat = []
             cached_dead_ends_by_kind = {}
+            cached_probed = {}
     elif checknstore_parsing_result:
         print("No parse result file found — will scan all files.")
 
@@ -1608,65 +2182,43 @@ def parseScanEcoV03(
                 print(f"  scan: {fp}")
 
     # ── 5. Parallel metadata scan of new files, pruned via per-kind registries
-    # Registries are keyed by _file_kind and never shared across kinds — see
-    # the module comment above for why that scoping is load-bearing (a
-    # single shared registry let an empty PVDATA file poison "/" as a dead
-    # end for every BSDATA/JF file scanned afterward in the same run).
+    # (see _scan_files_v03). With lazy_esc_array_parsing only one
+    # representative file per kind is scanned now (to learn the channel
+    # names); every other new file is scanned when a channel of its kind is
+    # first touched (see _LazyScanState).
     scan_results: dict = {}
-    manager = None
-    if files_to_scan:
-        if verbose:
-            print(f"Scanning {len(files_to_scan)} file(s) …")
-        n_workers = n_scan_workers or min(32, len(files_to_scan))
-
-        kinds_present = {_file_kind(fp) for fp in files_to_scan}
-        if use_processes:
-            import multiprocessing
-
-            manager = multiprocessing.Manager()
-            registries = {
-                kind: _PathRegistry(
-                    manager=manager,
-                    initial_dead_ends=cached_dead_ends_by_kind.get(kind, set()),
-                )
-                for kind in kinds_present
-            }
-            executor_cls = ProcessPoolExecutor
-        else:
-            registries = {
-                kind: _PathRegistry(
-                    initial_dead_ends=cached_dead_ends_by_kind.get(kind, set())
-                )
-                for kind in kinds_present
-            }
-            executor_cls = ThreadPoolExecutor
-
-        with executor_cls(max_workers=n_workers) as ex:
-            future_map = {
-                ex.submit(
-                    scan_h5_file_v03,
-                    fp,
-                    registries[_file_kind(fp)],
-                    ("data", "pulse_id"),
-                    memlimit_MB,
-                    poach_dead_ends,
-                ): fp
-                for fp in files_to_scan
-            }
-            for fut in track(
-                as_completed(future_map),
-                total=len(files_to_scan),
-                description="Scanning files …",
-            ):
-                scan_results[future_map[fut]] = fut.result()
-
-        for kind, reg in registries.items():
-            cached_dead_ends_by_kind[kind] = reg.dead_ends_snapshot()
-        if manager is not None:
-            manager.shutdown()
-        if verbose:
-            n_dead = sum(len(v) for v in cached_dead_ends_by_kind.values())
-            print(f"… scan complete ({n_dead} dead-end subtree(s) known across {len(cached_dead_ends_by_kind)} file kind(s)).")
+    lazy_state = None
+    if lazy_esc_array_parsing:
+        while len(dstores_flat) < len(step_file_map):
+            dstores_flat.append({})
+        lazy_state = _LazyScanState(
+            dstores_flat,
+            step_file_map,
+            files_to_scan,
+            cached_dead_ends_by_kind,
+            cache_path,
+            dict(
+                n_scan_workers=n_scan_workers,
+                use_processes=use_processes,
+                memlimit_MB=memlimit_MB,
+                poach_dead_ends=poach_dead_ends,
+                verbose=verbose,
+            ),
+            cached_probed=cached_probed,
+        )
+        lazy_state.announce_channels()
+        files_to_scan = []
+    elif files_to_scan:
+        scan_results, updated_dead_ends = _scan_files_v03(
+            files_to_scan,
+            cached_dead_ends_by_kind,
+            n_scan_workers,
+            use_processes,
+            memlimit_MB,
+            poach_dead_ends,
+            verbose,
+        )
+        cached_dead_ends_by_kind.update(updated_dead_ends)
 
     # ── 6. Merge new scan results into dstores_flat ───────────────────────────
     for step_idx, step_files in enumerate(step_file_map):
@@ -1681,7 +2233,11 @@ def parseScanEcoV03(
             dstores_flat.append(new_channels)
 
     # ── 7. Persist updated cache (dstores + per-kind dead ends) if new ───────
-    if cache_path is not None and (scan_results or cached_dead_ends_by_kind):
+    if (
+        cache_path is not None
+        and lazy_state is None
+        and (scan_results or cached_dead_ends_by_kind)
+    ):
         try:
             print(f"Writing parse result ({len(files_to_scan)} new file(s)) → {cache_path}")
             resilient_write(
@@ -1731,7 +2287,16 @@ def parseScanEcoV03(
 
     # ── 10. Assemble escape.Array per channel (unchanged from v02) ───────────
     esc_arrays = {}
-    if lazyEscArrays:
+    if lazy_state is not None:
+        for ch in sorted(all_channels):
+            esc_arrays[ch] = Proxy(
+                partial(
+                    _build_escape_array_lazy_v03,
+                    lazy_state,
+                    ch, s, dstores_flat, base_parameter, step_selection, grid_specs,
+                )
+            )
+    elif lazyEscArrays:
         for ch in all_channels:
             esc_arrays[ch] = Proxy(
                 partial(

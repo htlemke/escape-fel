@@ -83,15 +83,16 @@ sig_filt = sig.filter(1000, 2000, use_index_data=True)  # keep pulse IDs 1000–
 ```
 
 To pick the range graphically instead, `sig.filter_interactive()` (or just
-`sig.filter()` with no thresholds) plots the
-histogram with a draggable span (or type exact min/max values). It needs an
-interactive matplotlib backend (`%matplotlib widget` or `qt`) and returns a
-{class}`~escape.hist_select.HistogramFilter`; its `.result` is the filtered
-Array for whatever is selected when you ask for it:
+`sig.filter()` with no thresholds) plots the histogram with a draggable span
+(or type exact min/max values) and returns the filtered Array. It needs an
+interactive matplotlib backend (`%matplotlib widget` or `qt`). The limits are
+tunable {class}`~escape.storage.lineage.Param`s bound to the span, so results
+derived from the returned Array can follow them —
+see [Live results](live.md):
 
 ```python
-sel = sig.filter_interactive()   # drag the span on the histogram ...
-sig_filt = sel.result            # ... then fetch the filtered Array
+res = sig / i0.filter_interactive(0.5, 2)   # drag the limits on the i0 histogram ...
+res.plot(live=True)                         # ... and this plot follows
 ```
 
 ## Matching and Aligning Arrays
@@ -174,13 +175,15 @@ choose how to bin it with the radio buttons and the value box:
 Typing an integer (`20`) in the value box switches to *number of bins*, a
 non-integer (`0.1`, or `5.` for a whole-number size) to a bin size.
 
-The bin edges are drawn over the histogram and `.result` gives the digitized
-Array ({class}`~escape.hist_select.HistogramDigitizer`; `.bins` holds the
-edges):
+The bin edges are drawn over the histogram, and the digitized Array is
+returned. Its bin edges are one `Param` (`"<name> bins"`) that the tool keeps
+updated, so it can be used live like the filter above
+({class}`~escape.hist_select.HistogramDigitizer`, reachable as
+`result.lineage.tool`; `.bins` holds the edges):
 
 ```python
-sel = sig.digitize_interactive(n_bins=20)
-sig_binned = sel.result
+binned = sig.digitize_interactive(n_bins=20)
+binned.scan.plot(live=True)
 ```
 
 ## Re-Sorting with Another Array

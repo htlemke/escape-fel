@@ -15,6 +15,8 @@ from .cluster import (
     h5_file_ready,
     _resolve_cache_path_v02,
     _resolve_cache_path_v03,
+    _safe_exists,
+    _usable_work_cache_parent,
 )
 from pathlib import Path
 import json
@@ -23,6 +25,7 @@ import warnings
 import logging
 import escape
 from copy import deepcopy as copy
+from lazy_object_proxy import Proxy
 import oschmod
 
 import traceback
@@ -305,6 +308,23 @@ def _wait_for_data_files_on_disk(
         time.sleep(poll_interval)
 
 
+def _with_scan_parameter(ar, make_parameter, defer=False):
+    """Append the scan parameter ``make_parameter(ar)`` to *ar* and return it.
+
+    With ``defer=True`` and a lazy ``Proxy`` array, the append is deferred
+    to the array's first use instead of forcing the array to be built (and,
+    for ``lazy_esc_array_parsing``, its files scanned) right here.
+    """
+
+    def apply(a):
+        a.scan.append_parameter(make_parameter(a))
+        return a
+
+    if defer and type(ar) is Proxy:
+        return Proxy(lambda: apply(ar.__wrapped__))
+    return apply(ar)
+
+
 def _resolve_auto_parsing_cache(checknstore_parsing_result, metadata_file, parse_version):
     """Resolve ``checknstore_parsing_result="auto"`` for one metadata file.
 
@@ -313,10 +333,11 @@ def _resolve_auto_parsing_cache(checknstore_parsing_result, metadata_file, parse
     the run's ``aux/`` directory) throughout acquisition -- see
     ``escape.swissfel.live_reduce``'s ``daq_cache_writer`` for exactly that.
     When that cache already exists, later analysis-side calls should use it
-    automatically rather than falling back to no caching (the previous
-    default) or scanning from scratch. This only ever *reads* that
-    location; it never tries to create it there, since ``aux/`` is normally
-    only writable by the DAQ/acquisition process, not by analysis users.
+    automatically rather than scanning from scratch. This only ever *reads*
+    that location; it never tries to create it there, since ``aux/`` is
+    normally only writable by the DAQ/acquisition process, not by analysis
+    users. If it doesn't exist, a ``"work_directory"`` cache is used when
+    the pgroup's work directory exists and is writable, else no caching.
 
     Any value other than the literal string ``"auto"`` passes through
     unchanged -- this is purely about resolving the new default.
@@ -332,7 +353,12 @@ def _resolve_auto_parsing_cache(checknstore_parsing_result, metadata_file, parse
     else:
         cache_path = _resolve_cache_path_v03("same_directory", scan_info_filepath)
 
-    return "same_directory" if cache_path.exists() else False
+    if _safe_exists(cache_path):
+        return "same_directory"
+    # No DAQ-side cache: try a work-directory one so analysis-side re-loads
+    # don't re-scan every file. Only if that directory already exists and is
+    # writable -- otherwise silently no caching (never an error).
+    return "work_directory" if _usable_work_cache_parent(scan_info_filepath) else False
 
 
 def load_dataset_from_scan(
@@ -358,6 +384,7 @@ def load_dataset_from_scan(
     memlimit_MB=100,
     createEscArrays=True,
     lazyEscArrays=True,
+    lazy_esc_array_parsing=False,
     exclude_from_files=[],
     checknstore_parsing_result="auto",
     clear_parsing_result=False,
@@ -446,6 +473,20 @@ def load_dataset_from_scan(
         unchanged from the older parsers and does not benefit from the
         scanning speedup, so building lazily avoids paying that cost up
         front.  Pass ``False`` to compute arrays eagerly as before.
+    lazy_esc_array_parsing : bool, optional
+        Experimental, off by default. ``parse_version=3`` only. ``False`` (default): every new data file
+        is opened up front to learn each channel's shape (the dominant cost
+        of a cold load). ``True``: only the channel names are determined up
+        front (from one representative file per file kind); a channel's
+        shape, dtype, step lengths and data are determined -- by scanning
+        that channel's file kind once -- the first time the array is
+        touched (``.shape``, ``.data``, ``.scan``, ...). Kinds whose arrays
+        are never used are never opened, and kinds without channels (e.g.
+        PVDATA) are skipped. Assumes the channel set of each file kind is
+        the same in every file of the run, and only stays lazy end to end
+        without a results file (with one, aliased arrays are touched when
+        the DataSet is created). See ``parseScanEcoV03``. Later intended
+        to replace the camel-case ``lazyEscArrays``.
     exclude_from_files : list of str, optional
         Channel names or file patterns to skip during parsing.
     checknstore_parsing_result : bool or str, optional
@@ -457,9 +498,10 @@ def load_dataset_from_scan(
         throughout acquisition, see ``escape.swissfel.live_reduce``'s
         ``daq_cache_writer`` -- and use it automatically if so, without
         ever trying to create one there itself (``aux/`` is normally not
-        writable by analysis users). Falls back to ``False`` (no caching)
-        if nothing is found there, i.e. today's behavior if no DAQ-side
-        cache exists. Pass ``"same_directory"``, ``"work_directory"``, or
+        writable by analysis users). If nothing is found there, falls back
+        to a ``"work_directory"`` cache (created/updated as needed) when the
+        pgroup's work directory exists and is writable, otherwise to no
+        caching -- a missing path or missing permissions never raises. Pass ``"same_directory"``, ``"work_directory"``, or
         an explicit path to force a specific cache location and skip the
         ``aux/``-first check; ``False`` disables caching outright.
     clear_parsing_result : bool, optional
@@ -676,6 +718,9 @@ def load_dataset_from_scan(
                 print(f'Warning: could not set permissions {perm_result_file:s}!')
 
     _parser = {1: parseScanEcoV01, 2: parseScanEcoV02, 3: parseScanEcoV03}[parse_version]
+    if lazy_esc_array_parsing and parse_version != 3:
+        raise ValueError("lazy_esc_array_parsing requires parse_version=3.")
+    _lazy_kwargs = {"lazy_esc_array_parsing": True} if lazy_esc_array_parsing else {}
 
     if load_result_only:
         ds = DataSet.load_from_result_file(result_filepath)
@@ -710,6 +755,7 @@ def load_dataset_from_scan(
                 memlimit_MB=memlimit_MB,
                 createEscArrays=createEscArrays,
                 lazyEscArrays=lazyEscArrays,
+                **_lazy_kwargs,
                 exclude_from_files=exclude_from_files,
                 checknstore_parsing_result=effective_checknstore_parsing_result,
                 clear_parsing_result=clear_parsing_result,
@@ -754,6 +800,7 @@ def load_dataset_from_scan(
                     memlimit_MB=memlimit_MB,
                     createEscArrays=createEscArrays,
                     lazyEscArrays=lazyEscArrays,
+                    **_lazy_kwargs,
                     exclude_from_files=exclude_from_files,
                     checknstore_parsing_result=_resolve_auto_parsing_cache(
                         checknstore_parsing_result, scan_info_filepath, parse_version
@@ -832,9 +879,13 @@ def load_dataset_from_scan(
             run_no = _extract_run_number(metadata_file)
             if run_no is None:
                 run_no = file_idx
-            for ar in td.values():
-                ar.scan.append_parameter(
-                    {"run_number": {"values": [run_no] * len(ar.scan)}}
+            for nm, ar in list(td.items()):
+                td[nm] = _with_scan_parameter(
+                    ar,
+                    lambda a, run_no=run_no: {
+                        "run_number": {"values": [run_no] * len(a.scan)}
+                    },
+                    defer=lazy_esc_array_parsing,
                 )
 
             for nm, ar in td.items():
@@ -843,9 +894,11 @@ def load_dataset_from_scan(
                 else:
                     d[nm] = concatenate([d[nm], ar])
         if append_scan_parameter:
-            for nm, ar in d.items():
+            for nm, ar in list(d.items()):
                 try:
-                    ar.scan.append_parameter(append_scan_parameter)
+                    d[nm] = _with_scan_parameter(
+                        ar, lambda a: append_scan_parameter, defer=lazy_esc_array_parsing
+                    )
                 except Exception as e:
                     print(str(e))
 

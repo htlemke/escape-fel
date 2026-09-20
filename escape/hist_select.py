@@ -10,9 +10,11 @@ Two matplotlib-only front-ends (no ipywidgets/Qt needed, so they work on any
   ``array.digitize(edges)``.
 
 Both are reached through :meth:`escape.Array.filter_interactive` /
-:meth:`escape.Array.digitize_interactive`. Keep a reference to the returned
-object: its ``.result`` is computed from whatever is selected at the time you
-ask for it.
+:meth:`escape.Array.digitize_interactive`, which return the filtered/digitized
+Array; its limits/bins are :class:`~escape.storage.lineage.Param`\\ s bound to
+the tool, so results derived from it can follow (see :mod:`escape.live`). The
+tool itself is ``result.lineage.tool``; its ``.result`` is the Array for the
+current selection.
 """
 
 from __future__ import annotations
@@ -67,8 +69,12 @@ class _HistRangeSelector:
 
     _op_name = None  # "filter" / "digitize", used in messages and the title
 
-    def __init__(self, array, bins="auto", cut_percentage=0, figsize=(8, 6)):
-        if not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
+    def __init__(self, array, bins="auto", cut_percentage=0, figsize=(8, 6), *, values=None, label=None):
+        # `values`/`label` let a caller that is not an Array (a live Stream,
+        # whose rolling buffer is fed in through refresh_values) supply the
+        # data and axis label directly; `array` then only needs `.name` and
+        # the method the subclass calls on it (``filter``/``digitize``).
+        if values is None and not np.prod(np.asarray(array.shape)) == array.shape[array.index_dim]:
             raise NotImplementedError(
                 f"Only 1d escape arrays can be {self._op_name}d interactively."
             )
@@ -80,37 +86,31 @@ class _HistRangeSelector:
             )
         self.array = array
 
-        values = array.data.ravel()
-        if hasattr(values, "compute"):
-            from escape.storage.storage import _eagerly_compute_dask
+        if values is None:
+            values = array.data.ravel()
+            if hasattr(values, "compute"):
+                from escape.storage.storage import _eagerly_compute_dask
 
-            values = _eagerly_compute_dask(values, f"{self._op_name}_interactive", array.name)
-        values = np.asarray(values, dtype=float)
-        self._values = values[np.isfinite(values)]
-        # Sorted once so the per-selection event counts are two binary
-        # searches instead of a pass over every event.
-        self._sorted = np.sort(self._values)
-        if self._values.size == 0:
-            raise ValueError(f"{array.name!r} has no finite values to histogram.")
-
-        hmin, hmax = np.percentile(self._values, [cut_percentage, 100 - cut_percentage])
-        if not hmin < hmax:
-            hmin, hmax = float(self._values.min()) - 0.5, float(self._values.max()) + 0.5
-        edges = np.histogram_bin_edges(self._values, bins, range=(hmin, hmax))
-        counts, edges = np.histogram(self._values, bins=edges)
+                values = _eagerly_compute_dask(values, f"{self._op_name}_interactive", array.name)
+        self._bins_rule = bins
+        self._cut_percentage = cut_percentage
+        self._set_values(values)
+        counts, edges = self._histogram()
 
         self.fig = plt.figure(figsize=figsize)
         # Keep the widgets alive even if the caller doesn't hold on to us
         # (matplotlib widgets are only weakly referenced by the canvas).
         self.fig._escape_hist_select = self
         self.ax = self.fig.add_axes([0.09, 0.40, 0.88, 0.54])
-        self.ax.stairs(counts, edges, color="0.35")
+        self._stairs = self.ax.stairs(counts, edges, color="0.35")
         self.ax.set_xlim(edges[0], edges[-1])
-        self.ax.set_xlabel(array._labeled_name() or "value")
+        self.ax.set_xlabel(label or array._labeled_name() or "value")
         self.ax.set_ylabel("events")
         self.ax.set_title(f"{array.name or 'array'}: drag to select a range ({self._op_name})")
 
         self._updating = False
+        self._muted = False
+        self._callbacks = []
         self._range = (float(edges[0]), float(edges[-1]))
         self.span = SpanSelector(
             self.ax,
@@ -118,9 +118,11 @@ class _HistRangeSelector:
             "horizontal",
             interactive=True,
             drag_from_anywhere=True,
-            # Blitting keeps dragging responsive (only the span is redrawn);
-            # everything else is refreshed once, when the mouse is released.
-            useblit=True,
+            # No blitting: with useblit=True the span (and its handles) can go
+            # missing on some backends (seen with ipympl). Dragging stays
+            # light regardless because nothing but the span is updated until
+            # the mouse is released.
+            useblit=False,
             props=dict(alpha=0.25, facecolor="tab:blue"),
             button=[1],
         )
@@ -146,6 +148,46 @@ class _HistRangeSelector:
             display(self._code_widget)
         self._build_controls()
         self._set_range(*self._range)
+
+    # -- data ---------------------------------------------------------------
+
+    def _set_values(self, values):
+        values = np.asarray(values, dtype=float).ravel()
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            raise ValueError(f"{getattr(self.array, 'name', None)!r} has no finite values to histogram.")
+        self._values = finite
+        # Sorted once so the per-selection event counts are two binary
+        # searches instead of a pass over every event.
+        self._sorted = np.sort(finite)
+
+    def _histogram(self):
+        vals, cut = self._values, self._cut_percentage
+        hmin, hmax = np.percentile(vals, [cut, 100 - cut])
+        if not hmin < hmax:
+            hmin, hmax = float(vals.min()) - 0.5, float(vals.max()) + 0.5
+        edges = np.histogram_bin_edges(vals, self._bins_rule, range=(hmin, hmax))
+        return np.histogram(vals, bins=edges)
+
+    def refresh_values(self, values):
+        """Replace the histogrammed data (e.g. from a live buffer) and redraw
+        it under the span. The selection is kept; on_change is not fired.
+        Does nothing if ``values`` has no finite entries."""
+        try:
+            self._set_values(values)
+        except ValueError:
+            return
+        counts, edges = self._histogram()
+        self._stairs.set_data(counts, edges)
+        lo, hi = self._range
+        self.ax.set_xlim(min(edges[0], lo), max(edges[-1], hi))
+        self.ax.set_ylim(0, max(1, counts.max()) * 1.05)
+        self._muted = True
+        try:
+            self._update()
+        finally:
+            self._muted = False
+        self.fig.canvas.draw_idle()
 
     # -- range handling ---------------------------------------------------
 
@@ -198,6 +240,31 @@ class _HistRangeSelector:
                 f'<code style="user-select:all;cursor:text">{html.escape(text)}</code>' if text else ""
             )
 
+    # -- change notification --------------------------------------------------
+
+    def on_change(self, callback):
+        """Call ``callback(selector)`` whenever the selection changes (after
+        the drag is released / a value is entered)."""
+        self._callbacks.append(callback)
+
+    def _notify(self):
+        if self._muted:
+            return
+        for cb in list(self._callbacks):
+            cb(self)
+
+    def _set_range_silently(self, lo, hi):
+        """Move the span without notifying ``on_change`` callbacks."""
+        self._muted = True
+        try:
+            self.range = (lo, hi)
+        finally:
+            self._muted = False
+
+    def _bind_lifetime(self, remove):
+        """Drop the Param observers ``remove()`` when the figure is closed."""
+        self.fig.canvas.mpl_connect("close_event", lambda _e: remove())
+
     # -- subclass hooks -----------------------------------------------------
 
     def _build_controls(self):
@@ -210,7 +277,8 @@ class _HistRangeSelector:
 class HistogramFilter(_HistRangeSelector):
     """Pick a value range on a histogram and filter the Array to it.
 
-    Created by :meth:`escape.Array.filter_interactive`. Drag on the histogram
+    Created by :meth:`escape.Array.filter_interactive` (reachable as
+    ``result.lineage.tool``). Drag on the histogram
     (drag the edges or the whole span to adjust) or type exact ``min``/``max``
     values; the status line shows how many events are kept and the equivalent
     ``.filter(lo, hi)`` call.
@@ -232,6 +300,29 @@ class HistogramFilter(_HistRangeSelector):
         total = self._values.size
         self._info.set_text(f"keeps {kept} of {total} events ({100 * kept / total:.1f}%)")
         self._set_code(f".filter({_fmt(lo)}, {_fmt(hi)})")
+        self._notify()
+
+    def link(self, lo, hi):
+        """Bind the span to two :class:`~escape.storage.lineage.Param`\\ s: the
+        span starts at their values, and from then on dragging it (or typing
+        min/max) sets them, while setting them elsewhere moves the span."""
+        from escape.storage.lineage import batch
+
+        self._set_range_silently(lo.value, hi.value)
+
+        def to_params(sel):
+            with batch():
+                lo.set(sel.range[0])
+                hi.set(sel.range[1])
+
+        def to_tool():
+            if (lo.value, hi.value) != self.range:
+                self._set_range_silently(lo.value, hi.value)
+
+        self.on_change(to_params)
+        removers = [lo.observe(to_tool), hi.observe(to_tool)]
+        self._bind_lifetime(lambda: [r() for r in removers])
+        return self
 
     @property
     def result(self):
@@ -242,7 +333,8 @@ class HistogramFilter(_HistRangeSelector):
 class HistogramDigitizer(_HistRangeSelector):
     """Pick the region to digitize on a histogram and how to bin it.
 
-    Created by :meth:`escape.Array.digitize_interactive`. The selected span is
+    Created by :meth:`escape.Array.digitize_interactive` (reachable as
+    ``result.lineage.tool``). The selected span is
     the region to digitize. Pick how the bins are specified with the radio
     buttons and enter the value in the ``value`` box; the bin edges are drawn
     over the histogram and listed in the status line.
@@ -281,6 +373,10 @@ class HistogramDigitizer(_HistRangeSelector):
         Histogram display settings (``numpy.histogram_bin_edges`` bins rule,
         percentage of outliers cut from each end of the displayed range, and
         figure size).
+    values, label
+        Supply the histogrammed values and the x-axis label directly instead
+        of reading them from ``array`` (used by ``Stream.digitize_interactive``,
+        which feeds its rolling buffer in via :meth:`refresh_values`).
     **digitize_kwargs
         Forwarded to :func:`escape.storage.storage.digitize` for ``.result``
         (e.g. ``right=True``, ``include_outlier_bins=True``).
@@ -311,6 +407,8 @@ class HistogramDigitizer(_HistRangeSelector):
         bins="auto",
         cut_percentage=0,
         figsize=(8, 6),
+        values=None,
+        label=None,
         **digitize_kwargs,
     ):
         if mode not in self._MODES:
@@ -324,7 +422,7 @@ class HistogramDigitizer(_HistRangeSelector):
         self._align = align
         self._edge_lines = None
         self._bins = None
-        super().__init__(array, bins=bins, cut_percentage=cut_percentage, figsize=figsize)
+        super().__init__(array, bins=bins, cut_percentage=cut_percentage, figsize=figsize, values=values, label=label)
 
     def _build_controls(self):
         labels = list(self._MODES.values())
@@ -440,6 +538,16 @@ class HistogramDigitizer(_HistRangeSelector):
             self._edge_lines = self.ax.vlines(
                 edges, 0, 1, transform=self.ax.get_xaxis_transform(), colors="tab:orange", linewidth=0.8
             )
+        self._notify()
+
+    def link(self, bins):
+        """Bind the tool to a :class:`~escape.storage.lineage.Param` holding
+        the bin edges: it is set to the current bins now and whenever a valid
+        bin specification changes. (One-way: the tool does not follow
+        external changes of the Param.)"""
+        bins.set(self._bins.copy())
+        self.on_change(lambda sel: bins.set(sel.bins.copy()))
+        return self
 
     @property
     def bins(self):

@@ -29,11 +29,16 @@ emitting code that doesn't match what the Stream actually computes.
 
 import re
 
-from .escape_stream import Stream, _RunningStat, _operatorsJoin, _operatorsSingle
+from escape.storage.lineage import Param
+
+from .escape_stream import Stream, _RunningStat, _operatorsCompare, _operatorsJoin, _operatorsSingle
 
 try:
     import operator as _operator
-    _JOIN_SYMBOLS = dict(_operatorsJoin)
+    # Comparisons included, so numeric filters (`stream.filter(lo, hi)`, i.e.
+    # `(s >= lo) & (s <= hi)`) offload too; a Param limit is baked in as its
+    # current value (see Stream.filter).
+    _JOIN_SYMBOLS = dict(_operatorsJoin + _operatorsCompare)
     _SINGLE_SYMBOLS = dict(_operatorsSingle)
     # Stream.__invert__ uses operator.not_ directly (not via _operatorsSingle,
     # see escape_stream.py) -- added here so `~stream` codegens too.
@@ -153,7 +158,8 @@ def generate_process_script(stream, output_name=None, header=None):
 
         elif kind == "constant":
             var[node] = _safe_name("c", i)
-            lines.append(f"{var[node]} = {d['obj']!r}")
+            value = d["obj"].value if isinstance(d["obj"], Param) else d["obj"]  # a Param -> its current value
+            lines.append(f"{var[node]} = {value!r}")
 
         elif kind == "filter":
             stream_obj = d["obj"]
@@ -178,7 +184,7 @@ def generate_process_script(stream, output_name=None, header=None):
             func = proc.func
 
             arg_vars = [
-                _find_pred_var(g, node, "arg", a, var) if is_esc else repr(a)
+                _find_pred_var(g, node, "arg", a, var) if is_esc else repr(a.value if isinstance(a, Param) else a)
                 for a, is_esc in zip(proc.args, proc.args_is_esc)
             ]
 

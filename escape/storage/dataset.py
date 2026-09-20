@@ -209,7 +209,10 @@ class DataSet:
             #     f"No dataset results_file defined, data {name} will be attached in memory only."
             # )
 
-        if isinstance(data, dict):
+        # ``isinstance`` on a lazy Proxy resolves it (it consults the wrapped
+        # object's __class__); a Proxy is never a plain dict here, and
+        # resolving would force e.g. lazily parsed arrays to be built.
+        if type(data) is not Proxy and isinstance(data, dict):
             self.__dict__[name] = StructureGroup()
             dict2structure(data, base=self.__dict__[name])
         else:

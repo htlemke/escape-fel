@@ -22,6 +22,7 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
 
    user_guide/array_basics
    user_guide/array_operations
+   user_guide/live
    user_guide/scan
    user_guide/grid
    user_guide/dataset

@@ -1,5 +1,7 @@
 from copy import deepcopy
+import functools
 import hashlib
+import inspect
 import io
 import threading
 import time
@@ -15,6 +17,7 @@ from dask.typing import DaskCollection
 import operator
 
 from escape.storage.source import Source
+from . import lineage as _lineage
 from ..utilities import get_corr, hist_asciicontrast, Hist_ascii, is_local_client_distributed, plot2D, roundto, add_step_secondary_axis
 import logging
 from itertools import chain
@@ -242,6 +245,10 @@ class Array:
         source: Optional source metadata object.
         grid_specs: Optional metadata used to build ``scan.grid``.
     """
+    # Recorded provenance (see escape.storage.lineage); None unless a Param or
+    # another Array with lineage was involved in producing this Array.
+    _lineage = None
+
     def __init__(
         self,
         data=None,
@@ -352,25 +359,72 @@ class Array:
     def digitize(self, bins=None, **kwargs):
         return digitize(self, bins, **kwargs)
 
-    def filter_interactive(self, **kwargs):
-        """Plot this 1-D Array's histogram and pick the :meth:`filter` range
-        by dragging a span on it (or typing min/max). Returns a
-        :class:`~escape.hist_select.HistogramFilter`; its ``.result`` is the
-        filtered Array for the current selection. Needs an interactive
-        matplotlib backend."""
+    @property
+    def lineage(self):
+        """The recorded :class:`~escape.storage.lineage.Node` this Array came
+        from, or ``None`` (see :mod:`escape.storage.lineage`)."""
+        ref = self._lineage
+        return None if ref is None else ref.node
+
+    @property
+    def params(self):
+        """Every :class:`~escape.storage.lineage.Param` this Array depends on."""
+        return _lineage.upstream_params(self)
+
+    def evaluate(self):
+        """This Array recomputed with the **current** values of the Params it
+        depends on (only stale steps are recomputed; results are cached, so a
+        second call is free). Returns ``self`` if it has no lineage."""
+        ref = self._lineage
+        return self if ref is None else ref.get()
+
+    def filter_interactive(self, lo=None, hi=None, **kwargs):
+        """Plot this 1-D Array's histogram with a draggable span and return
+        the Array filtered to ``[lo, hi]`` (default: the full range).
+
+        The limits are :class:`~escape.storage.lineage.Param`\\ s bound to the
+        span: dragging it (or typing min/max) updates them, and anything
+        derived from the returned Array can follow -- ``res.evaluate()``, or
+        ``res.plot(live=True)``. The returned Array is a snapshot of the
+        limits at call time. The selector is ``result.lineage.tool``. Needs an
+        interactive matplotlib backend. Extra keyword arguments go to
+        :class:`~escape.hist_select.HistogramFilter`.
+        """
         from ..hist_select import HistogramFilter
 
-        return HistogramFilter(self, **kwargs)
+        tool = HistogramFilter(self, **kwargs)
+        name = self.name or "array"
+        lo = tool.range[0] if lo is None else lo
+        hi = tool.range[1] if hi is None else hi
+        p_lo = lo if isinstance(lo, _lineage.Param) else _lineage.Param(lo, f"{name} min")
+        p_hi = hi if isinstance(hi, _lineage.Param) else _lineage.Param(hi, f"{name} max")
+        tool.link(p_lo, p_hi)
+        res = filter(self, p_lo, p_hi)
+        if res.lineage is not None:
+            res.lineage.tool = tool
+        return res
 
     def digitize_interactive(self, **kwargs):
-        """Plot this 1-D Array's histogram, pick the region to :meth:`digitize`
-        by dragging a span on it, and specify the bins as a number of bins or
-        a bin size. Returns a :class:`~escape.hist_select.HistogramDigitizer`;
-        its ``.result`` is the digitized Array. Keyword arguments (``n_bins``,
-        ``right``, ``include_outlier_bins``, ...) are documented there."""
+        """Plot this 1-D Array's histogram, pick the region to digitize by
+        dragging a span, specify the bins (rounded size / size / number), and
+        return the digitized Array.
+
+        The bin edges are one :class:`~escape.storage.lineage.Param`
+        (``"<name> bins"``) that the tool keeps updated, so the returned Array
+        can follow changes via ``res.evaluate()`` / ``res.plot(live=True)``.
+        The selector is ``result.lineage.tool``. Keyword arguments
+        (``n_bins``, ``mode``, ``align``, ``right``, ``include_outlier_bins``,
+        ...) are documented at :class:`~escape.hist_select.HistogramDigitizer`.
+        """
         from ..hist_select import HistogramDigitizer
 
-        return HistogramDigitizer(self, **kwargs)
+        tool = HistogramDigitizer(self, **kwargs)
+        p = _lineage.Param(tool.bins.copy(), f"{self.name or 'array'} bins")
+        tool.link(p)
+        res = digitize(self, p, **tool.digitize_kwargs)
+        if res.lineage is not None:
+            res.lineage.tool = tool
+        return res
 
     def get_modulo_array(self, mod, offset=0):
         index = self.index
@@ -1083,8 +1137,27 @@ class Array:
         axis=None,
         linespec=".",
         *args,
+        live=False,
+        params=None,
         **kwargs,
     ):
+        """Plot data against index.
+
+        With ``live=True`` the plot redraws whenever a
+        :class:`~escape.storage.lineage.Param` this Array depends on changes
+        (e.g. a dragged histogram span); ``params="all"`` (or a list of Param
+        names) additionally shows those Params as input fields. Returns the
+        :class:`~escape.live.LivePlot`. See :mod:`escape.live`.
+        """
+        if live or params:
+            from ..live import live_plot
+
+            return live_plot(
+                self,
+                lambda ax, a: a.plot(ax, linespec, *args, **kwargs),
+                ax=axis,
+                params=params,
+            )
         y = self.data
         x = self.index
         if not axis:
@@ -1693,8 +1766,18 @@ class Array:
 
 # Inject numpy/dask delegate methods into Array
 for _name, (_np, _da, _ax, _esc) in _ARRAY_DELEGATE_METHODS.items():
-    setattr(Array, _name, _make_array_method(_name, _np, _da, _ax, _esc))
+    setattr(Array, _name, _lineage.recorded(label=_name)(_make_array_method(_name, _np, _da, _ax, _esc)))
 del _name, _np, _da, _ax, _esc  # keep module namespace tidy
+
+# Lineage recording for the remaining Array operations (see .lineage): a no-op
+# unless a Param or an Array with lineage is among the operands.
+for _name, _label in (
+    ("__getitem__", "getitem"),
+    ("categorize", "categorize"),
+    ("map_index_blocks", "map_index_blocks"),
+):
+    setattr(Array, _name, _lineage.recorded(label=_label)(getattr(Array, _name)))
+del _name, _label
 
 
 def load_from_h5_file(file_name, name, parent_group_name=""):
@@ -1860,7 +1943,7 @@ def escaped(func, convertOutput2EscData="auto"):
 
         return output
 
-    return wrapped
+    return _lineage.recorded(label=getattr(func, "__name__", "escaped"))(wrapped)
 
 
 def scan_escaped(func):
@@ -3130,6 +3213,37 @@ for opSing, symbol in _operatorsSingle:
     setattr(Scan, "__%s__" % opSing.__name__.strip("_"), scan_escaped(opSing))
 
 
+# Scan.plot(live=True, params=...): redraw when Params upstream of the Scan's
+# Array change (see escape.live) -- the static plot itself is unchanged.
+_scan_plot_static = Scan.plot
+_scan_plot_sig = inspect.signature(_scan_plot_static)
+
+
+@functools.wraps(_scan_plot_static)
+def _scan_plot(self, *args, live=False, params=None, **kwargs):
+    if not (live or params):
+        return _scan_plot_static(self, *args, **kwargs)
+    from ..live import live_plot
+
+    axis = _scan_plot_sig.bind(self, *args, **kwargs).arguments.get("axis")
+
+    def draw(ax, array):
+        bound = _scan_plot_sig.bind(array.scan, *args, **kwargs)
+        bound.arguments["axis"] = ax
+        return _scan_plot_static(*bound.args, **bound.kwargs)
+
+    return live_plot(self._array, draw, ax=axis, params=params)
+
+
+_scan_plot.__doc__ = (_scan_plot_static.__doc__ or "") + (
+    "\n\nWith ``live=True`` the plot redraws whenever a "
+    ":class:`~escape.storage.lineage.Param` the underlying Array depends on "
+    "changes; ``params=\"all\"`` (or a list of Param names) also shows them as "
+    "input fields. Returns the :class:`~escape.live.LivePlot`."
+)
+Scan.plot = _scan_plot
+
+
 # ---------------------------------------------------------------------------
 # Programmatic step-delegation method injection for Scan
 # ---------------------------------------------------------------------------
@@ -3706,10 +3820,13 @@ def digitize(
         use_index_data (bool, optional): if True, digitize based on the array's
             index values rather than its data values. Defaults to False.
 
+    Plain ``bins`` are recorded as one labeled
+    :class:`~escape.storage.lineage.Param` (``"<name> bins"``), or pass your
+    own Param, so the result can be re-evaluated when the bins change.
+
     Without ``bins`` (``array.digitize()``), this falls back to the graphical
-    selection of :meth:`Array.digitize_interactive` and returns its
-    :class:`~escape.hist_select.HistogramDigitizer` (not an Array) -- fetch
-    the digitized Array from its ``.result``. ``include_outlier_bins``,
+    selection of :meth:`Array.digitize_interactive` and returns the digitized
+    Array (its bins bound to the tool). ``include_outlier_bins``,
     ``sort_groups_by_index``, ``right`` and any extra keyword arguments are
     passed on to it.
 
@@ -3768,16 +3885,16 @@ def digitize(
     if foo is np.digitize:
         kwargs["right"] = right
     inds = foo(darray, bins, **kwargs)
-    ix = inds.argsort()[(0 < inds) & (inds < len(bins))]
-    bin_nos, counts = np.unique(
-        inds[(0 < inds) & (inds < len(bins))] - 1, return_counts=True
-    )
+    # Keep only events inside the bin range, grouped by bin; within a bin
+    # optionally ordered by event index. One vectorised sort (not a
+    # per-bin loop, which is quadratic in the number of bins).
+    valid = ((0 < inds) & (inds < len(bins))).nonzero()[0]
+    valid_bins = inds[valid]
     if sort_groups_by_index:
-        for n, bin_no in enumerate(bin_nos):
-            tmn = sum(counts[:n])
-            tmx = sum(counts[: n + 1])
-            tix = array.index[ix[tmn:tmx]].argsort()
-            ix[tmn:tmx] = ix[tmn:tmx][tix]
+        ix = valid[np.lexsort((array.index[valid], valid_bins))]
+    else:
+        ix = valid[np.argsort(valid_bins, kind="stable")]
+    bin_nos, counts = np.unique(valid_bins - 1, return_counts=True)
     bin_left = bins[1:]
     bin_right = bins[:-1]
     bin_center = (bin_left + bin_right) / 2
@@ -3797,6 +3914,9 @@ def digitize(
         parameter=parameter,
         step_lengths=counts,
     )
+
+
+digitize = _lineage.recorded(introduce=_lineage.introduce_digitize)(digitize)
 
 
 def unravel_scans(*arrays, categorize_target=None):
@@ -3904,11 +4024,15 @@ def filter(
     otherwise a ``NotImplementedError`` is raised -- call ``.compute()`` on
     the array first in that case.
 
+    Plain numeric thresholds are recorded as labeled
+    :class:`~escape.storage.lineage.Param`\\ s (``"<name> min"``/``"<name> max"``)
+    -- pass your own Params instead to share/tune them -- so the result can be
+    re-evaluated when they change (see :mod:`escape.storage.lineage`).
+
     Called without any thresholds (``array.filter()``), this falls back to the
-    graphical selection of :meth:`Array.filter_interactive` and returns its
-    :class:`~escape.hist_select.HistogramFilter` (not an Array) -- fetch the
-    filtered Array from its ``.result``. Keyword arguments other than the ones
-    above are passed on to it.
+    graphical selection of :meth:`Array.filter_interactive` and returns the
+    filtered Array (its limits bound to the draggable span). Keyword
+    arguments other than the ones above are passed on to it.
     """
     if not args:
         if use_index_data:
@@ -3940,6 +4064,9 @@ def filter(
         step_lengths=stepLengths,
         parameter=scan.parameter,
     )
+
+
+filter = _lineage.recorded(introduce=_lineage.introduce_filter)(filter)
 
 
 def broadcast_to(ndarray_list, arraydef):

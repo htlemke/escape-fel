@@ -28,6 +28,8 @@ import itertools
 
 import numpy as np
 
+from escape.storage.lineage import Param
+
 from .escape_stream import EventSource, FilteredEventSource, ProcSource, Stream
 
 # Node "kind" -> a display color for draw(); anything else falls back to gray.
@@ -55,6 +57,8 @@ def _require_networkx():
 
 
 def _const_label(value):
+    if isinstance(value, Param):
+        return f"{value.name}={_const_label(value.value)}"
     if isinstance(value, np.ndarray):
         return f"array{value.shape}"
     r = repr(value)

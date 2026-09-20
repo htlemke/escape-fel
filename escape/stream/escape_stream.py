@@ -26,10 +26,13 @@ Improvements over escape_stream.py:
 import threading
 import time
 import operator
+import weakref
 from collections import deque
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+from escape.storage.lineage import Param
 
 from .es_wrappers import EventHandler_SFEL, LocalEventHandler
 from . import plots
@@ -174,7 +177,11 @@ class Scan:
             self._values = [None]
         else:
             self._parameterNames = [tp.name for tp in parameters]
-            self._applyPrecision(precision or {})
+            # (`precision or {}` would raise for an ndarray of >1 entries --
+            # exactly what copy() passes for a multi-parameter Scan.)
+            if precision is None or (not isinstance(precision, np.ndarray) and not precision):
+                precision = {}
+            self._applyPrecision(precision)
             self._values = values if values is not None else []
 
     def _applyPrecision(self, precision):
@@ -236,6 +243,58 @@ class Scan:
             return []
 
 
+class _BinState:
+    """Shared state of a *tunable* digitize binning (see :class:`BinScan`).
+
+    Holds the step ``values`` list every Scan copy of this binning shares, and
+    the DataManagers accumulating on it. When the bin-edges Param changes,
+    the step list is rebuilt in place and those DataManagers are reset --
+    the old bins' data no longer means anything under the new bins.
+    """
+
+    def __init__(self, param):
+        self.param = param
+        self.values = self._bin_values()
+        self.managers = weakref.WeakSet()
+        self._remove = param.observe(self.on_change)
+
+    def _bin_values(self):
+        edges = np.asarray(self.param.value, dtype=float)
+        return [
+            (sum(edges[n : n + 2]) / 2.0, edges[n], edges[n + 1])
+            for n in range(len(edges) - 1)
+        ]
+
+    def on_change(self):
+        new = self._bin_values()
+        managers = list(self.managers)
+        # Hold every manager's lock so the event thread is not in the middle
+        # of an append while the step structure is replaced under it.
+        for m in managers:
+            m._lock.acquire()
+        try:
+            self.values[:] = new
+            for m in managers:
+                m.reset_steps(len(new))
+        finally:
+            for m in reversed(managers):
+                m._lock.release()
+
+
+class BinScan(Scan):
+    """A Scan whose steps are the bins of a :class:`~escape.storage.lineage.Param`
+    of bin edges (see :func:`digitizeScan`). ``copy()`` shares the step list and
+    state, so every Stream derived from a categorized Stream follows a bin change.
+    """
+
+    def __init__(self, parameters, state, precision=None):
+        super().__init__(parameters, values=state.values, precision=precision)
+        self._state = state
+
+    def copy(self):
+        return BinScan(self._parameters, self._state, precision=self._precision)
+
+
 # ---------------------------------------------------------------------------
 # DataManager — per-step circular buffers
 # ---------------------------------------------------------------------------
@@ -245,6 +304,10 @@ class DataManager:
         if scan is None:
             scan = Scan()
         self.scan = scan
+        self._lock = threading.RLock()
+        state = getattr(scan, "_state", None)
+        if state is not None:  # tunable binning: register to be reset on change
+            state.managers.add(self)
         if data is None:
             self._data = [deque(maxlen=maxlen) for _ in range(len(scan._values))]
             self._eventIds = [deque(maxlen=maxlen) for _ in range(len(scan._values))]
@@ -262,6 +325,10 @@ class DataManager:
         self._lastEventId = None
 
     def append(self, data, eventId, index=None):
+        with self._lock:
+            self._append_locked(data, eventId, index)
+
+    def _append_locked(self, data, eventId, index):
         if eventId is None or eventId == self._lastEventId:
             return
         self._lastEventId = eventId
@@ -296,6 +363,24 @@ class DataManager:
         step_data.append(data)
         self._eventIds[index].append(eventId)
         self._counts[index] += 1
+
+    def clear(self):
+        """Discard everything accumulated so far (buffers and counts) but keep
+        the step structure. Accumulation carries on with the next event."""
+        with self._lock:
+            for d, e in zip(self._data, self._eventIds):
+                d.clear()
+                e.clear()
+            self._counts[:] = [0] * len(self._counts)
+
+    def reset_steps(self, n_steps):
+        """Discard all data and re-size to ``n_steps`` (empty) steps, in place
+        so ``Stream.data``/``eventIds`` keep pointing at these lists."""
+        with self._lock:
+            maxlen = self._data[0].maxlen if self._data else 1000
+            self._data[:] = [deque(maxlen=maxlen) for _ in range(n_steps)]
+            self._eventIds[:] = [deque(maxlen=maxlen) for _ in range(n_steps)]
+            self._counts[:] = [0] * n_steps
 
     def _getDataShape(self):
         lens = self.lens()
@@ -987,7 +1072,17 @@ class StreamBinning:
 
     def __init__(self, key_stream, bins):
         self.key_stream = key_stream
-        self.bins = np.asarray(bins, dtype=float)
+        # The bin edges are a Param (created from plain edges): changing it
+        # re-bins from the next pulse on, discarding what was accumulated
+        # under the old bins. Pass your own Param to share/tune it.
+        self.bins_param = bins if isinstance(bins, Param) else Param(
+            np.asarray(bins, dtype=float), f"{key_stream.name} bins"
+        )
+
+    @property
+    def bins(self):
+        """Current bin edges (array)."""
+        return np.asarray(self.bins_param.value, dtype=float)
 
     def categorize(self, target_stream):
         """Return a new Stream: *target_stream*'s data accumulated per bin.
@@ -1004,7 +1099,7 @@ class StreamBinning:
         -------
         Stream
         """
-        scan = digitizeScan(self.key_stream, self.bins)
+        scan = digitizeScan(self.key_stream, self.bins_param)
         result = Stream(source=target_stream._source, scan=scan)
         # `result._source is target_stream._source` (identical object -- the
         # data is untouched, only the scan grouping differs), so a graph walk
@@ -1017,15 +1112,16 @@ class StreamBinning:
         # `_source`-based node it would build by default.
         result._graph_parent = (
             "categorize",
-            {"data": target_stream, "key": self.key_stream, "bins": self.bins},
+            {"data": target_stream, "key": self.key_stream, "bins": self.bins_param},
         )
         return result
 
     def __repr__(self):
+        bins = self.bins
         return (
             f"StreamBinning(key={self.key_stream.name!r}, "
-            f"n_bins={len(self.bins)-1}, "
-            f"range=[{self.bins[0]:.3g}, {self.bins[-1]:.3g}])"
+            f"n_bins={len(bins)-1}, "
+            f"range=[{bins[0]:.3g}, {bins[-1]:.3g}])"
         )
 
 
@@ -1690,18 +1786,33 @@ class Stream:
     # Array-mirroring API: filtering and categorisation
     # ------------------------------------------------------------------
 
-    def filter(self, mask_stream):
-        """Return a new Stream that only accumulates events where *mask_stream* is truthy.
+    def filter(self, mask_or_lo, hi=None, *, on_change=None):
+        """Return a new Stream that only accumulates events that pass a filter.
 
-        Mirrors ``escape.Array`` boolean indexing.  For live bsread streams the
-        mask is evaluated per-event from the current bsread message without
-        requiring the mask stream to be separately accumulating.
+        ``filter(mask_stream)``
+            Keep events where *mask_stream* is truthy (mirrors ``escape.Array``
+            boolean indexing; ``i[pump]`` is shorthand). For live bsread streams
+            the mask is evaluated per-event from the current message without
+            requiring the mask stream to be separately accumulating. Use
+            ``~pump`` for logical NOT.
+
+        ``filter(lo, hi)``
+            Keep events where ``lo <= self <= hi`` (mirrors ``Array.filter``).
+            Plain numbers become labeled :class:`~escape.storage.lineage.Param`
+            objects (``"<name> min"``/``"<name> max"``) that are read **per
+            event**: change one (``p.value = ...``, an input field of
+            ``escape.live.panel``, or the span of :meth:`filter_interactive`)
+            and it applies from the next pulse on. Events already accumulated
+            stay as they are. Pass your own Params to share them.
 
         Parameters
         ----------
-        mask_stream : Stream
-            Boolean-valued stream.  Use ``~pump`` for logical NOT (gives the
-            complement of a 0/1 channel as True/False).
+        mask_or_lo : Stream or float or Param
+        hi : float or Param, optional
+            Required with a numeric *mask_or_lo*.
+        on_change : {None, "reset"}
+            ``"reset"``: when one of the limits changes, discard what the
+            returned Stream has accumulated so far (see :meth:`reset_on_change`).
 
         Returns
         -------
@@ -1710,16 +1821,167 @@ class Stream:
         Note
         ----
         Calling ``.accumulate(True)`` on the *returned* filtered Stream (or on
-        anything built from it) automatically subscribes both *mask_stream*'s
-        and the filtered channel's real underlying channels -- there's no need
-        to separately call ``mask_stream.accumulate(True)``.
+        anything built from it) automatically subscribes both the mask's and the
+        filtered channel's real underlying channels -- there's no need to
+        separately call ``mask_stream.accumulate(True)``.
 
         See Also
         --------
         Stream.__getitem__ : ``i[pump]`` is shorthand for ``i.filter(pump)``.
+        Stream.filter_interactive : pick the limits on a live histogram.
         """
-        filtered_src = FilteredEventSource(self._source, mask_stream, inner_stream=self)
-        return Stream(source=filtered_src)
+        if isinstance(mask_or_lo, Stream):
+            if hi is not None:
+                raise TypeError("filter(mask_stream) takes no second argument")
+            mask = mask_or_lo
+        else:
+            if hi is None:
+                raise TypeError("filter(lo, hi) needs both limits (use -inf/inf for an open side)")
+            p_lo = mask_or_lo if isinstance(mask_or_lo, Param) else Param(mask_or_lo, f"{self.name} min")
+            p_hi = hi if isinstance(hi, Param) else Param(hi, f"{self.name} max")
+            mask = (self >= p_lo) & (self <= p_hi)
+        filtered_src = FilteredEventSource(self._source, mask, inner_stream=self)
+        filtered = Stream(source=filtered_src)
+        if on_change == "reset":
+            filtered.reset_on_change()
+        elif on_change is not None:
+            raise ValueError(f"on_change must be None or 'reset', got {on_change!r}")
+        return filtered
+
+    def filter_interactive(self, lo=None, hi=None, n_bins=50, update=0.5, timeout=5, on_change=None, **kwargs):
+        """Live histogram of this scalar Stream with a draggable span; returns
+        the Stream filtered to ``[lo, hi]`` (mirrors ``Array.filter_interactive``).
+
+        The histogram shows the Stream's rolling buffer (the retained recent
+        events, like :meth:`plot_hist`) and refreshes every *update* seconds.
+        Dragging the span (or typing min/max) sets the limits, which apply from
+        the next pulse on; events accumulated before stay. The limits are
+        :class:`~escape.storage.lineage.Param`\\ s, so ``escape.live.panel`` shows
+        them as input fields too. Accumulation of this Stream is switched on
+        (needed for the histogram) and left on when the window closes. The
+        selector is the returned Stream's ``.tool``. Needs an interactive
+        matplotlib backend.
+
+        Parameters
+        ----------
+        lo, hi : float or Param, optional
+            Initial limits; default: the range of the data seen at call time.
+        n_bins : int
+            Histogram bins.
+        update : float
+            Histogram refresh interval in seconds.
+        timeout : float
+            How long to wait for the first events.
+        on_change : {None, "reset"}
+            As in :meth:`filter`.
+        **kwargs
+            Passed to :class:`~escape.hist_select.HistogramFilter`.
+        """
+        from escape.hist_select import HistogramFilter
+
+        self.accumulate(True)
+        self._wait_for_samples(timeout)
+        if np.prod(self._peek_shape(), dtype=int) > 1:
+            raise NotImplementedError("filter_interactive needs a scalar-valued Stream.")
+        tool = HistogramFilter(self, bins=n_bins, values=self._rolling_values(), label=f"{self.name} ({self.unit})", **kwargs)
+        lo = tool.range[0] if lo is None else lo
+        hi = tool.range[1] if hi is None else hi
+        p_lo = lo if isinstance(lo, Param) else Param(lo, f"{self.name} min")
+        p_hi = hi if isinstance(hi, Param) else Param(hi, f"{self.name} max")
+        tool.link(p_lo, p_hi)
+
+        def tick():
+            try:
+                tool.refresh_values(self._rolling_values())
+            except Exception as exc:  # keep the timer alive across a bad tick
+                print(f"filter_interactive refresh error: {exc}")
+
+        if update:
+            timer = tool.fig.canvas.new_timer(interval=int(update * 1000))
+            timer.add_callback(tick)
+            timer.start()
+            tool._timer = timer
+            tool.fig.canvas.mpl_connect("close_event", lambda _e: timer.stop())
+        filtered = self.filter(p_lo, p_hi, on_change=on_change)
+        filtered.tool = tool
+        return filtered
+
+    def _rolling_values(self):
+        """The retained (rolling-buffer) samples of this Stream, flat."""
+        return np.asarray([v for step in self.data for v in list(step)], dtype=float)
+
+    # -- tunable parameters -------------------------------------------------
+
+    def _upstream_params(self):
+        """Every :class:`~escape.storage.lineage.Param` this Stream depends
+        on, walking its (live) derivation graph. Also what
+        ``escape.live.upstream_params``/``panel`` use for Streams."""
+        out, seen = [], set()
+
+        def visit(x):
+            if isinstance(x, Stream):
+                walk(x)
+            elif isinstance(x, Param) and x not in out:
+                out.append(x)
+
+        def walk(stream):
+            if id(stream) in seen:
+                return
+            seen.add(id(stream))
+            parent = getattr(stream, "_graph_parent", None)
+            if parent is not None:
+                for dep in parent[1].values():
+                    visit(dep)
+                return
+            src = stream._source
+            if isinstance(src, FilteredEventSource):
+                visit(src._inner_stream)
+                visit(src._mask)
+            elif isinstance(src, ProcSource):
+                for a in src.procObj.args:
+                    visit(a)
+                for v in src.procObj.kwargs.values():
+                    visit(v)
+
+        walk(self)
+        return out
+
+    @property
+    def params(self):
+        """Every :class:`~escape.storage.lineage.Param` this Stream depends on."""
+        return self._upstream_params()
+
+    def clear(self):
+        """Discard everything this Stream has accumulated so far (accumulation
+        itself carries on)."""
+        self._dataManager.clear()
+
+    def reset_on_change(self, flag=True):
+        """With ``flag=True``, :meth:`clear` this Stream whenever one of the
+        Params it depends on changes -- so its statistics only ever contain
+        events taken with the current settings. ``False`` switches it off.
+        (Default behaviour without this: a change applies to new events only
+        and the accumulated ones stay.)"""
+        for remove in getattr(self, "_reset_removers", []):
+            remove()
+        self._reset_removers = [p.observe(self.clear) for p in self.params] if flag else []
+        return self
+
+    def _show_params(self, params):
+        """Display input fields for this Stream's Params (notebook), see
+        ``escape.live.panel``. Used by the ``params=`` option of the plots."""
+        from escape.live import panel
+
+        box = panel(self, params=params)
+        try:
+            from IPython import get_ipython
+            from IPython.display import display
+
+            if get_ipython() is not None:
+                display(box)
+        except ImportError:  # pragma: no cover
+            pass
+        return box
 
     def element(self, index):
         """Select a single element from this Stream's per-event array value.
@@ -1797,16 +2059,25 @@ class Stream:
             f"array value), not {type(key).__name__}"
         )
 
-    def digitize(self, bins):
+    def digitize(self, bins=None, **kwargs):
         """Create a binning template for this channel's values.
 
         Mirrors ``escape.Array.digitize()``.  Returns a :class:`StreamBinning`
         whose ``.categorize(other)`` produces a new Stream binned by *self*'s
         values.
 
+        The bin edges are kept as a labeled
+        :class:`~escape.storage.lineage.Param` (``"<name> bins"``, also
+        ``binning.bins_param``): set a new value and the binning changes from
+        the next pulse on. Because the bins define the scan steps, that
+        **discards everything accumulated under the old bins** in the
+        categorized Streams (and Streams derived from them).
+
+        Without *bins* (``stream.digitize()``) this is :meth:`digitize_interactive`.
+
         Parameters
         ----------
-        bins : array-like of float
+        bins : array-like of float or Param, optional
             Monotonically increasing bin edges.
 
         Returns
@@ -1817,7 +2088,65 @@ class Stream:
         -------
         ratio_vs_t = t.digitize(np.linspace(-2, 2, 41)).categorize(i / i0)
         """
-        return StreamBinning(self, np.asarray(bins, dtype=float))
+        if bins is None:
+            return self.digitize_interactive(**kwargs)
+        if kwargs:
+            raise TypeError(f"digitize() got unexpected keyword arguments {sorted(kwargs)}")
+        return StreamBinning(self, bins)
+
+    def digitize_interactive(self, n_bins=10, update=0.5, timeout=5, **kwargs):
+        """Live histogram of this scalar Stream with a draggable span for the
+        region to bin and controls for the bins (rounded size / size / number
+        of bins -- see :class:`~escape.hist_select.HistogramDigitizer`).
+        Returns the :class:`StreamBinning`, ready for ``.categorize(...)``
+        (mirrors ``Array.digitize_interactive``); the selector is its ``.tool``.
+
+        The histogram shows the Stream's rolling buffer (like :meth:`plot_hist`)
+        and refreshes every *update* seconds. Changing the span or the bin
+        specification re-bins from the next pulse on and **discards what was
+        accumulated under the old bins** (see :meth:`digitize`). Accumulation
+        of this Stream is switched on and left on when the window closes.
+        Needs an interactive matplotlib backend.
+
+        Parameters
+        ----------
+        n_bins : int
+            Roughly how many bins the initial bin size should give.
+        update : float
+            Histogram refresh interval in seconds.
+        timeout : float
+            How long to wait for the first events.
+        **kwargs
+            Passed to :class:`~escape.hist_select.HistogramDigitizer`
+            (``mode``, ``align``, ``bins`` = histogram bins rule, ...).
+        """
+        from escape.hist_select import HistogramDigitizer
+
+        self.accumulate(True)
+        self._wait_for_samples(timeout)
+        if np.prod(self._peek_shape(), dtype=int) > 1:
+            raise NotImplementedError("digitize_interactive needs a scalar-valued Stream.")
+        tool = HistogramDigitizer(
+            self, n_bins=n_bins, values=self._rolling_values(), label=f"{self.name} ({self.unit})", **kwargs
+        )
+        bins = Param(tool.bins.copy(), f"{self.name} bins")
+        tool.link(bins)
+
+        def tick():
+            try:
+                tool.refresh_values(self._rolling_values())
+            except Exception as exc:  # keep the timer alive across a bad tick
+                print(f"digitize_interactive refresh error: {exc}")
+
+        if update:
+            timer = tool.fig.canvas.new_timer(interval=int(update * 1000))
+            timer.add_callback(tick)
+            timer.start()
+            tool._timer = timer
+            tool.fig.canvas.mpl_connect("close_event", lambda _e: timer.stop())
+        binning = StreamBinning(self, bins)
+        binning.tool = tool
+        return binning
 
     def categorize(self, other_stream):
         """Apply this Stream's scan structure to *other_stream*.
@@ -2035,6 +2364,16 @@ class Stream:
                 raise TimeoutError(f"Timed out waiting for data from {self.name!r}.")
             time.sleep(0.05)
 
+    def _wait_for_samples(self, timeout=5, n_samples=100, extra=2.0):
+        """Wait (up to *timeout*, raising if not even 2 samples arrive) for the
+        first events, then up to *extra* more seconds for ``n_samples`` --
+        so an interactive tool starts from a histogram of more than a
+        handful of events."""
+        self._wait_for_data(timeout)
+        deadline = time.time() + extra
+        while len(self) < n_samples and time.time() < deadline:
+            time.sleep(0.05)
+
     def _peek_shape(self):
         """Shape of the most recently accumulated raw sample, () if scalar
         or if no data has arrived yet."""
@@ -2043,7 +2382,7 @@ class Stream:
                 return np.shape(step[-1])
         return ()
 
-    def plot_hist(self, update=0.5, axes=None, timeout=5, n_bins=50, N_acc=100):
+    def plot_hist(self, update=0.5, axes=None, timeout=5, n_bins=50, N_acc=100, params=None):
         """Value-distribution or scan-count histogram with live updates.
 
         Routes to :class:`ValueHistPlot` (no scan) or :class:`HistPlot` (scan)
@@ -2071,9 +2410,11 @@ class Stream:
         if update:
             hp.start(interval=update)
         self._histPlot = hp
+        if params:
+            self._show_params(params)
         return hp
 
-    def plot_med(self, update=0.5, axes=None, timeout=5, peak_overlay=True, label=None):
+    def plot_med(self, update=0.5, axes=None, timeout=5, peak_overlay=True, label=None, params=None):
         """Median + percentile bands with live updates.
 
         peak_overlay : bool
@@ -2098,9 +2439,11 @@ class Stream:
         if update:
             mp.start(interval=update)
         self._medPlot = mp
+        if params:
+            self._show_params(params)
         return mp
 
-    def plot(self, rate_Hz=1.0, n_history=200, axes=None, timeout=5):
+    def plot(self, rate_Hz=1.0, n_history=200, axes=None, timeout=5, params=None):
         """Live view of the current value, redrawn at *rate_Hz*.
 
         The generic fallback live plot: ignores scan structure entirely,
@@ -2131,6 +2474,8 @@ class Stream:
         if rate_Hz:
             tp.start(interval=interval)
         self._tracePlot = tp
+        if params:
+            self._show_params(params)
         return tp
 
     def plot_corr(self, xVar=None, Npoints=300, update=0.5, axes=None, timeout=5,
@@ -2506,12 +2851,14 @@ class ProcObj:
         eid = self.eventWorker.event.getEventId()
         if eid == self._last_processed_eventId:
             return False
+        # A Param argument is read here, per event, so a change takes effect
+        # from the next pulse on (see escape.storage.lineage.Param).
         args = [
-            a._getEventData() if ie else a
+            a._getEventData() if ie else (a.value if type(a) is Param else a)
             for a, ie in zip(self.args, self.args_is_esc)
         ]
         kwargs = {
-            k: v._getEventData() if self.kwargs_is_esc[k] else v
+            k: v._getEventData() if self.kwargs_is_esc[k] else (v.value if type(v) is Param else v)
             for k, v in self.kwargs.items()
         }
         self._last_processed_eventId = eid
@@ -2615,6 +2962,8 @@ def digitizeEsc(escdata, edges, side="left"):  # noqa: N802
 
 def digitizeScan(escdata, edges, side="left"):  # noqa: N802
     escdats = digitizeEsc(escdata, edges, side=side)
+    if isinstance(edges, Param):  # tunable bins: steps follow the Param
+        return BinScan(escdats, _BinState(edges))
     values = [
         (sum(edges[n : n + 2]) / 2.0, edges[n], edges[n + 1])
         for n in range(len(edges) - 1)

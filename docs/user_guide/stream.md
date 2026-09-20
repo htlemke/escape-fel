@@ -136,6 +136,61 @@ for s in [ratio, i_on, i_off]:
 
 ---
 
+## Value-range filters with tunable limits
+
+`stream.filter(lo, hi)` keeps events where `lo <= stream <= hi` — the same call
+as `Array.filter`. The limits are labeled
+{class}`~escape.storage.lineage.Param` objects (`"i0 min"`, `"i0 max"`) that are
+read **per event**: change one and it applies **from the next pulse on**;
+events already accumulated stay as they are.
+
+```python
+from escape import live
+
+i0_ok = i0.filter(0.5, 2.0)
+ratio = i / i0_ok               # only emits where i0 passes
+lo, hi = i0_ok.params           # the two Params
+lo.value = 0.8                  # takes effect with the next pulse
+
+live.panel(ratio)               # input fields for every Param upstream of ratio
+ratio.plot_med(params="all")    # or: a plot with those fields below it
+```
+
+`stream.filter_interactive(0.5, 2.0)` shows a live histogram of the stream
+(its rolling buffer of recent events, like `plot_hist`) with a draggable span
+bound to the limits, and returns the filtered Stream (the selector is its
+`.tool`). It needs an interactive matplotlib backend (`%matplotlib widget`).
+
+To discard what was collected under the old limits whenever they change, use
+`on_change="reset"` (or `stream.reset_on_change()` on any derived Stream);
+`stream.clear()` discards the accumulated data once.
+
+### Tunable bins
+
+`stream.digitize(bins)` keeps its bin edges as a `Param` too (`"t bins"`, also
+`binning.bins_param`), and `stream.digitize_interactive()` (or just
+`stream.digitize()` with no bins) shows the live histogram with a draggable
+region and the same bin controls as for Arrays — rounded bin size (default),
+bin size, or number of bins; typing an integer means *number of bins*, a
+non-integer a bin size. It returns the `StreamBinning`, ready for
+`.categorize(...)`:
+
+```python
+binning = t.digitize_interactive()            # drag the region, choose the bins
+ratio_vs_t = binning.categorize(i / i0)
+ratio_vs_t.plot_med()
+```
+
+Unlike a filter limit, the bins *are* the scan steps, so a change re-bins from
+the next pulse on **and discards what was accumulated under the old bins** in
+the categorized Stream and every Stream derived from it (they follow
+automatically).
+
+Offloading such a pipeline with `to_pipeline_server()` bakes in the limits'
+values at that moment — a running server pipeline does not follow later changes.
+
+---
+
 ## Selecting one element of an array-valued channel
 
 Some channels are arrays rather than scalars — e.g. `SAR-CVME-TIFALL5:EvtSet`,

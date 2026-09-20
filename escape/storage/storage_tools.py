@@ -4,6 +4,7 @@ import dask.array as da
 from dask import delayed
 from escape import utilities
 from escape.utilities import MultipleRoiSelector, StepViewer, StepViewerP
+from copy import deepcopy
 import numpy as np
 from IPython.display import display
 import matplotlib.pyplot as plt
@@ -17,6 +18,26 @@ def _extract_component(result_tuple, idx):
     computes the Delayed wrapping this call."""
     val = result_tuple[idx]
     return None if val is None else np.asarray(val[:])
+
+
+def _apply_per_step(array, per_step_values, op):
+    """``op(array, per_step_values)`` with one value per scan step of *array*.
+
+    Same result as ``array.scan <op> per_step_values`` (which loops over the
+    steps in Python and re-concatenates them) but computed in one vectorised
+    call; event order, scan steps and parameters are those of *array*.
+    """
+    from escape import Array
+
+    step_lengths = np.asarray(array.scan.step_lengths)
+    per_event = np.repeat(np.asarray(per_step_values), step_lengths, axis=0)
+    return Array(
+        data=op(array.data, per_event),
+        index=array.index,
+        step_lengths=step_lengths,
+        parameter=deepcopy(array.scan.parameter),
+        grid_specs=array.scan.grid.get_grid_specs() if hasattr(array.scan, "grid") else None,
+    )
 
 
 class ArrayTools:
@@ -95,10 +116,11 @@ class ArrayTools:
         array_ref = array[is_reference]
 
         if not hdim:
+            ref_per_step = array_ref.scan.weighted_stat(weights)[0]
             if cmp_type == "ratio":
-                array_cmp = array_sig.scan / array_ref.scan.weighted_stat(weights)[0]
+                array_cmp = _apply_per_step(array_sig, ref_per_step, np.true_divide)
             if cmp_type == "difference":
-                array_cmp = array_sig.scan - array_ref.scan.weighted_stat(weights)[0]
+                array_cmp = _apply_per_step(array_sig, ref_per_step, np.subtract)
         else:
             if cmp_type == "ratio":
                 array_cmp = array_sig.scan / array_ref.scan.mean(axis=0)
@@ -833,12 +855,17 @@ class ScanTools:
 
         is_ref = self._scan._array.categorize(is_ref).compute()
 
-        valid_steps = []
-        for n, step in enumerate(is_ref.scan):
-            if (N_ref <= sum(step.data)) and (N_sig <= sum(~step.data)):
-                valid_steps.append(n)
+        # Per-step counts from one cumulative sum (a per-step Python loop
+        # with builtin ``sum`` over numpy arrays is far slower for the
+        # thousands of steps a pulse-ID-aggregated scan has).
+        step_lengths = np.asarray(is_ref.scan.step_lengths)
+        bounds = np.concatenate([[0], np.cumsum(step_lengths)])
+        csum = np.concatenate([[0], np.cumsum(np.asarray(is_ref.data, dtype=bool))])
+        n_ref = csum[bounds[1:]] - csum[bounds[:-1]]
+        n_sig = step_lengths - n_ref
+        valid_steps = (n_ref >= N_ref) & (n_sig >= N_sig)
 
-        return self._scan[valid_steps]
+        return self._scan._array[np.repeat(valid_steps, step_lengths).nonzero()[0]]
 
     def corr_ana_plot(self, referece, scanpar_name=None, axis=None):
         """Plot :meth:`~escape.storage.storage.Array.correlation_analysis_to`

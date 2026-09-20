@@ -110,8 +110,13 @@ run it's asked to load, it checks whether a `"same_directory"` cache
 already exists next to that run's `scan_info_rel.json`, and uses it
 automatically if so — this is exactly the file this subprocess maintains.
 If it's not there (this subprocess was never launched for that run, hasn't
-had time to write anything yet, or couldn't write there), behavior is
-unchanged from before: no caching, full scan.
+had time to write anything yet, or couldn't write there), `"auto"` falls
+back to a `"work_directory"` cache under the pgroup's work directory
+(`/das/work/pNNN/pNNNNN/.escape_parse_result/`), which is created and
+updated by the analysis-side call itself — but only if that directory
+already exists and is writable for the current user. If it isn't (missing
+path, no permission, scan not under a `pNNNNN` directory), nothing is
+cached and the full scan runs, silently and without raising.
 
 ## Also relevant: waiting for data mid-acquisition
 
