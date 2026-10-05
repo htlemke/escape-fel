@@ -314,6 +314,12 @@ class DataManager:
         else:
             self._data = data
             self._eventIds = eventIds
+            if self._data and self._data[0].maxlen is not None:
+                maxlen = self._data[0].maxlen
+        # Per-step retention limit, kept explicitly (rather than read back off
+        # self._data[0]) so it survives zero-step states and can be changed
+        # live via the `maxlen` property below.
+        self._maxlen = maxlen
         # True, uncapped per-step event counts -- deliberately tracked separately
         # from len(self._data[step]), which is bounded by each deque's maxlen and
         # so silently stops growing (reporting a flat "maxlen" plateau) once a step
@@ -343,10 +349,9 @@ class DataManager:
         # them, so a later Stream would see doappend=False for a step its own
         # _data/_eventIds haven't been extended to yet, and index it out of
         # range.
-        maxlen = self._data[0].maxlen if self._data else 1000
         while len(self._data) <= index:
-            self._data.append(deque(maxlen=maxlen))
-            self._eventIds.append(deque(maxlen=maxlen))
+            self._data.append(deque(maxlen=self._maxlen))
+            self._eventIds.append(deque(maxlen=self._maxlen))
             self._counts.append(0)
         step_data = self._data[index]
         if step_data and np.shape(data) != np.shape(step_data[-1]):
@@ -377,10 +382,38 @@ class DataManager:
         """Discard all data and re-size to ``n_steps`` (empty) steps, in place
         so ``Stream.data``/``eventIds`` keep pointing at these lists."""
         with self._lock:
-            maxlen = self._data[0].maxlen if self._data else 1000
-            self._data[:] = [deque(maxlen=maxlen) for _ in range(n_steps)]
-            self._eventIds[:] = [deque(maxlen=maxlen) for _ in range(n_steps)]
+            self._data[:] = [deque(maxlen=self._maxlen) for _ in range(n_steps)]
+            self._eventIds[:] = [deque(maxlen=self._maxlen) for _ in range(n_steps)]
             self._counts[:] = [0] * n_steps
+
+    @property
+    def maxlen(self):
+        """Max. number of samples retained per step (rolling window)."""
+        return self._maxlen
+
+    @maxlen.setter
+    def maxlen(self, value):
+        """Change the per-step retention limit live, without losing data.
+
+        Every step's buffer is rebuilt in place (so ``Stream.data``/``eventIds``
+        keep pointing at the same lists); shrinking keeps the newest samples.
+        Growing does not bring back already-evicted samples -- it only lets
+        more accumulate from now on.
+        """
+        value = int(value)
+        if value < 1:
+            raise ValueError(f"maxlen must be >= 1, got {value}")
+        with self._lock:
+            if value == self._maxlen:
+                return
+            self._maxlen = value
+            self._data[:] = [deque(d, maxlen=value) for d in self._data]
+            self._eventIds[:] = [deque(e, maxlen=value) for e in self._eventIds]
+
+    def ensure_maxlen(self, n):
+        """Grow ``maxlen`` to at least *n* (never shrinks)."""
+        if n is not None and int(n) > self._maxlen:
+            self.maxlen = n
 
     def _getDataShape(self):
         lens = self.lens()
@@ -413,6 +446,12 @@ class DataManager:
         """True, uncapped number of events ever appended to each step."""
         return list(self._counts)
 
+    def snapshot(self):
+        """Per-step copies of the retained data, taken under the lock -- safe
+        to compute on while the EventWorker keeps appending."""
+        with self._lock:
+            return [list(d) for d in self._data]
+
     data = property(lambda self: self._data)
     eventIds = property(lambda self: self._eventIds)
 
@@ -427,8 +466,8 @@ class EventSource:
     def __init__(self, sourceId, eventWorker, unit="a.u."):
         self.name = sourceId
         self.unit = unit
-        if eventWorker is None and "eventworker" in globals():
-            eventWorker = globals()["eventworker"]
+        if eventWorker is None:
+            eventWorker = get_default_eventworker()
         self.eventWorker = eventWorker
 
     def getEventData(self):  # noqa: N802
@@ -584,8 +623,9 @@ def from_getter(getter_or_detector, eventworker=None, name=None, unit="a.u.", up
     eventworker : EventWorker, optional
         Must be the same ``EventWorker`` as whatever real ``Stream`` this
         gets combined with (``ProcObj`` asserts all operands share one).
-        Falls back to the module-level default, same as the short
-        ``Stream`` constructor.
+        Falls back to the module-level default (created on first use, see
+        :func:`get_default_eventworker`), same as the short ``Stream``
+        constructor.
     name, unit : str, optional
     update_time : float, default 0.1
         Minimum seconds between actual getter calls -- see
@@ -596,7 +636,7 @@ def from_getter(getter_or_detector, eventworker=None, name=None, unit="a.u.", up
     Stream
     """
     if eventworker is None:
-        eventworker = globals().get("eventworker")
+        eventworker = get_default_eventworker()
     getter = getter_or_detector
     if not callable(getter_or_detector):
         get_current_value = getattr(getter_or_detector, "get_current_value", None)
@@ -664,6 +704,10 @@ class EventWorker:
     make_default : bool
         If True, register this instance in the module globals so that
         EventSource() objects can find it without an explicit reference.
+        Replaces any previously registered default (with a printed warning);
+        Streams already bound to the old one stay on it. If no default has
+        been registered, one is created on first use -- see
+        :func:`get_default_eventworker`, the preferred way to obtain it.
     restart_mode : "make_before_break" or "break_before_make"
         How a channel-set change (see ``registerSource``/``removeSource``)
         replaces the underlying connection. ``"make_before_break"``
@@ -707,6 +751,13 @@ class EventWorker:
         self._lab_time_stream = None     # lazily-created, cached -- see .lab_time
 
         if make_default:
+            previous = globals().get("eventworker")
+            if previous is not None and previous is not self:
+                print(
+                    "WARNING: replacing the existing default EventWorker -- Streams "
+                    "already created stay on the old one (use get_default_eventworker() "
+                    "to share it instead)."
+                )
             globals()["eventworker"] = self
             print("EventWorker registered as module default.")
 
@@ -1052,6 +1103,31 @@ class EventWorker:
         return self._lab_time_stream
 
 
+
+_default_lock = threading.Lock()
+
+
+def _peek_default_eventworker():
+    """The registered default EventWorker, or None. Never creates one."""
+    return globals().get("eventworker")
+
+
+def get_default_eventworker():
+    """Return the module-default EventWorker, creating and registering one
+    (``EventWorker(make_default=True)``, default handler) on first use.
+
+    Thread-safe: concurrent first calls yield exactly one worker. Creating it
+    is offline -- no thread is started and no connection opened until a
+    channel is registered (e.g. by ``Stream.accumulate()``).
+    """
+    ew = globals().get("eventworker")
+    if ew is None:
+        with _default_lock:
+            ew = globals().get("eventworker")  # re-check under the lock
+            if ew is None:
+                ew = EventWorker(make_default=True)  # sets globals()["eventworker"]
+    return ew
+
 # ---------------------------------------------------------------------------
 # StreamBinning — returned by Stream.digitize(), applied via .categorize()
 # ---------------------------------------------------------------------------
@@ -1298,8 +1374,9 @@ class Stream:
         Channel name (string, preferred) or a pre-built source object
         (backward-compatible long form).
     eventworker : EventWorker, optional
-        Required when *name_or_source* is a string.  Falls back to the module-
-        level default registered by ``EventWorker(make_default=True)``.
+        Used when *name_or_source* is a string.  Falls back to the module-
+        level default EventWorker, created on first use if none is registered
+        yet (see :func:`get_default_eventworker`).
     unit : str
         Physical unit used in plot axis labels.
     source : EventSource | ProcSource, keyword-only
@@ -1350,11 +1427,12 @@ class Stream:
         source=None,
         dataManager=None,
         scan=None,
+        maxlen=None,
     ):
         # Short form: Stream('channel', ew, unit='...')
         if isinstance(name_or_source, str):
             if eventworker is None:
-                eventworker = globals().get("eventworker")
+                eventworker = get_default_eventworker()
             source = EventSource(name_or_source, eventworker, unit=unit)
         # Legacy / internal: first positional arg is already a source object
         elif name_or_source is not None and source is None:
@@ -1367,7 +1445,9 @@ class Stream:
         self.name = source.name
         self.scan = scan
         if dataManager is None:
-            dataManager = DataManager(scan=scan)
+            dataManager = DataManager(scan=scan) if maxlen is None else DataManager(scan=scan, maxlen=maxlen)
+        elif maxlen is not None:
+            dataManager.maxlen = maxlen
         self._dataManager = dataManager
         self.data = self._dataManager.data
         self.eventIds = self._dataManager.eventIds
@@ -1392,8 +1472,8 @@ class Stream:
         ----------
         channel_name : str
         eventworker : EventWorker, optional
-            Falls back to the module-level default, same as the short
-            constructor.
+            Falls back to the module-level default (created on first use),
+            same as the short constructor.
         unit : str
         """
         return cls(channel_name, eventworker, unit=unit)
@@ -1467,6 +1547,26 @@ class Stream:
     def counts(self):
         """True, uncapped event count per scan step (see DataManager.counts)."""
         return self._dataManager.counts()
+
+    @property
+    def maxlen(self):
+        """Max. samples retained per scan step (rolling window, default 1000).
+
+        Writable at any time, also while accumulating -- see
+        DataManager.maxlen. Window-based consumers (``plot_hist``/``plot_corr``
+        ``N_acc``, ``plot`` ``n_history``, ``plot_corr`` ``Npoints``) grow it
+        automatically so they're never silently capped below what they ask for.
+        Only this Stream is affected; every Stream has its own buffer.
+        """
+        return self._dataManager.maxlen
+
+    @maxlen.setter
+    def maxlen(self, value):
+        self._dataManager.maxlen = value
+
+    def ensure_maxlen(self, n):
+        """Grow ``maxlen`` to at least *n* (never shrinks)."""
+        self._dataManager.ensure_maxlen(n)
 
     def __len__(self):
         return len(self._dataManager)
@@ -1655,23 +1755,51 @@ class Stream:
     # Statistics
     # ------------------------------------------------------------------
 
+    # All per-step stats below return one value per scan step (one entry for
+    # a Stream without a scan), reducing over that step's retained samples
+    # (at most `maxlen`). An empty step gives nan.
+
+    def _step_stat(self, func, *args, empty=np.nan):
+        return [
+            func(np.asarray(td), *args, axis=0) if len(td) else empty
+            for td in self._dataManager.snapshot()
+        ]
+
     def mean(self):
-        return [np.mean(td, axis=0) for td in self.data]
+        return self._step_stat(np.mean)
 
     def std(self):
-        return [np.std(td, axis=0) for td in self.data]
+        return self._step_stat(np.std)
 
     def median(self):
-        return [np.median(td, axis=0) for td in self.data]
+        return self._step_stat(np.median)
 
     def sum(self):
-        return [np.sum(td, axis=0) for td in self.data]
+        return self._step_stat(np.sum)
 
     def min(self):
-        return [np.min(td, axis=0) if len(td) else np.nan for td in self.data]
+        return self._step_stat(np.min)
 
     def max(self):
-        return [np.max(td, axis=0) if len(td) else np.nan for td in self.data]
+        return self._step_stat(np.max)
+
+    def nanmean(self):
+        return self._step_stat(np.nanmean)
+
+    def nanstd(self):
+        return self._step_stat(np.nanstd)
+
+    def nanmedian(self):
+        return self._step_stat(np.nanmedian)
+
+    def nansum(self):
+        return self._step_stat(np.nansum)
+
+    def nanmin(self):
+        return self._step_stat(np.nanmin)
+
+    def nanmax(self):
+        return self._step_stat(np.nanmax)
 
     def count(self):
         """True, uncapped per-step event count -- see DataManager.counts()."""
@@ -1683,10 +1811,11 @@ class Stream:
         # which just emit a RuntimeWarning and return nan) -- match their behavior
         # so one still-empty scan step doesn't blow up a whole-array caller such as
         # Plot._getplotData().
-        return [
-            np.percentile(td, pervals, axis=0) if len(td) else np.full(2, np.nan)
-            for td in self.data
-        ]
+        return self._step_stat(np.percentile, pervals, empty=np.full(2, np.nan))
+
+    def nancenterPerc(self, perc=68.3):
+        pervals = [50 - perc / 2.0, 50 + perc / 2.0]
+        return self._step_stat(np.nanpercentile, pervals, empty=np.full(2, np.nan))
 
     # ------------------------------------------------------------------
     # Live running statistics
@@ -2895,35 +3024,28 @@ def initStreamInstances(eventWorker=None):  # noqa: N802
     return tools.Dict2obj(out)
 
 
-def _resolve_eventworker(eventworker, func_name):
-    if eventworker is not None:
-        return eventworker
-    eventworker = globals().get("eventworker")
-    if eventworker is None:
-        raise RuntimeError(
-            f"No default EventWorker registered; pass one explicitly: {func_name}(ew)."
-        )
-    return eventworker
+def _resolve_eventworker(eventworker):
+    return eventworker if eventworker is not None else get_default_eventworker()
 
 
 def pulse_id(eventworker=None):
     """Module-level shorthand for ``eventworker.pulse_id`` -- a cached live
     Stream of each event's integer pulse ID.
 
-    Uses the module-default EventWorker (the last one created with
-    ``make_default=True``) if *eventworker* is omitted.
+    Uses the module-default EventWorker if *eventworker* is omitted
+    (created on first use, see :func:`get_default_eventworker`).
     """
-    return _resolve_eventworker(eventworker, "pulse_id").pulse_id
+    return _resolve_eventworker(eventworker).pulse_id
 
 
 def lab_time(eventworker=None):
     """Module-level shorthand for ``eventworker.lab_time`` -- a cached live
     Stream of each event's wall-clock time (seconds since epoch).
 
-    Uses the module-default EventWorker (the last one created with
-    ``make_default=True``) if *eventworker* is omitted.
+    Uses the module-default EventWorker if *eventworker* is omitted
+    (created on first use, see :func:`get_default_eventworker`).
     """
-    return _resolve_eventworker(eventworker, "lab_time").lab_time
+    return _resolve_eventworker(eventworker).lab_time
 
 
 # ---------------------------------------------------------------------------

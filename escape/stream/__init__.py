@@ -2,6 +2,7 @@ from .escape_stream import (
     Stream,
     StreamBinning,
     EventWorker,
+    get_default_eventworker,
     EventSource,
     FilteredEventSource,
     ProcSource,

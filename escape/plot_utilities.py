@@ -1382,7 +1382,7 @@ def _get_or_create_axes_gui(ax, attr_name, factory):
 
 # attribute names _get_or_create_axes_gui caches interactive panels under --
 # listed here so _close_axes_guis can find and close all of them at once.
-_AXES_GUI_ATTRS = ("_escape_fit_gui", "_escape_peak_gui", "_escape_freq_gui")
+_AXES_GUI_ATTRS = ("_escape_fit_gui", "_escape_peak_gui", "_escape_freq_gui", "_escape_select_gui")
 
 
 def _close_axes_guis(fig):
@@ -1614,6 +1614,231 @@ def _build_peak_icon(size=24):
 
     painter.end()
     return QtGui.QIcon(pixmap)
+
+
+def _build_select_icon(toolbar, size=24):
+    """A small "list of checkboxes" QIcon for the Select-curves toolbar
+    button, drawn procedurally in ``toolbar``'s own text colour (not a fixed
+    one) -- a ``QToolBar`` paints with the ``ButtonText`` palette role, and a
+    glyph hard-coded to e.g. "black" (as :func:`_build_fit_icon`'s fallback
+    does) would vanish on a dark theme. No ``escape/icons/*.svg`` source for
+    this one for the same reason: an svg icon's colours are fixed when
+    drawn, unlike this procedural one which re-reads the toolbar's palette
+    every time it's (re)built."""
+    from qtpy import QtGui
+
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtGui.QColor(0, 0, 0, 0))
+    painter = QtGui.QPainter(pixmap)
+    try:
+        painter.setRenderHint(_qt_antialiasing(QtGui))
+        painter.setPen(QtGui.QPen(toolbar.palette().color(toolbar.foregroundRole()), 1.6))
+        for row, y in enumerate((0.125, 0.417, 0.708)):
+            y = y * size
+            painter.drawRect(int(0.125 * size), int(y), int(0.21 * size), int(0.21 * size))
+            painter.drawLine(int(0.46 * size), int(y + 0.083 * size), int(0.875 * size), int(y + 0.083 * size))
+            if row != 1:  # the middle row is the unticked one
+                painter.drawLine(int(0.167 * size), int(y + 0.125 * size), int(0.21 * size), int(y + 0.167 * size))
+                painter.drawLine(int(0.21 * size), int(y + 0.167 * size), int(0.33 * size), int(y))
+    finally:
+        painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def _qt_antialiasing(QtGui):
+    return getattr(QtGui.QPainter, "Antialiasing", None) or QtGui.QPainter.RenderHint.Antialiasing
+
+
+def _insert_after_save(toolbar, action):
+    """Insert ``action`` into ``toolbar`` directly after the Save-figure
+    button, instead of ``toolbar.addAction`` simply appending it -- which
+    would land it past the toolbar's trailing stretchy coordinates label
+    (``toolbar.locLabel``), the way escape's existing Fit/Peak/Freq buttons
+    do (via ``addSeparator()`` + ``addAction``; left as-is, see
+    :func:`attach_select_button`'s docstring).
+
+    ``toolbar._actions`` (matplotlib's own name -> ``QAction`` map) is
+    private, so this is guarded and falls back, in order, to inserting in
+    front of whatever widget is ``locLabel`` itself, then to a plain append."""
+    actions = toolbar.actions()
+    anchor = getattr(toolbar, "_actions", {}).get("save_figure")
+    label = getattr(toolbar, "locLabel", None)
+    before = None
+    if anchor is not None and anchor in actions:
+        idx = actions.index(anchor)
+        if idx + 1 < len(actions):
+            before = actions[idx + 1]
+    if before is None:
+        before = next((a for a in actions if toolbar.widgetForAction(a) is label), None)
+    if before is None:
+        toolbar.addAction(action)
+    else:
+        toolbar.insertAction(before, action)
+
+
+def _select_lines(ax):
+    """The curves :func:`attach_select_button` offers for ``ax``: every
+    ``Line2D`` currently on it, excluding escape's own overlay artists
+    (``_escape_overlay``, set by :func:`_update_peak_overlay` and the Fit/
+    Freq range selectors' span-handle lines).
+
+    Deliberately a fresh ``ax.get_lines()`` scan on every call rather than
+    :func:`escape._axes_selection.snapshot_data_lines`'s cached,
+    attach-order-dependent snapshot: that cache is frozen the first time
+    *any* escape tool attaches to ``ax``, so a curve plotted after that --
+    common for Select, since it's meant to be attached once a plot is
+    finished rather than up front like Fit/Peak/Freq -- would silently be
+    missing from the list. The trade-off is the one case
+    ``snapshot_data_lines`` exists to avoid: if a Fit/Freq panel's
+    ``SpanSelector`` is already live on the same axes when Select is
+    attached, its handle line (an auto-labelled, underscore-prefixed line)
+    would show up here as an extra, bogus "curve" -- not handled in this
+    version.
+    """
+    return [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+
+
+def _run_select_button(fig):
+    """The Select-curves toolbar button's click handler.
+
+    Reuses an already-open panel for the active axes if there is one (same
+    curve list as when it was first opened, filter/scroll state kept) --
+    otherwise builds a fresh one from whatever :func:`_select_lines` finds
+    *now*. Unlike Fit/Peak/Freq, a fresh build can come up empty-handed
+    (fewer than two curves) and just prints a note -- :func:`attach_select_button`
+    already checked this once at attach time, but the active axes can change
+    (:func:`_get_active_axes` follows the last-clicked one) or its lines can
+    change between that check and this click.
+    """
+    _run_before_click(fig)
+    ax = _get_active_axes(fig)
+    if ax is None:
+        print("[escape] no axes to select curves in this figure.")
+        return
+
+    existing = getattr(ax, "_escape_select_gui", None)
+    if existing is not None and _gui_is_alive(existing):
+        _raise_gui(existing)
+        return
+
+    lines = _select_lines(ax)
+    if len(lines) < 2:
+        print("[escape] fewer than two curves in the active axes -- nothing to select.")
+        return
+
+    from escape.select_gui import make_ipywidgets_select_panel, make_qt_select_dialog
+
+    if _detect_plot_backend(fig) == "qt":
+        gui = make_qt_select_dialog(fig, ax, lines)
+    else:
+        gui = make_ipywidgets_select_panel(fig, ax, lines)
+    ax._escape_select_gui = gui
+
+
+def _attach_select_button_qt(fig):
+    toolbar = getattr(fig.canvas.manager, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "addAction"):
+        return
+
+    from qtpy import QtGui, QtWidgets
+
+    QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction  # Qt6 moved it to QtGui
+    tooltip = "Select curves to show"
+    icon = _build_select_icon(toolbar)
+    action = QAction(icon, tooltip, toolbar)
+    action.setToolTip(tooltip)
+
+    def _on_click(checked=False):
+        _run_select_button(fig)
+
+    action.triggered.connect(_on_click)
+    _insert_after_save(toolbar, action)
+
+
+def _attach_select_button_ipympl(fig):
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "toolitems"):
+        return
+    _ensure_output_host(fig)
+
+    def _on_click():
+        _defer_to_event_loop(lambda: _run_in_output_host(fig, lambda: _run_select_button(fig)))
+
+    toolbar.escape_select_button = _on_click
+    toolbar.toolitems = list(toolbar.toolitems) + [
+        ("Select", "Select curves to show", "check-square-o", "escape_select_button")
+    ]
+
+
+def _select_button_present(fig, backend):
+    """Whether ``fig`` already has a Select button -- the idempotency check
+    :func:`attach_select_button` uses *instead of* the simple
+    ``fig._escape_*_attached`` flag Fit/Peak/Freq use. A flag recording "an
+    attach was already attempted" doesn't work here: unlike those three,
+    Select can legitimately attach *no* button yet (fewer than two curves)
+    and still needs a later call -- once the axes has something to select
+    from -- to actually add one."""
+    if backend == "qt":
+        toolbar = getattr(fig.canvas.manager, "toolbar", None)
+        if toolbar is None:
+            return False
+        return any(a.toolTip() == "Select curves to show" for a in toolbar.actions())
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None:
+        return False
+    return any(item[3] == "escape_select_button" for item in getattr(toolbar, "toolitems", []))
+
+
+def attach_select_button(fig, *, before_click=None):
+    """Attach a "Select curves to show" button to ``fig``'s toolbar --
+    Qt and ipympl backends only -- opening a small window/panel with one
+    checkbox per curve on the active axes (plus a filter box and All/None),
+    so a busy plot's curves can be thinned out without re-plotting. Hiding a
+    curve also drops it from the legend and re-fits the y-range to what's
+    left -- the usual reason to hide one is that its scale dwarfs the rest.
+    See :mod:`escape.select_gui` for the engine/front-ends themselves.
+
+    Unlike :func:`attach_fit_button`/:func:`attach_peak_button`/
+    :func:`attach_freq_button`, this one needs at least two existing,
+    already-plotted curves on the active axes to do anything -- there is
+    nothing to narrow down with fewer than that. So, unlike those three,
+    attaching it *before* plotting (e.g. via ``nfigure(select_button=True)``,
+    which runs right after creating a still-empty figure) typically adds no
+    button yet. Call ``attach_select_button(fig)`` again once the curves
+    are actually on the axes to get it then -- safe to call repeatedly:
+    a figure that already has the button is left alone, and one that
+    doesn't yet keeps being checked each time instead of giving up for good
+    the first time there was nothing to select.
+
+    On a Qt figure the button is inserted right after the "Save" icon (see
+    :func:`_insert_after_save`) rather than appended like Fit/Peak/Freq --
+    appending would land it past the toolbar's trailing coordinates label.
+    Moving those three the same way instead would be a one-line change if
+    ever wanted; left alone here since it wasn't asked for.
+
+    ``before_click``, and the no-op-on-unsupported-backend /
+    swallow-and-print-on-failure / ``ESCAPE_TOOLBAR_BUTTONS`` contract, are
+    the same as :func:`attach_fit_button` -- see its docstring.
+    """
+    if not ESCAPE_TOOLBAR_BUTTONS:
+        return
+    _set_before_click(fig, before_click)
+    try:
+        backend = _detect_plot_backend(fig)
+        if backend is None:
+            return
+        if _select_button_present(fig, backend):
+            return
+        _track_active_axes(fig)
+        ax = _get_active_axes(fig)
+        if ax is None or len(_select_lines(ax)) < 2:
+            return
+        if backend == "qt":
+            _attach_select_button_qt(fig)
+        else:
+            _attach_select_button_ipympl(fig)
+    except Exception as e:
+        print(f"[escape] couldn't attach the Select button: {e}")
 
 
 def _attach_fit_button_qt(fig):
@@ -2238,19 +2463,22 @@ def attach_peak_button(fig, *, before_click=None):
 ESCAPE_TOOLBAR_BUTTONS = os.environ.get("ESCAPE_DISABLE_TOOLBAR_BUTTONS", "").strip().lower() not in ("1", "true", "yes")
 
 
-def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, before_click=None):
+def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, select=False, before_click=None):
     """Attach escape's interactive toolbar buttons -- Fit
     (:func:`attach_fit_button`), Peak (:func:`attach_peak_button`), and
-    optionally Freq (:func:`attach_freq_button`) -- to ``fig`` in one call,
-    so every place that creates an interactive escape figure (static, via
-    :func:`nfigure`, or a live-updating :mod:`escape.stream.plots` figure)
-    wires them up the same way instead of each repeating the same calls --
-    or, for the live-plot figures, not wiring them up at all. Same
+    optionally Freq (:func:`attach_freq_button`) and Select
+    (:func:`attach_select_button`) -- to ``fig`` in one call, so every place
+    that creates an interactive escape figure (static, via :func:`nfigure`,
+    or a live-updating :mod:`escape.stream.plots` figure) wires them up the
+    same way instead of each repeating the same calls -- or, for the
+    live-plot figures, not wiring them up at all. Same
     no-op-on-unsupported-backend contract as the individual ``attach_*``
-    functions; pass ``fit``/``peak`` as ``False`` to skip one. ``freq``
-    defaults to ``False`` (purely opt-in, unlike ``fit``/``peak``) --
-    frequency/wavelet analysis is a more specialized tool than most figures
-    need a button for.
+    functions; pass ``fit``/``peak`` as ``False`` to skip one. ``freq`` and
+    ``select`` default to ``False`` (purely opt-in, unlike ``fit``/``peak``)
+    -- frequency/wavelet analysis and curve selection are both more
+    specialized than most figures need a button for; ``select`` on top of
+    that needs curves already on the axes to add anything (see
+    :func:`attach_select_button`).
 
     ``before_click``, if given, is forwarded to every attached button --
     see :func:`attach_fit_button`'s docstring for what it's for (e.g.
@@ -2264,6 +2492,8 @@ def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, before_click=
         attach_peak_button(fig, before_click=before_click)
     if freq:
         attach_freq_button(fig, before_click=before_click)
+    if select:
+        attach_select_button(fig, before_click=before_click)
 
 
 def attach_fit_button(fig, *, before_click=None):
@@ -2346,7 +2576,7 @@ def attach_freq_button(fig, *, before_click=None):
 
 def nfigure(
     num=_AUTO_NAME, *, detached=False, title=None,
-    fit_button=True, peak_button=False, freq_button=False, close_previous=True, **kwargs
+    fit_button=True, peak_button=False, freq_button=False, select_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
@@ -2399,6 +2629,18 @@ def nfigure(
         backend restriction and ``ESCAPE_TOOLBAR_BUTTONS`` switch as
         ``fit_button``. Defaults to ``False`` (purely opt-in) -- a more
         specialized tool than most figures need a button for.
+    select_button : bool
+        Attach a "Select curves to show" toolbar button (see
+        :func:`attach_select_button`) -- a checkbox list to thin out a busy
+        plot's curves, hiding them from the legend and re-fitting the
+        y-range too. Same backend restriction and ``ESCAPE_TOOLBAR_BUTTONS``
+        switch as ``fit_button``. Defaults to ``False``. Unlike the other
+        three, it needs at least two curves already on the axes to add
+        anything -- since ``nfigure`` runs before you've plotted into the
+        figure it just created, passing ``select_button=True`` here
+        typically adds no button *yet*; call
+        ``escape.plot_utilities.attach_select_button(fig)`` again once the
+        curves are actually there to get it then.
     close_previous : bool
         If ``True`` (the default, and currently the only behavior this
         function has ever had), a pre-existing figure of the same ``num``
@@ -2428,6 +2670,8 @@ def nfigure(
         attach_peak_button(fig)
     if freq_button:
         attach_freq_button(fig)
+    if select_button:
+        attach_select_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2436,7 +2680,7 @@ def nfigure(
 
 def nsubplots(
     nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None,
-    fit_button=True, peak_button=False, freq_button=False, close_previous=True, **kwargs
+    fit_button=True, peak_button=False, freq_button=False, select_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
@@ -2463,6 +2707,12 @@ def nsubplots(
     freq_button : bool
         Attach a "Freq" toolbar button (see :func:`attach_freq_button`) to
         the figure. Defaults to ``False`` (see :func:`nfigure`).
+    select_button : bool
+        Attach a "Select curves to show" toolbar button (see
+        :func:`attach_select_button`) to the figure. Defaults to ``False``;
+        see :func:`nfigure` for why ``select_button=True`` here typically
+        adds no button until you call ``attach_select_button(fig)`` again
+        once the axes actually has curves on it.
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
         (same figure, same axes, same ``nrows``/``ncols`` as when it was
@@ -2497,6 +2747,8 @@ def nsubplots(
         attach_peak_button(fig)
     if freq_button:
         attach_freq_button(fig)
+    if select_button:
+        attach_select_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2505,7 +2757,7 @@ def nsubplots(
 
 def nsubplot_mosaic(
     *args, num=_AUTO_NAME, detached=False, title=None,
-    fit_button=True, peak_button=False, freq_button=False, close_previous=True, **kwargs
+    fit_button=True, peak_button=False, freq_button=False, select_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
@@ -2532,6 +2784,12 @@ def nsubplot_mosaic(
     freq_button : bool
         Attach a "Freq" toolbar button (see :func:`attach_freq_button`) to
         the figure. Defaults to ``False`` (see :func:`nfigure`).
+    select_button : bool
+        Attach a "Select curves to show" toolbar button (see
+        :func:`attach_select_button`) to the figure. Defaults to ``False``;
+        see :func:`nfigure` for why ``select_button=True`` here typically
+        adds no button until you call ``attach_select_button(fig)`` again
+        once the relevant axes actually has curves on it.
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
         (same figure, same mosaic layout as when it was first created)
@@ -2565,6 +2823,8 @@ def nsubplot_mosaic(
         attach_peak_button(fig)
     if freq_button:
         attach_freq_button(fig)
+    if select_button:
+        attach_select_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))

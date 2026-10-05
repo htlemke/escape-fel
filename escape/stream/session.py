@@ -102,7 +102,9 @@ class StreamSession:
         if source is None:
             # Re-use existing default EventWorker if present, else create one.
             import escape.stream.escape_stream as _esn
-            existing = _esn.__dict__.get("eventworker")
+            # Peek only -- never create the default here, or this session's
+            # handler_kwargs would be silently ignored.
+            existing = _esn._peek_default_eventworker()
             if existing is not None:
                 ew = existing
             elif _HAS_DATAHUB:

@@ -99,6 +99,16 @@ def _warn_inline():
         )
 
 
+def _grow_buffers(n, *streams):
+    """Make sure each Stream retains at least *n* samples per step, so a
+    window-based plot (N_acc/n_history/Nlast) isn't silently capped by the
+    Stream's default maxlen."""
+    for s in streams:
+        ensure = getattr(s, "ensure_maxlen", None)
+        if ensure is not None:
+            ensure(n)
+
+
 # ---------------------------------------------------------------------------
 # Base class
 # ---------------------------------------------------------------------------
@@ -446,6 +456,16 @@ class PlotCorrelation(_LivePlotBase):
     autosetAxlabel : bool
     """
 
+    @property
+    def Nlast(self):
+        return self._Nlast
+
+    @Nlast.setter
+    def Nlast(self, value):
+        # Writable on a live plot; grows the source Stream buffer(s) to match.
+        self._Nlast = value
+        _grow_buffers(value, self.data_x, self.data_y)
+
     def __init__(
         self,
         data_x,
@@ -628,6 +648,16 @@ class TracePlot(_LivePlotBase):
         Scalar case only: how many recent samples to show as a trend.
     """
 
+    @property
+    def n_history(self):
+        return self._n_history
+
+    @n_history.setter
+    def n_history(self, value):
+        # Writable on a live plot; grows the source Stream buffer(s) to match.
+        self._n_history = value
+        _grow_buffers(value, self.data)
+
     def __init__(
         self,
         data,
@@ -713,6 +743,16 @@ class WaterfallPlot(_LivePlotBase):
     axes : matplotlib.axes.Axes, optional
     cmap : str
     """
+
+    @property
+    def N_acc(self):
+        return self._N_acc
+
+    @N_acc.setter
+    def N_acc(self, value):
+        # Writable on a live plot; grows the source Stream buffer(s) to match.
+        self._N_acc = value
+        _grow_buffers(value, self.data, self.x_stream)
 
     def __init__(
         self,

@@ -12,6 +12,11 @@ Figure Creation
 .. autofunction:: escape.plot_utilities.nsubplots
 .. autofunction:: escape.plot_utilities.nsubplot_mosaic
 
+Toolbar Buttons
+----------------
+
+.. autofunction:: escape.plot_utilities.attach_select_button
+
 Interactive ROI Selectors
 --------------------------
 

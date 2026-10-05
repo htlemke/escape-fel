@@ -34,7 +34,7 @@ from pathlib import Path
 import html
 import base64
 from io import BytesIO
-from .storage_tools import ArrayTools, ScanTools
+from .storage_tools import ArrayTools, ScanTools, tools_doc
 
 
 logger = logging.getLogger(__name__)
@@ -304,10 +304,12 @@ class Array:
             return None
 
     @property
-    def tools(self):
+    def tools(self) -> ArrayTools:
         if self._tools is None:
             self._tools = ArrayTools(self)
         return self._tools
+
+    tools.__doc__ = tools_doc(ArrayTools, "Array")
 
     def _touch(self):
         if not self._touched:
@@ -2506,10 +2508,12 @@ class Scan:
         return self.__step_index_ranges
 
     @property
-    def tools(self):
+    def tools(self) -> ScanTools:
         if self._tools is None:
             self._tools = ScanTools(self)
         return self._tools
+
+    tools.__doc__ = tools_doc(ScanTools, "Scan")
 
     def append_parameter(self, parameter: {"par_name": {"values": list}}):
         for par, pardict in parameter.items():
@@ -3137,6 +3141,14 @@ class Scan:
         if hasattr(self, "grid"):
             gridspecs = self.grid.get_grid_specs()
             hickle.dump(gridspecs, scan_group, path="grid_specs")
+            # the per-step {"grid_index": [...]} dicts in scan_step_info can't
+            # be written as parameter values above, store them as int array
+            try:
+                scan_group["grid_indices"] = np.asarray(
+                    self.grid.get_grid_indices(), dtype=int
+                ).reshape(len(self), len(self.grid.shape))
+            except Exception:
+                pass
          
 
     @staticmethod
@@ -3163,6 +3175,13 @@ class Scan:
                 grid_specs = hickle.load(group["scan"], path="grid_specs")
             except Exception:
                 grid_specs = None
+        if "grid_indices" in group["scan"].keys():
+            parameter["scan_step_info"] = {
+                "values": [
+                    {"grid_index": list(gi)}
+                    for gi in group["scan"]["grid_indices"][()].tolist()
+                ]
+            }
         return parameter, step_lengths, grid_specs
 
     def __repr__(self):
@@ -3714,28 +3733,55 @@ def match_indexes(ids_master, ids_slaves, stepLengths_master=None):
     return inds_master, inds_slaves, stepLensNew
 
 
-def intersect_indexes(ids_all,stepLengths_all):
+def intersect_indexes(ids_all, stepLengths_all):
+    """Group the pulse IDs common to all inputs onto the Cartesian product of their steps.
+
+    Returns ``(ixgr, slgr, shape)``: the common IDs ordered cell by cell (C
+    order over ``shape``, IDs sorted within a cell), the number of IDs per
+    cell, and the grid shape (number of steps of each input).
+    """
     # main format checks of input
     if not len(ids_all) == len(stepLengths_all):
         raise Exception("Length of ids_all and stepLengths_all needs to fit!")
     if not all(len(tid)==sum(tsl) for tid, tsl in zip(ids_all, stepLengths_all)):
         raise Exception("Length of ids_all entries needs to fit stepLengths_all entries!")
 
+    shape = [len(tsl) for tsl in stepLengths_all]
+    ids_all = [np.asarray(tid) for tid in ids_all]
+    if not all(len(np.unique(tid)) == len(tid) for tid in ids_all):
+        # an ID may then sit in several steps of one input -> set semantics
+        return _intersect_indexes_sets(ids_all, stepLengths_all, shape)
+
+    common = ids_all[0]
+    for tid in ids_all[1:]:
+        common = np.intersect1d(common, tid, assume_unique=True)  # sorted
+
+    # step number of each common ID in every input -> flat grid cell
+    step_ixs = []
+    for tid, tsl in zip(ids_all, stepLengths_all):
+        steps = np.repeat(np.arange(len(tsl)), tsl)
+        srt = np.argsort(tid, kind="stable")
+        step_ixs.append(steps[srt[np.searchsorted(tid, common, sorter=srt)]])
+    cells = np.ravel_multi_index(step_ixs, shape)
+
+    order = np.argsort(cells, kind="stable")  # keeps IDs sorted within a cell
+    slgr = np.bincount(cells, minlength=int(np.prod(shape))).tolist()
+    return common[order], slgr, shape
+
+
+def _intersect_indexes_sets(ids_all, stepLengths_all, shape):
+    # cell-by-cell fallback for inputs with duplicate IDs (slow for large grids)
+    bounds = [np.concatenate([[0], np.cumsum(tsl)]).astype(int) for tsl in stepLengths_all]
     ixgr = []
     slgr = []
-
-    shape = [len(tsl) for tsl in stepLengths_all]
-    gixl = [np.ravel(t) for t in np.indices(shape)]
-
-    for n in range(len(gixl[0])):
-        sets = []
-        for ids, stepLengths,i in zip(ids_all,stepLengths_all, gixl):
-            sets.append(set(ids[sum(stepLengths[:i[n]]):sum(stepLengths[:(i[n]+1)])]))
-        tsec = set.intersection(*sets)
-        ixgr += list(tsec)
+    for cell in np.ndindex(*shape):
+        sets = [
+            set(ids[b[i]:b[i + 1]].tolist())
+            for ids, b, i in zip(ids_all, bounds, cell)
+        ]
+        tsec = sorted(set.intersection(*sets))
+        ixgr += tsec
         slgr.append(len(tsec))
-
-
     return np.asarray(ixgr), slgr, shape
 
 
@@ -3778,6 +3824,30 @@ def escaped_FuncsOnEscArray(array, inst_funcs, *args, **kwargs):
     for inst, func in inst_funcs:
         if isinstance(array.data, inst):
             return escaped(func, *args, **kwargs)
+
+
+def _caller_varname(obj):
+    """Name of the variable holding *obj* in the first calling frame outside
+    the escape package (e.g. the notebook cell), or ``None``.
+
+    Only used as a labelling fallback for unnamed Arrays; names starting with
+    ``_`` (IPython output cache etc.) are ignored.
+    """
+    frame = inspect.currentframe()
+    try:
+        while frame is not None:
+            modname = frame.f_globals.get("__name__", "")
+            if modname != "escape" and not modname.startswith("escape."):
+                break
+            frame = frame.f_back
+        if frame is None:
+            return None
+        for name, value in frame.f_locals.items():
+            if value is obj and not name.startswith("_"):
+                return name
+        return None
+    finally:
+        del frame
 
 
 def digitize(
@@ -3895,17 +3965,18 @@ def digitize(
     else:
         ix = valid[np.argsort(valid_bins, kind="stable")]
     bin_nos, counts = np.unique(valid_bins - 1, return_counts=True)
-    bin_left = bins[1:]
-    bin_right = bins[:-1]
+    bin_left = bins[:-1]
+    bin_right = bins[1:]
     bin_center = (bin_left + bin_right) / 2
 
+    name = array.name if array.name is not None else _caller_varname(array)
     parameter = {
-        f"bin_center_{array.name}": {
+        f"bin_center_{name}": {
             "values": bin_center[bin_nos],
             "attributes": kwargs,
         },
-        f"bin_left_{array.name}": {"values": bin_left[bin_nos], "attributes": kwargs},
-        f"bin_right_{array.name}": {"values": bin_right[bin_nos], "attributes": kwargs},
+        f"bin_left_{name}": {"values": bin_left[bin_nos], "attributes": kwargs},
+        f"bin_right_{name}": {"values": bin_right[bin_nos], "attributes": kwargs},
     }
 
     return Array(
@@ -3935,6 +4006,10 @@ def unravel_scans(*arrays, categorize_target=None):
     *arrays : escape.Array
         Two or more Arrays whose scan structures define the grid axes.
         The number of steps in each Array becomes the size of one grid dimension.
+        Each input's first numeric scan parameter (e.g. ``bin_center_<name>``
+        of a :func:`digitize` result, or a motor setpoint) provides that
+        axis' grid positions and dimension name; step numbers are used when
+        there is none.
     categorize_target : escape.Array, optional
         If provided, immediately :meth:`~escape.Array.categorize` this Array
         onto the resulting grid and return the categorized result instead of
@@ -3982,11 +4057,12 @@ def unravel_scans(*arrays, categorize_target=None):
         }
     }
     
-    # Create grid_specs
+    # Create grid_specs, axes labelled by each input's first scan parameter
+    axes = [_scan_axis(array) for array in arrays]
     grid_specs = {
         'shape': shape,
-        'positions': None,
-        'grid_dimension_names': None
+        'positions': [pos for _, pos in axes],
+        'grid_dimension_names': [name for name, _ in axes],
     }
 
     index_sort_array = Array(
@@ -4005,6 +4081,28 @@ def unravel_scans(*arrays, categorize_target=None):
 
 # Backward-compatible alias
 unravel_arrays = unravel_scans
+
+
+def _scan_axis(array):
+    """(name, per-step positions) of an Array's first numeric 1-D scan parameter.
+
+    Falls back to ``("step", arange(n_steps))`` if there is none.
+    """
+    n_steps = len(array.scan.step_lengths)
+    for name, par in array.scan.parameter.items():
+        if name == "scan_step_info" or not isinstance(par, dict):
+            continue
+        try:
+            values = np.asarray(par["values"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (
+            values.shape == (n_steps,)
+            and np.issubdtype(values.dtype, np.number)
+            and not np.all(np.isnan(values))
+        ):
+            return name, values
+    return "step", np.arange(n_steps)
 
 
 def filter(

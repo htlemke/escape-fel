@@ -135,7 +135,7 @@ class DataSet:
             pass
 
     def close(self):
-        self.__exit__()
+        self.__exit__(None, None, None)
 
     def append(
         self,

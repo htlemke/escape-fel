@@ -1,3 +1,4 @@
+import inspect
 from numbers import Number
 import dask
 import dask.array as da
@@ -40,7 +41,38 @@ def _apply_per_step(array, per_step_values, op):
     )
 
 
-class ArrayTools:
+def _tools_overview(cls):
+    """One line per public method of a tools class: name + docstring summary."""
+    lines = []
+    for name, obj in vars(cls).items():
+        if name.startswith("_") or not callable(obj):
+            continue
+        doc = inspect.getdoc(obj)
+        summary = " ".join(doc.split("\n\n")[0].split()) if doc else "(no docstring)"
+        lines.append(f"    .{name}(...)\n        {summary}")
+    return "\n".join(lines)
+
+
+def tools_doc(cls, owner):
+    """Docstring for the ``<owner>.tools`` property, built once at import so
+    that IPython/Jupyter help (``?``, shift-tab) lists the available tools
+    without instantiating anything -- IPython inspects the property object
+    itself rather than evaluating it."""
+    return (
+        f"Convenience analysis tools bound to this {owner} "
+        f"({cls.__module__}.{cls.__name__}, created on first access).\n\n"
+        f"Available tools:\n{_tools_overview(cls)}"
+    )
+
+
+class _ToolsBase:
+    def __repr__(self):
+        return f"<{type(self).__name__}>\n{_tools_overview(type(self))}"
+
+
+class ArrayTools(_ToolsBase):
+    """Convenience analysis tools bound to an Array, reached as ``array.tools``."""
+
     def __init__(self, array):
         self._array = array
 
@@ -94,10 +126,15 @@ class ArrayTools:
         weights=None,
         cmp_type="ratio",
         axis_survey=None,
+        recategorize=True,
     ):
         """Compare the array to a reference defined by a boolean mask is_reference.
         The comparison can be done by ratio or difference. The reference is aggregated
-        over N_agg_ref pulses, and weights can be applied."""
+        over N_agg_ref pulses, and weights can be applied.
+
+        With ``recategorize=True`` (default) the result is sorted back into this
+        array's own scan steps (e.g. the energy scan); with False it keeps the
+        N_agg_ref pulse-ID blocks used for reference taking as its scan steps."""
         array = self._array
         if array.ndim > 1:
             print("Warning: array has more than one dimension, no weights applied.")
@@ -135,6 +172,8 @@ class ArrayTools:
             array_ref.scan.plot(axis=axis_survey, label="Reference, aggregated")
             array_sig.scan.plot(axis=axis_survey, label="Signal, aggregated")
 
+        if recategorize:
+            array_cmp = self._array.categorize(array_cmp)
         return array_cmp
 
     def compare_to_reference_rolling_binned(
@@ -797,7 +836,9 @@ def timetool_binning_dev(
     # return (N_sig <= len(self._array[is_sig])) and (N_ref <= len(self._array[is_ref]))
 
 
-class ScanTools:
+class ScanTools(_ToolsBase):
+    """Convenience analysis tools bound to a Scan, reached as ``scan.tools``."""
+
     def __init__(self, scan):
         self._scan = scan
 
