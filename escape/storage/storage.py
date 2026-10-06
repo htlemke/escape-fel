@@ -260,6 +260,7 @@ class Array:
         source=None,
         grid_specs=None,
     ):
+        data = _coerce_data(data, name)
         self.index_dim = 0
         if not (callable(data) or callable(index)):
             assert data.shape[self.index_dim] == len(
@@ -714,6 +715,22 @@ class Array:
             else:
                 print(f"No `compute` necessary")
             return self
+
+    def materialize(self, **kwargs):
+        """Load index and data into memory and return ``self``.
+
+        Arrays loaded from a results file read from it lazily, so they stop
+        working once the file is closed. Call this before closing to keep
+        using the array afterwards. Unlike :meth:`compute` it always works
+        in place and prints nothing; *kwargs* go to dask's ``compute``.
+        """
+        self._index = np.asarray(self.index)
+        data = self.data
+        if isinstance(data, da.Array):
+            with ProgressBar():
+                data = data.compute(**kwargs)
+        self._data = np.asarray(data)
+        return self
 
     def estimate_compute_time(self, n_probe=2, print_result=True):
         """Roughly estimate the wall-clock cost of computing this Array.
@@ -4184,6 +4201,104 @@ def broadcast_to(ndarray_list, arraydef):
     return Array(data=data, index=index, parameter=parameter, step_lengths=step_lengths)
 
 
+def _coerce_data(data, name=None):
+    """Bring user-supplied array data into a form escape can store.
+
+    numpy and dask arrays, lazy callables, ``None`` and other lazy
+    array-likes that already have ``shape``/``dtype`` (h5py/zarr datasets,
+    ...) are returned untouched, so nothing is loaded here. Lists, tuples
+    and other sequences become numpy arrays; an object array made of numbers
+    and ``None`` (e.g. a monitor seeded with a not-yet-connected PV) becomes
+    float with ``None`` -> NaN. Anything still of object dtype is left for
+    the storage layer to reject (see :func:`_check_storable`).
+    """
+    if data is None or callable(data) or isinstance(data, (np.ndarray, da.Array)):
+        return _object_to_float(data) if isinstance(data, np.ndarray) else data
+    if hasattr(data, "shape") and hasattr(data, "dtype") and not hasattr(data, "iloc"):
+        return data
+    try:
+        arr = np.asarray(data)
+    except ValueError as exc:
+        label = f"{name!r}: " if name not in (None, "none") else ""
+        raise ValueError(
+            f"{label}data is a ragged sequence (elements of different "
+            f"lengths), which cannot become one array. Pad the elements to "
+            f"a common length or store them as separate arrays."
+        ) from exc
+    return _object_to_float(arr)
+
+
+def _object_to_float(arr):
+    if arr.dtype != object:
+        return arr
+    try:
+        return arr.astype(float)
+    except (TypeError, ValueError):
+        return arr
+
+
+def _describe_storage(grp):
+    """``"'/name' in results file '...'"`` for an h5py or zarr group."""
+    try:
+        fname = grp.file.filename
+    except AttributeError:
+        store = getattr(grp, "store", None)
+        fname = getattr(store, "path", None) or getattr(store, "root", None) or store
+    except Exception:
+        fname = "?"
+    return f"{grp.name!r} in results file {str(fname)!r}"
+
+
+def _to_storable(data, grp):
+    """*data* as a numpy or dask array that h5py/zarr can write, or a
+    ``TypeError`` naming the array; called before anything is written."""
+    if not isinstance(data, (np.ndarray, da.Array)):
+        try:
+            data = _coerce_data(np.asarray(data))
+        except Exception as exc:
+            raise TypeError(
+                f"Cannot store {_describe_storage(grp)}: unsupported data type "
+                f"{type(data).__name__}. Pass a numpy or dask array (or a "
+                f"list of numbers)."
+            ) from exc
+    if np.dtype(data.dtype).kind in "OUMm":
+        raise TypeError(
+            f"Cannot store {_describe_storage(grp)}: data has dtype "
+            f"{data.dtype}, which has no native HDF5/zarr equivalent (mixed "
+            f"or non-numeric values, e.g. strings or Python objects). Convert "
+            f"it to a numeric array first, or store it as a pickled DataSet "
+            f"entry."
+        )
+    return data
+
+
+def _check_parent_open(parent, name):
+    """Raise a clear error when *parent* is an h5py object of a closed file
+    (h5py itself only says 'invalid identifier type to function')."""
+    pid = getattr(parent, "id", None)
+    if pid is not None and hasattr(pid, "valid") and not pid.valid:
+        raise RuntimeError(
+            f"Cannot read {name!r}: its results file has been closed. Keep "
+            f"the DataSet open while using its arrays (e.g. `with "
+            f"DataSet.load_from_result_file(...) as ds:`), or call "
+            f".materialize() on the array before closing the file."
+        )
+
+
+def _rollback_keys(grp, keys):
+    """Delete *keys* this call created in *grp*, after a failed write."""
+    for key in keys:
+        try:
+            if key in grp:
+                del grp[key]
+        except Exception:
+            logger.error(
+                "Could not remove %r from %s after a failed write; the group "
+                "may need escape.storage.dataset.check_result_file(..., "
+                "repair=True).", key, _describe_storage(grp), exc_info=True,
+            )
+
+
 class ArrayStorageConflict(Exception):
     """Raised when ArrayH5Dataset can't claim the next storage slot because
     something already occupies it in the backing store, even though this
@@ -4204,6 +4319,7 @@ def _is_storage_slot_conflict(exc):
 
 class ArrayH5Dataset:
     def __init__(self, parent, name):
+        _check_parent_open(parent, name)
         self.parent = parent
         try:
             self.grp = parent[name]
@@ -4217,8 +4333,12 @@ class ArrayH5Dataset:
         else:
             try:
                 self.grp.attrs["esc_type"] = "array_dataset"
-            except:
-                print("Could not put esc_type metadata.")
+            except Exception:
+                # expected for a file opened read-only
+                logger.debug(
+                    "Could not set esc_type on %s", _describe_storage(self.grp),
+                    exc_info=True,
+                )
 
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._index_finder = re.compile("^index_[0-9]{4}$")
@@ -4235,8 +4355,12 @@ class ArrayH5Dataset:
         self._n_d.sort()
         self._n_i.sort()
         if not self._n_d == self._n_i:
-            raise Exception(
-                "Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!"
+            raise ValueError(
+                f"Corrupt escape array {_describe_storage(self.grp)}: "
+                f"data_NNNN slots {self._n_d} and index_NNNN slots "
+                f"{self._n_i} do not match (a store was interrupted or failed "
+                f"half-way). Run escape.storage.dataset.check_result_file("
+                f"<file>, repair=True) to drop the incomplete slots."
             )
 
     def resync(self):
@@ -4309,6 +4433,9 @@ class ArrayH5Dataset:
         """
         if lock == "auto":
             lock = get_lock()
+        # validate before touching the file, so a bad input can't leave a
+        # half-written index/data pair behind
+        data = _to_storable(data, self.grp)
         self.resync()
         n_new = len(self._n_i)
         ids_stored = self.index
@@ -4331,7 +4458,7 @@ class ArrayH5Dataset:
             new_event_ids = event_ids[len(ids_stored) :]
             new_data = data[len(ids_stored) :, ...]
         else:
-            raise Exception(
+            raise ValueError(
                 f"Cannot append to {self.grp.name!r}: the new event_ids "
                 f"partially, but not fully, overlap with what's already "
                 f"stored there (neither a clean append nor a clean extend). "
@@ -4339,61 +4466,68 @@ class ArrayH5Dataset:
                 f"is being written to the same channel."
             )
 
-        self._write_slot(
-            f"index_{n_new:04d}",
-            lambda: self.grp.__setitem__(f"index_{n_new:04d}", new_event_ids),
-            overwrite,
-        )
-
-        if isinstance(data, np.ndarray):
-            if prep_run:
-                if prep_run == "store_numpy":
-                    pass
-                else:
-                    raise Exception(
-                        "Trying dry_run on numpy array data on {self.grp.name}."
-                    )
+        keys = (f"index_{n_new:04d}", f"data_{n_new:04d}")
+        existed = {k for k in keys if k in self.grp}
+        try:
             self._write_slot(
-                f"data_{n_new:04d}",
-                lambda: self.grp.__setitem__(f"data_{n_new:04d}", new_data),
+                f"index_{n_new:04d}",
+                lambda: self.grp.__setitem__(f"index_{n_new:04d}", new_event_ids),
                 overwrite,
             )
-        elif isinstance(data, da.Array):
-            # ToDo, smarter chunking when writing small data
-            new_chunks = tuple(c[0] for c in new_data.chunks)
-            compression = self.parent.attrs.get("default_dataset_compression")
-            compression_opts = self.parent.attrs.get("default_dataset_compression_opts")
 
-            def _create(with_compression):
-                create_kwargs = dict(
-                    shape=new_data.shape, chunks=new_chunks, dtype=new_data.dtype
+            if isinstance(data, np.ndarray):
+                if prep_run:
+                    if prep_run == "store_numpy":
+                        pass
+                    else:
+                        raise Exception(
+                            "Trying dry_run on numpy array data on {self.grp.name}."
+                        )
+                self._write_slot(
+                    f"data_{n_new:04d}",
+                    lambda: self.grp.__setitem__(f"data_{n_new:04d}", new_data),
+                    overwrite,
                 )
-                if with_compression and compression is not None:
-                    create_kwargs["compression"] = compression
-                    if compression_opts is not None:
-                        create_kwargs["compression_opts"] = compression_opts
-                return self.grp.create_dataset(f"data_{n_new:04d}", **create_kwargs)
+            elif isinstance(data, da.Array):
+                # ToDo, smarter chunking when writing small data
+                new_chunks = tuple(c[0] for c in new_data.chunks)
+                compression = self.parent.attrs.get("default_dataset_compression")
+                compression_opts = self.parent.attrs.get("default_dataset_compression_opts")
 
-            def _create_with_compression_fallback():
-                try:
-                    return _create(with_compression=True)
-                except Exception as exc:
-                    if _is_storage_slot_conflict(exc):
-                        raise
-                    logger.info(
-                        "Compression setting %r not supported by this storage "
-                        "backend (%s); creating %r uncompressed.",
-                        compression, exc, f"data_{n_new:04d}",
+                def _create(with_compression):
+                    create_kwargs = dict(
+                        shape=new_data.shape, chunks=new_chunks, dtype=new_data.dtype
                     )
-                    return _create(with_compression=False)
+                    if with_compression and compression is not None:
+                        create_kwargs["compression"] = compression
+                        if compression_opts is not None:
+                            create_kwargs["compression_opts"] = compression_opts
+                    return self.grp.create_dataset(f"data_{n_new:04d}", **create_kwargs)
 
-            dset = self._write_slot(
-                f"data_{n_new:04d}", _create_with_compression_fallback, overwrite
-            )
+                def _create_with_compression_fallback():
+                    try:
+                        return _create(with_compression=True)
+                    except Exception as exc:
+                        if _is_storage_slot_conflict(exc):
+                            raise
+                        logger.info(
+                            "Compression setting %r not supported by this storage "
+                            "backend (%s); creating %r uncompressed.",
+                            compression, exc, f"data_{n_new:04d}",
+                        )
+                        return _create(with_compression=False)
 
-            if prep_run:
-                return new_data, dset, n_new
-            da.store(new_data, dset, lock=lock, **kwargs)
+                dset = self._write_slot(
+                    f"data_{n_new:04d}", _create_with_compression_fallback, overwrite
+                )
+
+                if prep_run:
+                    # the caller writes the data; nothing to roll back here
+                    return new_data, dset, n_new
+                da.store(new_data, dset, lock=lock, **kwargs)
+        except BaseException:
+            _rollback_keys(self.grp, [k for k in keys if k not in existed])
+            raise
         if scan:
             scan._save_to_h5(self.grp)
         self._n_i.append(n_new)

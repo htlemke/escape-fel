@@ -12,7 +12,14 @@ import escape
 import logging
 import pandas as pd
 
-from .storage import Grid
+from .storage import (
+    Grid,
+    _check_parent_open,
+    _coerce_data,
+    _describe_storage,
+    _rollback_keys,
+    _to_storable,
+)
 from ..utilities import hist_asciicontrast, Hist_ascii
 
 logger = logging.getLogger(__name__)
@@ -50,9 +57,16 @@ class ArrayTimestamps:
         grid_specs=None,
         name="none",
     ):
-        self._data = data
+        self._data = _coerce_data(data, name)
         self._timestamps = timestamps
         self.name = name
+        n_data, n_ts = _known_len(self._data), _known_len(timestamps)
+        if n_data is not None and n_ts is not None and n_data != n_ts:
+            raise ValueError(
+                f"ArrayTimestamps {name!r}: len(data)={n_data} != "
+                f"len(timestamps)={n_ts}. Every value needs exactly one "
+                f"timestamp; trim both to the same length."
+            )
         self.scan = ScanTimestamps(
             parameter=parameter,
             timestamp_intervals=timestamp_intervals,
@@ -67,14 +81,16 @@ class ArrayTimestamps:
         zero-arg callable) until first accessed, so a large dask-backed
         ArrayTimestamps doesn't get pulled into memory just by loading it --
         mirrors Array.data. A callable is invoked once and the result cached.
+        Lists/tuples are converted to numpy arrays (``None`` -> NaN among
+        numbers), both here and in the constructor.
         """
         if callable(self._data):
-            self._data = self._data()
+            self._data = _coerce_data(self._data(), self.name)
         return self._data
 
     @data.setter
     def data(self, value):
-        self._data = value
+        self._data = _coerce_data(value, self.name)
 
     @property
     def timestamps(self):
@@ -218,6 +234,21 @@ class ArrayTimestamps:
         self._data = self.h5.get_data_da()
         self._timestamps = self.h5.timestamps
         self.scan._save_to_h5(self.h5.grp)
+        # a process killed later still leaves a readable file up to here
+        flush = getattr(getattr(self.h5.grp, "file", None), "flush", None)
+        if flush is not None:
+            flush()
+
+    def materialize(self):
+        """Load data and timestamps into memory and return ``self``.
+
+        Arrays loaded from a results file read from it lazily, so they stop
+        working once the file is closed. Call this before closing to keep
+        using the array (data, timestamps, scan, plots) afterwards.
+        """
+        self._data = np.asarray(self.data)
+        self._timestamps = np.asarray(self.timestamps)
+        return self
 
     def set_h5_storage(self, parent_h5py, name=None):
         if not hasattr(self, "h5"):
@@ -240,7 +271,7 @@ class ArrayTimestamps:
         with ProgressBar():
             self.h5.append(self.data, self.timestamps, self.scan)
         self._data = self.h5.get_data_da()
-        self._timestamps = self.h5.index
+        self._timestamps = self.h5.timestamps
 
     def set_h5_storage_file(self, file_name, parent_group_name, name=None):
         if not hasattr(self, "h5"):
@@ -298,8 +329,11 @@ class ArrayTimestamps:
             parameter, timestamp_intervals, grid_specs = ScanTimestamps._load_from_h5(
                 parent_h5py[name]
             )
-        except:
-            # print(f"could not read scan metadata of {name}")
+        except Exception:
+            logger.warning(
+                "Could not read scan metadata of %s; loading it as a single "
+                "step.", _describe_storage(h5.grp), exc_info=True,
+            )
             parameter = None
             timestamp_intervals = None
             grid_specs = None
@@ -307,21 +341,23 @@ class ArrayTimestamps:
         data = h5.get_data_da()
         if data is None:
             return None
-        else:
-            out = cls(
-                timestamps=h5.timestamps,
-                data=data,
-                parameter=parameter,
-                timestamp_intervals=timestamp_intervals,
-                grid_specs=grid_specs,
-                name=name,
-            )
-            # Attach the ArrayH5Dataset already built above so a later
-            # set_h5_storage()/store() call (e.g. via DataSet.append) reuses
-            # it instead of re-constructing one (which would re-do the same
-            # group listing/attrs work a second time for no reason).
-            out.h5 = h5
-            return out
+        timestamps = h5.timestamps
+        if timestamp_intervals is None:
+            timestamp_intervals = [[timestamps.min(), timestamps.max()]]
+        out = cls(
+            timestamps=timestamps,
+            data=data,
+            parameter=parameter,
+            timestamp_intervals=timestamp_intervals,
+            grid_specs=grid_specs,
+            name=name,
+        )
+        # Attach the ArrayH5Dataset already built above so a later
+        # set_h5_storage()/store() call (e.g. via DataSet.append) reuses
+        # it instead of re-constructing one (which would re-do the same
+        # group listing/attrs work a second time for no reason).
+        out.h5 = h5
+        return out
 
     #    << storing
 
@@ -674,8 +710,20 @@ for _name in _SCAN_TIMESTAMPS_STEP_DELEGATE:
 del _name
 
 
+def _known_len(x):
+    """len(x) if it is known without loading anything, else None."""
+    if x is None or callable(x):
+        return None
+    try:
+        n = len(x)
+    except (TypeError, ValueError):
+        return None
+    return n if isinstance(n, (int, np.integer)) else None
+
+
 class ArrayH5Dataset:
     def __init__(self, parent, name):
+        _check_parent_open(parent, name)
         self.parent = parent
         try:
             self.grp = parent[name]
@@ -689,8 +737,12 @@ class ArrayH5Dataset:
         else:
             try:
                 self.grp.attrs["esc_type"] = "array_timestamps_dataset"
-            except:
-                print("Could not put esc_type metadata.")
+            except Exception:
+                # expected for a file opened read-only
+                logger.debug(
+                    "Could not set esc_type on %s", _describe_storage(self.grp),
+                    exc_info=True,
+                )
 
         self._data_finder = re.compile("^data_[0-9]{4}$")
         self._ts_finder = re.compile("^timestamps_[0-9]{4}$")
@@ -708,8 +760,13 @@ class ArrayH5Dataset:
         self._n_t.sort()
         # print(self._n_t,self._n_d)
         if not self._n_d == self._n_t:
-            raise Exception(
-                "Corrupt escape ArrayH5Dataset, not equal numbered data and id sub-datasets!"
+            raise ValueError(
+                f"Corrupt escape array {_describe_storage(self.grp)}: "
+                f"data_NNNN slots {self._n_d} and timestamps_NNNN slots "
+                f"{self._n_t} do not match (a store was interrupted or failed "
+                f"after the timestamps were written). Run "
+                f"escape.storage.dataset.check_result_file(<file>, "
+                f"repair=True) to drop the incomplete slots."
             )
 
     def clear_stored_data(self):
@@ -738,77 +795,101 @@ class ArrayH5Dataset:
         """
         if lock == "auto":
             lock = get_lock()
+        # validate before touching the file: timestamps used to be written
+        # first and unsupported data then silently skipped (or failing),
+        # leaving a timestamps-only group that can no longer be read
+        data = _to_storable(data, self.grp)
+        timestamps = np.asarray(timestamps)
+        n_data = _known_len(data)
+        if n_data is not None and n_data != len(timestamps):
+            raise ValueError(
+                f"Cannot store {_describe_storage(self.grp)}: len(data)="
+                f"{n_data} != len(timestamps)={len(timestamps)}."
+            )
         n_new = len(self._n_t)
         timestamps_stored = self.timestamps
-        in_previous_timestamps = np.isin(timestamps, timestamps_stored)
-        if ~in_previous_timestamps.any():
+        n_stored = len(timestamps_stored)
+        if not np.isin(timestamps, timestamps_stored).any():
             # real appending data
             new_timestamps = timestamps
             new_data = data
-        elif in_previous_timestamps.all():
-            # real extending of data
-
-            if len(timestamps) < len(timestamps_stored):
-                raise Exception("fewer event_ids to append than already stored!")
-            if not (timestamps[: len(timestamps_stored)] == timestamps_stored).all():
-                raise Exception("new event_ids don't extend existing ones!")
-            if len(timestamps) == len(timestamps_stored):
-                print("Nothing new to append.")
+        elif len(timestamps) >= n_stored and np.array_equal(
+            timestamps[:n_stored], timestamps_stored
+        ):
+            # real extending of data: everything stored, plus new values
+            if len(timestamps) == n_stored:
+                logger.info("Nothing new to append to %s.", self.grp.name)
                 return
 
-            new_timestamps = timestamps[len(timestamps_stored) :]
-            new_data = data[len(timestamps_stored) :, ...]
+            new_timestamps = timestamps[n_stored:]
+            new_data = data[n_stored:, ...]
+        else:
+            raise ValueError(
+                f"Cannot append to {self.grp.name!r}: the new timestamps "
+                f"partially, but not fully, overlap the "
+                f"{len(timestamps_stored)} already stored (neither a clean "
+                f"append nor a clean extend). This usually means data from "
+                f"two different sources or runs is being written to the same "
+                f"channel."
+            )
 
-        self.grp[f"timestamps_{n_new:04d}"] = new_timestamps
+        keys = (f"timestamps_{n_new:04d}", f"data_{n_new:04d}")
+        existed = {k for k in keys if k in self.grp}
+        try:
+            self.grp[f"timestamps_{n_new:04d}"] = new_timestamps
 
-        if isinstance(data, np.ndarray):
-            if prep_run:
-                if prep_run == "store_numpy":
-                    pass
-                else:
-                    raise Exception(
-                        "Trying dry_run on numpy array data on {self.grp.name}."
+            if isinstance(data, np.ndarray):
+                if prep_run:
+                    if prep_run == "store_numpy":
+                        pass
+                    else:
+                        raise Exception(
+                            "Trying dry_run on numpy array data on {self.grp.name}."
+                        )
+                self.grp[f"data_{n_new:04d}"] = new_data
+            elif isinstance(data, da.Array):
+                # ToDo, smarter chunking when writing small data
+                new_chunks = tuple(c[0] for c in new_data.chunks)
+
+                try:
+                    if "default_dataset_compression" in self.grp.file.attrs:
+                        compression = self.grp.file.attrs["default_dataset_compression"]
+                    else:
+                        compression = None
+
+                    if "default_dataset_compression_opts" in self.grp.file.attrs:
+                        compression_opts = self.grp.file.attrs[
+                            "default_dataset_compression_opts"
+                        ]
+                    else:
+                        compression_opts = None
+
+                    dset = self.grp.create_dataset(
+                        f"data_{n_new:04d}",
+                        shape=new_data.shape,
+                        chunks=new_chunks,
+                        dtype=new_data.dtype,
+                        compression=compression,
+                        compression_opts=compression_opts,
                     )
-            self.grp[f"data_{n_new:04d}"] = new_data
-        elif isinstance(data, da.Array):
-            # ToDo, smarter chunking when writing small data
-            new_chunks = tuple(c[0] for c in new_data.chunks)
-
-            try:
-                if "default_dataset_compression" in self.grp.file.attrs:
-                    compression = self.grp.file.attrs["default_dataset_compression"]
-                else:
+                except:
                     compression = None
-
-                if "default_dataset_compression_opts" in self.grp.file.attrs:
-                    compression_opts = self.grp.file.attrs[
-                        "default_dataset_compression_opts"
-                    ]
-                else:
                     compression_opts = None
 
-                dset = self.grp.create_dataset(
-                    f"data_{n_new:04d}",
-                    shape=new_data.shape,
-                    chunks=new_chunks,
-                    dtype=new_data.dtype,
-                    compression=compression,
-                    compression_opts=compression_opts,
-                )
-            except:
-                compression = None
-                compression_opts = None
+                    dset = self.grp.create_dataset(
+                        f"data_{n_new:04d}",
+                        shape=new_data.shape,
+                        chunks=new_chunks,
+                        dtype=new_data.dtype,
+                    )
 
-                dset = self.grp.create_dataset(
-                    f"data_{n_new:04d}",
-                    shape=new_data.shape,
-                    chunks=new_chunks,
-                    dtype=new_data.dtype,
-                )
-
-            if prep_run:
-                return new_data, dset, n_new
-            da.store(new_data, dset, lock=lock, **kwargs)
+                if prep_run:
+                    # the caller writes the data; nothing to roll back here
+                    return new_data, dset, n_new
+                da.store(new_data, dset, lock=lock, **kwargs)
+        except BaseException:
+            _rollback_keys(self.grp, [k for k in keys if k not in existed])
+            raise
         if scan:
             scan._save_to_h5(self.grp)
         self._n_t.append(n_new)
@@ -838,7 +919,15 @@ class ArrayH5Dataset:
             return da.concatenate(allarrays)
 
     def create_array(self):
-        return ArrayTimestamps(data=self.get_data_da(), index=self.timestamps)
+        return ArrayTimestamps(data=self.get_data_da(), timestamps=self.timestamps)
+
+
+class _FileLabel:
+    """Stand-in group for error messages about an ArrayH5File."""
+
+    def __init__(self, file_name, name):
+        self.name = name
+        self.file = type("F", (), {"filename": str(file_name)})()
 
 
 class ArrayH5File:
@@ -873,8 +962,12 @@ class ArrayH5File:
         self._n_d.sort()
         self._n_t.sort()
         if not self._n_d == self._n_t:
-            raise Exception(
-                "Corrupt escape ArrayH5Dataset, not equally sized data and index sub-datasets!"
+            raise ValueError(
+                f"Corrupt escape array {self.group_name!r} in results file "
+                f"{str(self.file_name)!r}: data_NNNN slots {self._n_d} and "
+                f"timestamps_NNNN slots {self._n_t} do not match. Run "
+                f"escape.storage.dataset.check_result_file(<file>, "
+                f"repair=True) to drop the incomplete slots."
             )
 
     @property
@@ -896,52 +989,66 @@ class ArrayH5File:
         expects to extend a former dataset, i.e. data includes data already existing,
         this will likely change in future to also allow real appending of entirely new data.
         """
+        data = _to_storable(data, _FileLabel(self.file_name, self.group_name))
+        timestamps = np.asarray(timestamps)
         n_new = len(self._n_t)
         ids_stored = self.timestamps
-        in_previous_timestamps = np.isin(timestamps, ids_stored)
-        if ~in_previous_timestamps.any():
+        n_stored = len(ids_stored)
+        if not np.isin(timestamps, ids_stored).any():
             # real appending data
             new_timestamps = timestamps
             new_data = data
-        elif in_previous_timestamps.all():
-            # real extending of data
-
-            if len(timestamps) < len(ids_stored):
-                raise Exception("fewer event_ids to append than already stored!")
-            if not (timestamps[: len(ids_stored)] == ids_stored).all():
-                raise Exception("new event_ids don't extend existing ones!")
-            if len(timestamps) == len(ids_stored):
-                print("Nothing new to append.")
+        elif len(timestamps) >= n_stored and np.array_equal(
+            timestamps[:n_stored], ids_stored
+        ):
+            # real extending of data: everything stored, plus new values
+            if len(timestamps) == n_stored:
+                logger.info("Nothing new to append to %s.", self.group_name)
                 return
 
-            new_timestamps = timestamps[len(ids_stored) :]
-            new_data = data[len(ids_stored) :, ...]
+            new_timestamps = timestamps[n_stored:]
+            new_data = data[n_stored:, ...]
+        else:
+            raise ValueError(
+                f"Cannot append to {self.group_name!r} in {str(self.file_name)!r}: "
+                f"the new timestamps partially, but not fully, overlap the "
+                f"{len(ids_stored)} already stored (neither a clean append "
+                f"nor a clean extend)."
+            )
 
-        with h5py.File(self.file_name, "a") as f:
-            f[self.group_name + f"/timestamps_{n_new:04d}"] = new_timestamps
-
-        if isinstance(data, np.ndarray):
-            if prep_run:
-                if prep_run == "store_numpy":
-                    print("this should happen")
-                    pass
-                else:
-                    raise Exception(
-                        "Trying dry_run on numpy array data on {self.grp.name}."
-                    )
+        keys = [f"timestamps_{n_new:04d}", f"data_{n_new:04d}"]
+        with h5py.File(self.file_name, "r") as f:
+            existed = {k for k in keys if k in f[self.group_name]}
+        try:
             with h5py.File(self.file_name, "a") as f:
-                f[self.group_name + f"/data_{n_new:04d}"] = new_data
-        elif isinstance(data, da.Array):
-            # ToDo, smarter chunking when writing small data
-            new_chunks = tuple(c[0] for c in new_data.chunks)
-            location = {
-                "file_name": self.file_name,
-                "dataset_name": self.group_name + f"/data_{n_new:04d}",
-            }
-            if prep_run:
-                return new_data, location, n_new
-            else:
-                data.to_hdf5(self.file_name, location["dataset_name"])
+                f[self.group_name + f"/timestamps_{n_new:04d}"] = new_timestamps
+
+            if isinstance(data, np.ndarray):
+                if prep_run:
+                    if prep_run == "store_numpy":
+                        pass
+                    else:
+                        raise Exception(
+                            "Trying dry_run on numpy array data on {self.grp.name}."
+                        )
+                with h5py.File(self.file_name, "a") as f:
+                    f[self.group_name + f"/data_{n_new:04d}"] = new_data
+            elif isinstance(data, da.Array):
+                # ToDo, smarter chunking when writing small data
+                new_chunks = tuple(c[0] for c in new_data.chunks)
+                location = {
+                    "file_name": self.file_name,
+                    "dataset_name": self.group_name + f"/data_{n_new:04d}",
+                }
+                if prep_run:
+                    # the caller writes the data; nothing to roll back here
+                    return new_data, location, n_new
+                else:
+                    data.to_hdf5(self.file_name, location["dataset_name"])
+        except BaseException:
+            with h5py.File(self.file_name, "a") as f:
+                _rollback_keys(f[self.group_name], [k for k in keys if k not in existed])
+            raise
         if scan:
             with h5py.File(self.file_name, "a") as f:
                 scan._save_to_h5(f[self.group_name])

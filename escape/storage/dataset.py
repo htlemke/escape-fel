@@ -3,6 +3,7 @@ import copy
 from functools import partial
 import os
 import pickle
+import re
 import sys
 import warnings
 from dask.distributed import Client, LocalCluster
@@ -327,8 +328,11 @@ class DataSet:
                     if verbose:
                         print(k)
                     ks.append(k)
-            except:
-                pass
+            except Exception:
+                logger.warning(
+                    "Skipping dataset %r: could not determine its element size.",
+                    k, exc_info=True,
+                )
         return ks
 
     def store_datasets_max_element_size(
@@ -343,8 +347,11 @@ class DataSet:
                     if verbose:
                         print(k)
                     ks.append(k)
-            except:
-                pass
+            except Exception:
+                logger.warning(
+                    "Skipping dataset %r: could not determine its element size.",
+                    k, exc_info=True,
+                )
         return escape.store([self.datasets[k] for k in ks], lock=lock, **kwargs)
 
     def clear_results_file(self, names=None, confirm=True):
@@ -408,8 +415,11 @@ class DataSet:
                     if verbose:
                         print(k)
                     ds[k] = v
-            except:
-                pass
+            except Exception:
+                logger.warning(
+                    "Skipping dataset %r: could not determine its element size.",
+                    k, exc_info=True,
+                )
         lo = escape.compute(*[v for k, v in ds.items()], **kwargs)
         for n, (k, v) in enumerate(ds.items()):
             self.append(lo[n], name=k)
@@ -515,12 +525,21 @@ class DataSet:
                         dict2structure({tname: self.datasets[tname]}, base=self)
 
             else:
+                # groups without esc_type: older escape files, or not escape
+                # data at all -- try loading as an Array, but say so when a
+                # group that looks like one fails instead of hiding it
                 try:
                     self.append(
                         escape.Array.load_from_h5(self.results_file, tname), name=tname
                     )
-                except:
-                    pass
+                except Exception:
+                    looks_like_array = hasattr(grp, "keys") and any(
+                        k.startswith(("data_", "index_")) for k in grp.keys()
+                    )
+                    (logger.warning if looks_like_array else logger.debug)(
+                        "Could not load %r from the results file; it is not "
+                        "available in this DataSet.", tname, exc_info=True,
+                    )
 
     @classmethod
     def load_from_result_file(
@@ -742,3 +761,68 @@ def convert_resultsfile(
                 else:
                     return ds_out
 
+
+_SLOT_PREFIXES = {
+    "array_timestamps_dataset": "timestamps_",
+    "array_dataset": "index_",
+}
+
+
+def check_result_file(path, repair=False):
+    """Check every escape array in a results file for incomplete storage
+    slots, and optionally repair them.
+
+    An array is stored as numbered pairs ``data_NNNN`` + ``timestamps_NNNN``
+    (``ArrayTimestamps``) or ``data_NNNN`` + ``index_NNNN`` (``Array``). A
+    store that failed half-way in escape <= 0.2.14 could leave one half of a
+    pair behind, after which the whole channel cannot be read.
+
+    Returns ``{array_name: status}``, with status one of ``"ok"``,
+    ``"empty"`` (no slots), ``"orphan_timestamps"`` / ``"orphan_index"``
+    (slots without data -- the data was never written and cannot be
+    recovered), ``"orphan_data"`` (data without timestamps/index).
+
+    With ``repair=True`` the unpaired slots are deleted, and arrays left
+    without any slot are removed, so the rest of the file loads again. The
+    returned statuses describe the file as it was before repairing.
+    """
+    path = Path(path)
+    if ".zarr" in path.suffixes:
+        root = zarr.open(path, mode="a" if repair else "r")
+        close = lambda: None
+    else:
+        root = h5py.File(path, "a" if repair else "r")
+        close = root.close
+    report = {}
+    try:
+        for name in list(root.keys()):
+            grp = root[name]
+            esc_type = grp.attrs.get("esc_type")
+            if esc_type not in _SLOT_PREFIXES or not hasattr(grp, "keys"):
+                continue
+            id_prefix = _SLOT_PREFIXES[esc_type]
+            keys = list(grp.keys())
+            data = {k[-4:] for k in keys if re.fullmatch(r"data_\d{4}", k)}
+            ids = {
+                k[-4:] for k in keys if re.fullmatch(id_prefix + r"\d{4}", k)
+            }
+            if not data and not ids:
+                status = "empty"
+            elif ids - data:
+                status = "orphan_" + id_prefix.rstrip("_")
+            elif data - ids:
+                status = "orphan_data"
+            else:
+                status = "ok"
+            report[name] = status
+            if repair and status != "ok":
+                for n in ids - data:
+                    del grp[id_prefix + n]
+                for n in data - ids:
+                    del grp[f"data_{n}"]
+                if not (ids & data):
+                    del root[name]
+                logger.warning("check_result_file: repaired %r in %s (%s)", name, path, status)
+    finally:
+        close()
+    return report
