@@ -49,41 +49,16 @@ from rich.tree import Tree
 logger = logging.getLogger(__name__)
 
 
-_RESULT_FILE_TYPE_SUFFIXES = {"h5": ".h5", "zarr": ".zarr"}
+from escape.storage.dataset import (
+    _RESULT_FILE_TYPE_SUFFIXES,
+    normalize_result_filepath,
+)
 
 
 def _normalize_result_filepath(path, result_type):
-    """Ensure *path* ends with the ``.esc.<result_type>`` suffix pair that
-    :func:`~escape.storage.dataset.filespec_to_file` expects.
-
-    A path with no recognized suffix at all (e.g. ``"run70"``) gets one
-    added silently. A path with a suffix that doesn't match *result_type*
-    (e.g. ``.h5`` while ``result_type="zarr"``, or a missing ``.esc``) has
-    its trailing ``.esc``/``.h5``/``.zarr`` suffixes stripped and replaced,
-    with a warning, since silently writing to a different path than the one
-    given is otherwise easy to miss.
-    """
-    path = Path(path)
-    type_suffix = _RESULT_FILE_TYPE_SUFFIXES[result_type]
-    canonical_suffixes = [".esc", type_suffix]
-    if path.suffixes[-2:] == canonical_suffixes:
-        return path
-
-    stem = path.name
-    had_suffix = False
-    while Path(stem).suffix in (".esc", ".h5", ".zarr"):
-        had_suffix = True
-        stem = Path(stem).stem
-
-    new_path = path.with_name(stem + "".join(canonical_suffixes))
-    if had_suffix:
-        warnings.warn(
-            f"result_file {path.name!r} does not have the expected "
-            f"'.esc{type_suffix}' suffix for result_type={result_type!r} "
-            f"— using {new_path.name!r} instead.",
-            stacklevel=2,
-        )
-    return new_path
+    """Ensure *path* ends with ``.esc.<result_type>``; see
+    :func:`escape.storage.dataset.normalize_result_filepath`."""
+    return normalize_result_filepath(path, result_type, stacklevel=3)
 
 
 def _extract_run_number(metadata_file):

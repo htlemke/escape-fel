@@ -84,6 +84,85 @@ def _dedupe_array_for_alias(data, name):
     return new_array
 
 
+_RESULT_FILE_TYPE_SUFFIXES = {"h5": ".h5", "zarr": ".zarr"}
+
+
+def normalize_result_filepath(path, result_type=None, stacklevel=2):
+    """Return *path* as an escape results filename, i.e. with ``.esc`` plus a
+    type suffix (``.h5`` or ``.zarr``).
+
+    * No escape suffix at all (``"run"``, ``"scan_0.5V"``): ``.esc.<type>``
+      is added silently. The type is *result_type* if given, else ``h5``.
+    * An incomplete or mismatched suffix (``"run.h5"``, ``"run.esc"``,
+      ``"run.zarr"``): completed, with a ``UserWarning`` naming the filename
+      used instead. Without *result_type* the type is taken from the given
+      suffix (``"run.zarr"`` -> ``"run.esc.zarr"``).
+    * Already complete: returned unchanged, no warning. Without
+      *result_type* this is lenient and accepts anything
+      :func:`filespec_to_file` accepts (``.esc`` and ``.h5``/``.zarr``
+      somewhere in the suffixes), so no currently valid name changes meaning;
+      with *result_type* the name must end in exactly ``.esc.<type>``.
+
+    Only trailing ``.esc``/``.h5``/``.zarr`` suffixes are stripped, so a dot
+    that is part of the name (``"scan_0.5V"``) is kept. *stacklevel* is
+    passed to ``warnings.warn``: the default points at the line calling this
+    function; a wrapper passes 3 so it points at the wrapper's caller.
+    """
+    path = Path(path)
+    suffixes = path.suffixes
+    if result_type is None:
+        if ".esc" in suffixes and (".h5" in suffixes or ".zarr" in suffixes):
+            return path
+    elif suffixes[-2:] == [".esc", _RESULT_FILE_TYPE_SUFFIXES[result_type]]:
+        return path
+
+    stem, given_type = path.name, None
+    while Path(stem).suffix in (".esc", ".h5", ".zarr"):
+        suffix = Path(stem).suffix
+        if suffix != ".esc" and given_type is None:
+            given_type = suffix
+        stem = Path(stem).stem
+
+    if result_type is not None:
+        type_suffix = _RESULT_FILE_TYPE_SUFFIXES[result_type]
+    else:
+        type_suffix = given_type or ".h5"
+    new_path = path.with_name(stem + ".esc" + type_suffix)
+    if stem != path.name:
+        if result_type is not None:
+            msg = (
+                f"result_file {path.name!r} does not have the expected "
+                f"'.esc{type_suffix}' suffix for result_type={result_type!r} "
+                f"— using {new_path.name!r} instead."
+            )
+        else:
+            msg = (
+                f"result file {path.name!r} has an incomplete escape suffix "
+                f"(expected '.esc.h5' or '.esc.zarr') — using "
+                f"{new_path.name!r} instead."
+            )
+        warnings.warn(msg, UserWarning, stacklevel=stacklevel)
+    return new_path
+
+
+def _can_prompt():
+    """True if ``input()`` can be answered by a person: stdin is a terminal,
+    or we run in a Jupyter/IPython kernel whose frontend accepts input
+    (there ``sys.stdin`` is not a tty, but ``input()`` works)."""
+    try:
+        if sys.stdin is not None and sys.stdin.isatty():
+            return True
+    except (AttributeError, ValueError):
+        pass
+    try:
+        from IPython import get_ipython
+
+        kernel = getattr(get_ipython(), "kernel", None)
+        return bool(getattr(kernel, "_allow_stdin", False))
+    except Exception:
+        return False
+
+
 class DataSet:
     def __init__(
         self,
@@ -99,8 +178,13 @@ class DataSet:
         self.datasets = {}
         self._esc_types = {}
 
+        # the path actually opened, after suffix completion (None when
+        # results_file is an already open h5py.File / zarr.Group)
+        self.results_filepath = None
         if results_file is not None:
-            # self.results_file = results_file
+            if isinstance(results_file, (str, Path)):
+                results_file = normalize_result_filepath(results_file, stacklevel=3)
+                self.results_filepath = results_file
             self.results_file = filespec_to_file(results_file, mode=mode, perm=perm)
             self._init_datasets(lazy_loading=lazy_loading)
         else:
@@ -442,6 +526,10 @@ class DataSet:
     def load_from_result_file(
         cls, results_filepath, lazy_loading=False, name=None, perm=None
     ):
+        if isinstance(results_filepath, (str, Path)):
+            results_filepath = normalize_result_filepath(
+                results_filepath, stacklevel=3
+            )
         ds = cls(
             results_file=results_filepath,
             name=name,
@@ -455,17 +543,39 @@ class DataSet:
     def create_with_new_result_file(
         cls, results_filepath, mode="w", force_overwrite=False, name=None
     ):
+        """Create a DataSet backed by a new results file.
+
+        *results_filepath* is completed to ``.esc.h5``/``.esc.zarr`` as
+        described in :func:`normalize_result_filepath`. If the file exists
+        and *force_overwrite* is False, the user is asked whether to
+        overwrite it when someone can answer (a terminal or a Jupyter
+        kernel); otherwise, or if the answer is not ``y``,
+        ``FileExistsError`` is raised and the file is left untouched.
+        """
+        if isinstance(results_filepath, (str, Path)):
+            results_filepath = normalize_result_filepath(
+                results_filepath, stacklevel=3
+            )
         if Path(results_filepath).exists() and not force_overwrite:
-            if (
-                input(
+            if not _can_prompt():
+                raise FileExistsError(
+                    f"Results file {str(results_filepath)!r} exists and there "
+                    f"is no interactive input to confirm overwriting it. Pass "
+                    f"force_overwrite=True or choose another filename."
+                )
+            try:
+                answer = input(
                     f"Filename {results_filepath} exists, would you like to overwrite its contents? (y/n)"
                 )
-                == "y"
-            ):
-                mode="w"
-                pass
-            else:
-                return
+            except EOFError:
+                answer = ""
+            if answer.strip().lower() != "y":
+                raise FileExistsError(
+                    f"Results file {str(results_filepath)!r} exists, overwriting "
+                    f"was declined. Pass force_overwrite=True or choose another "
+                    f"filename."
+                )
+            mode = "w"
 
         ds = cls(results_file=results_filepath, mode=mode, name=name)
         return ds
@@ -487,12 +597,21 @@ def filespec_to_file(
 
         elif ".zarr" in results_filepath.suffixes:
             result_file = zarr.open(results_filepath, mode=mode)
+        else:
+            raise ValueError(
+                f"{str(results_filepath)!r}: expected '.h5' or '.zarr' after "
+                f"'.esc' (accepted: '.esc.h5', '.esc.zarr')."
+            )
         if perm is not None:
-            print("changing perms")
             try:
                 oschmod.set_mode_recursive(results_filepath, perm)
-            except:
-                print(f"Warning:failed setting permissions {perm:s}")
+            except Exception:
+                logger.warning(
+                    "Failed setting permissions %s on %s",
+                    perm,
+                    results_filepath,
+                    exc_info=True,
+                )
     elif isinstance(file, h5py.File):
         result_file = file
     elif isinstance(file, zarr.Group):
@@ -622,3 +741,4 @@ def convert_resultsfile(
                     return out_filename
                 else:
                     return ds_out
+
