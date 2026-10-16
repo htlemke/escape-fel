@@ -19,7 +19,7 @@ flowchart TB
     end
     subgraph handler["Event handler"]
         eh["DataHubEventHandler<br/>source_ids = requested channels<br/>context_manager(), clone()"]
-        ctx["DataHubEventSourceContext (one connection)<br/>get_event(): DataHubEvent or NullEvent"]
+        ctx["_GroupedDispatcherContext<br/>one connection per delay group<br/>get_event(): DataHubEvent or NullEvent"]
     end
     subgraph worker["EventWorker"]
         serve["_serve() in the event-loop thread:<br/>get event, set ew.event,<br/>call each eventCallbacks entry"]
@@ -42,8 +42,9 @@ flowchart TB
 
 | Class | Role |
 |---|---|
-| `DataHubEventHandler` | Holds the list of requested channels (`source_ids`) and opens one dispatcher connection per `context_manager()` call. `clone()` makes an identical handler for the restart handover. |
-| `DataHubEventSourceContext` | One open connection. `get_event()` waits up to `receive_timeout` (0.5 s) for a message and returns a `DataHubEvent`, or a `NullEvent` if nothing arrived. |
+| `DataHubEventHandler` | Holds the list of requested channels (`source_ids`) and the current delay groups (`groups`, `group_of()`). `context_manager()` returns the context that opens the dispatcher connections. `clone()` makes an identical handler for the restart handover. |
+| `_GroupedDispatcherContext` | The open dispatcher connections, one per delay group (see [Delay groups](#delay-groups)). `get_event()` returns the next `DataHubEvent`, tagged with its group, or a `NullEvent` after `receive_timeout` (0.5 s). |
+| `DataHubEventSourceContext` | One plain connection: used for Redis, the local bsread sender and while no channel is subscribed. |
 | `_TolerantBsreadStream` | datahub's `BsreadStream`, except that a requested channel missing from a message becomes `None` instead of ending the receive thread (see [Failure handling](#failure-handling)). |
 | `EventWorker` | Runs the event loop in one background thread, owns the channel reference counts, and restarts the connection when the channel set changes. |
 | `Stream` | The user object: a source plus a `DataManager`. While accumulating, its `_appendEventData` is one entry in `ew.eventCallbacks`. |
@@ -87,7 +88,7 @@ flowchart TB
     S -- yes --> X["raise: reconnect with back-off"]
     S -- no --> W["wait for the next event"]
     B -- yes --> C["for each accumulating Stream:<br/>Stream._appendEventData()"]
-    C --> D{"new pulse<br/>for this Stream?"}
+    C --> D{"event of this Stream's delay group,<br/>new pulse for this Stream?"}
     D -- yes --> E{"Scan valid?<br/>no parameter None / NaN"}
     E -- yes --> G["value = source.getEventData()"]
     G --> H{"value is None?"}
@@ -217,12 +218,63 @@ flowchart TB
 stop). `stopEventLoop()` cancels any pending restart, so a release just
 before stopping can't start the loop again.
 
+## Delay groups
+
+The dispatcher merges all channels of one request by pulse id. A channel
+whose data reaches it late breaks that: with `JF03T01V02:roi_intensities`
+(about 12 s late, every 2nd pulse) in the request, the dispatcher only
+delivers that channel's pulses, and every other channel is `None` on every
+message. So `DataHubEventHandler` keeps late channels on separate
+connections, found automatically:
+
+```mermaid
+flowchart TB
+    A["connection delivers messages"] --> B["per message: delay = now - pulse time,<br/>which channels had data"]
+    B --> C{"100 messages and 2 s collected?"}
+    C -- no --> A
+    C -- yes --> D["median delay; remember it for each<br/>channel with data (_CHANNEL_DELAY)"]
+    D --> E{"delay >= late_threshold_s (2 s),<br/>steady (p90 - p10 < 1 s),<br/>some channels never had data?"}
+    E -- no --> A
+    E -- yes --> F["move the channels without data<br/>to the connection with the shortest delay<br/>(a new one if this is it)"]
+    F --> G["publish groups: handler.group_version += 1"]
+```
+
+- Short upstream stalls don't split anything: their delay is not steady, and
+  no channel stays empty.
+- Delays are remembered per channel for the Python session. A channel known
+  to be late is put on its own connection from the start
+  (`_plan_groups`), so the split, and the ~15 s without prompt data it
+  costs, happens once per session. Channels with similar delays (within
+  `late_threshold_s`) share a connection.
+- `auto_split=False` on the handler disables it; delays are still measured.
+
+**Dispatching.** Groups are numbered by delay, 0 = shortest. Each event is
+dispatched when it arrives and carries its group number. A Stream only
+processes events of `Stream._event_group()`: the latest group among its
+channels. A late group's event also carries the values the earlier groups
+delivered for the same pulse; each group keeps those in a buffer for the
+longest delay plus 5 s. So:
+
+- `pbps.plot()` stays live; `jf[0].plot()` runs about 12 s behind.
+- `jf[0][evtset[71]]` and `jf[0] - pbps` are evaluated when the Jungfrau
+  value arrives, with the EvtSet and PBPS values of that same pulse.
+- A running statistic (`hold_last`) is fed only by its own group's events,
+  so it never sees a pulse twice. Used in a late combination
+  (`jf[0] / pbps.running_mean(50)`) it contributes its current value, which
+  is about 12 s newer than the Jungfrau pulse.
+- `plot_corr()` without x uses a `lab_time`/`pulse_id` Stream that follows
+  the y Stream's group (`_group_follow`). With an explicit x from another
+  group, both buffers are enlarged by the delay, so pulses still match.
+- `_wait_for_data()` adds the known delay to a plot's `timeout`, and keeps
+  waiting (at most 30 s) while a channel is on a fresh connection that has
+  not delivered it yet (`handler.awaiting_data()`), e.g. until a split.
+
 ## Threads
 
 | Thread | Runs | Touches |
 |---|---|---|
 | Event loop (`EventWorker.loopThread`) | `_serve`: receive, dispatch callbacks, stats | `ew.event`, all Streams' `DataManager`s |
-| datahub receive thread (one per connection) | `Bsread.run`: socket receive into a buffer | its own buffer only |
+| datahub receive thread (one per connection, i.e. per delay group) | `Bsread.run`: socket receive into a buffer | its own buffer only |
 | Restart timer | `_do_restart`, including the handover | handler swap, `restart_done` |
 | Warm-up thread | the new `_serve` during a handover | nothing shared until `active_event` |
 | GUI thread | plot timers, `accumulate`, `subscribe` from user code | reads `DataManager`s, edits `eventCallbacks` |
@@ -283,6 +335,7 @@ during a reset discards its replacement (`ew._generation`).
 | `ew.stats()` | Event rate, callback time per event (mean/max), number of callbacks, age of the last event, pending restart, reconnects, subscriptions |
 | `ew.diagnose(channels)` | The same as text, plus for each channel how many of the last 100 events had data and when it last had data. Used in `TimeoutError` messages. |
 | `ew.subscriptions` | `{channel: number of owners}` |
+| `ew._eventHandler.groups` | Delay groups: `[(channels, delay_s), ...]`; also in `diagnose()` when there are several |
 | `stream.consumers` | Who keeps a Stream accumulating |
 | `stream._channels()` | Real channels a Stream depends on |
 | `draw_graph(build_graph(stream))` | The source graph of a derived Stream (`escape.stream.graph`) |

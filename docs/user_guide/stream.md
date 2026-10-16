@@ -135,6 +135,21 @@ A requested channel that has no data at all (e.g. a stopped detector) does
 not stop the other channels; its Streams just get no data, and a plot's
 timeout says so (`never had data`).
 
+### Detector channels that arrive late
+
+Some channels reach the dispatcher seconds after their pulse, e.g.
+Jungfrau ROI channels (about 12 s). escape notices this by itself and puts
+such channels on a separate dispatcher connection:
+
+- Plots of prompt channels stay live; plots of the late channel run that
+  much behind.
+- Anything combining both (`jf[0][evtset[71]]`, `jf[0] / i0`) appears when
+  the late value arrives, computed with the prompt values of the same
+  pulse.
+- The first time a late channel is used in a session, prompt channels pause
+  for about 15 s while this is detected. After that, escape remembers the
+  delay and separates the channel right away.
+
 ### Shared Streams, shared channels
 
 - `stream[i]` and `stream[mask]` return the **same** Stream when asked again

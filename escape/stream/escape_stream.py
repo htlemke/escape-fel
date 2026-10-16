@@ -1182,6 +1182,10 @@ class EventWorker:
             lines.append("restart: pending or in progress")
         elif st["last_restart_age_s"] is not None:
             lines.append(f"restart: finished {st['last_restart_age_s']:.1f} s ago")
+        groups = getattr(self._eventHandler, "groups", None)
+        if groups and len(groups) > 1:
+            lines.append("dispatcher connections by delay: " + "; ".join(
+                f"[{', '.join(chs)}]" + (f" {d:.1f} s" if d is not None else "") for chs, d in groups))
         recent = list(self._recent_nonnull)
         now = time.time()
         for ch in channels:
@@ -1767,6 +1771,8 @@ class Stream:
         self._consumers = {}             # id(owner) -> owner, see accumulate()
         self._derived_cache = {}         # see _cached_derived()
         self._stopped_by_error = None    # set when its callback was auto-removed
+        self._group_cache = (None, 0)    # see _event_group()
+        self._group_follow = None        # Stream whose delay group this one uses
 
     # ------------------------------------------------------------------
     # Alternate constructors
@@ -1895,9 +1901,12 @@ class Stream:
         return None
 
     def _appendEventData(self):
-        eventId = self._source.eventWorker.event.getEventId()
+        event = self._source.eventWorker.event
+        eventId = event.getEventId()
         if eventId is None or eventId == self._lastEventId:
             return
+        if getattr(event, "group", 0) != self._event_group():
+            return  # another delay group's event (see _event_group)
         data = self._getEventData()
         if data is not None:
             self._dataManager.append(data, eventId)
@@ -1961,6 +1970,25 @@ class Stream:
             if hasattr(par, "_source"):  # a Stream, not e.g. a step-index source
                 _collect_source_channels(par._source, channels)
         return channels
+
+    def _event_group(self):
+        """Delay group whose events this Stream processes: the latest of
+        the groups delivering its channels (DataHubEventHandler splits late
+        channels into their own dispatcher connections). Such an event also
+        carries the earlier groups' values for that pulse. 0 for handlers
+        without delay groups."""
+        if self._group_follow is not None:
+            return self._group_follow._event_group()
+        ew = self._source.eventWorker
+        handler = getattr(ew, "_eventHandler", None)
+        version = getattr(handler, "group_version", None)
+        if version is None:
+            return 0
+        key = (id(handler), version)
+        if self._group_cache[0] != key:
+            group = max((handler.group_of(c) for c in self._channels()), default=0)
+            self._group_cache = (key, group)
+        return self._group_cache[1]
 
     @property
     def consumers(self):
@@ -2879,11 +2907,15 @@ class Stream:
         # A channel change reconnects the stream; don't spend the timeout on it.
         if ew is not None:
             ew.wait_for_restart()
-        deadline = time.time() + timeout
+        channels = self._channels()
+        handler = getattr(ew, "_eventHandler", None)
+        # Data of a late channel (own dispatcher connection) arrives that much later.
+        delay = handler.expected_delay(channels) if hasattr(handler, "expected_delay") else 0.0
+        awaiting = getattr(handler, "awaiting_data", None)
+        deadline = time.time() + timeout + delay
         while len(self) < 2:
-            if time.time() > deadline:
-                channels = self._channels()
-                msg = f"no data for {self.name!r} (channels: {', '.join(channels) or '-'}) after {timeout} s."
+            if time.time() > deadline and not (awaiting and awaiting(channels)):
+                msg = f"no data for {self.name!r} (channels: {', '.join(channels) or '-'}) after {timeout + delay:.0f} s."
                 if self._stopped_by_error:
                     msg += f"\n  stopped after repeated errors in its computation: {self._stopped_by_error}"
                 if ew is not None:
@@ -3031,12 +3063,12 @@ class Stream:
         """
         ew = self._source.eventWorker
         if xVar is None:
-            if default_x == "pulse_id":
-                xVar = ew.pulse_id
-            elif default_x == "lab_time":
-                xVar = ew.lab_time
-            else:
+            if default_x not in ("pulse_id", "lab_time"):
                 raise ValueError("default_x must be 'lab_time' or 'pulse_id'")
+            # Its own Stream of the pseudo-channel, taking its values from the
+            # same events as this one (a late channel's events come later).
+            xVar = Stream(default_x, ew)
+            xVar._group_follow = self
 
         if axes is None:
             fig, axes = plt.subplots()
@@ -3053,6 +3085,13 @@ class Stream:
     def _make_corr_plot(self, xVar, fig, axes, timeout, Npoints, update, N_acc):
         self._wait_for_data(timeout)
         xVar._wait_for_data(timeout)
+        # Pulses are matched by id: if one side arrives later (own dispatcher
+        # connection), the other must keep that much more history.
+        handler = getattr(self._source.eventWorker, "_eventHandler", None)
+        if hasattr(handler, "expected_delay"):
+            delay = handler.expected_delay(self._channels() + xVar._channels())
+            if delay:
+                plots._grow_buffers(Npoints + int(120 * delay), self, xVar)
 
         y_arr = np.prod(self._peek_shape(), dtype=int) > 1
         x_arr = np.prod(xVar._peek_shape(), dtype=int) > 1
@@ -3383,8 +3422,13 @@ class ProcObj:
         return self.children
 
     def getEventData(self):  # noqa: N802
-        eid = self.eventWorker.event.getEventId()
+        event = self.eventWorker.event
+        eid = event.getEventId()
         if eid == self._last_processed_eventId:
+            return False
+        if self.hold_last and getattr(event, "group", 0) != self._event_group():
+            # A stateful (running) statistic is fed only by its own delay
+            # group's events: another group re-delivers older pulses.
             return False
         # A Param argument is read here, per event, so a change takes effect
         # from the next pulse on (see escape.storage.lineage.Param).
@@ -3403,6 +3447,9 @@ class ProcObj:
         self.ret_values = result if isinstance(result, tuple) else (result,)
         self._ret_eventId = eid
         return True
+
+    def _event_group(self):
+        return max((a._event_group() for a, ie in zip(self.args, self.args_is_esc) if ie), default=0)
 
     def current_values(self):
         """``ret_values`` if they were computed for the current pulse, else

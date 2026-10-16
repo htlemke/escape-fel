@@ -60,6 +60,7 @@ import queue
 import threading
 import time
 import logging
+from collections import OrderedDict, deque
 
 _logger = logging.getLogger(__name__)
 
@@ -178,6 +179,8 @@ def _require_datahub():
 class NullEvent:
     """Placeholder emitted when no message is available (timeout or no source)."""
 
+    group = 0
+
     def getFromSource(self, source):  # noqa: N802
         return None
 
@@ -196,10 +199,13 @@ class DataHubEvent:
     The ``timestamp`` is nanoseconds since epoch (integer).
     """
 
-    def __init__(self, pulse_id, timestamp_ns, msg):
+    def __init__(self, pulse_id, timestamp_ns, msg, group=0):
         self._id = pulse_id
         self._ts_ns = timestamp_ns   # nanoseconds
         self._msg = msg              # {channel_name: value}
+        # Delay group that delivered this event (see _GroupedDispatcherContext);
+        # a Stream only processes events of its own group.
+        self.group = group
 
     def getFromSource(self, channel):  # noqa: N802
         if channel == "pulse_id":
@@ -292,6 +298,229 @@ class DataHubEventSourceContext:
 
 
 # ---------------------------------------------------------------------------
+# Delay groups: channels that arrive late get their own dispatcher connection
+# ---------------------------------------------------------------------------
+#
+# The dispatcher merges all requested channels by pulse id. A channel whose
+# data reaches the dispatcher late (a Jungfrau ROI channel: ~12 s) makes it
+# deliver only that channel's pulses, with every other channel None. So the
+# dispatcher context watches each connection: when its messages are late by a
+# large, steady amount and some requested channels never have data, those
+# channels move to the connection with the shortest delay (a new one if
+# needed). Events of each connection are dispatched as they arrive, tagged
+# with the connection's group index (0 = shortest delay); a late event also
+# carries the values the earlier groups delivered for the same pulse, kept in
+# a buffer until then. Learned delays are remembered for the session
+# (_CHANNEL_DELAY), so a known late channel gets its own connection at once.
+
+_CHANNEL_DELAY = {}  # channel -> last measured dispatcher delay (s)
+
+
+class _DelayGroup:
+    """One dispatcher connection and its delay statistics."""
+
+    WINDOW = 100  # messages per evaluation
+
+    def __init__(self, channels):
+        self.channels = list(channels)
+        self.stream = None
+        self.connected = time.time()
+        self.n_msgs = 0
+        self.delays = deque(maxlen=self.WINDOW)
+        self.seen = {}            # channel -> messages with data in this window
+        self.window_msgs = 0
+        self.window_start = time.time()
+        self.delay = None         # median delay (s) of the last window
+        self.buffer = OrderedDict()  # pulse id -> (pulse time, values), for later groups
+
+    def sort_key(self):
+        if self.delay is not None:
+            return self.delay
+        return max((_CHANNEL_DELAY.get(c, 0.0) for c in self.channels), default=0.0)
+
+
+def _plan_groups(channels, threshold):
+    """Split *channels* into delay groups from what was learned so far:
+    unknown and prompt channels together, late ones clustered by delay."""
+    prompt = [c for c in channels if _CHANNEL_DELAY.get(c, 0.0) < threshold]
+    late = sorted((_CHANNEL_DELAY[c], c) for c in channels if c not in prompt)
+    groups = [prompt] if prompt else []
+    last = None
+    for d, c in late:
+        if last is None or d - last >= threshold:
+            groups.append([])
+        groups[-1].append(c)
+        last = d
+    return groups or [[]]
+
+
+class _GroupedDispatcherContext:
+    """Dispatcher context with one connection per delay group (see above)."""
+
+    SPREAD_MAX = 1.0      # s: p90 - p10 of the delay must be below this ("steady")
+    MIN_WINDOW_S = 2.0    # evaluate a window only after this long
+
+    def __init__(self, handler):
+        self.h = handler
+        self.groups = [_DelayGroup(chs) for chs in _plan_groups(handler.source_ids, handler.late_threshold_s)]
+        self._last_prune = time.time()
+
+    # -- connections ---------------------------------------------------
+    FIRST_DATA_WAIT = 30.0  # s a fresh connection may take to deliver a channel
+
+    def _open(self, g):
+        g.stream = None
+        g.connected = time.time()
+        with self.h._group_lock:
+            for c in g.channels:
+                self.h._awaiting[c] = g.connected + self.FIRST_DATA_WAIT
+        if g.channels:
+            g.stream = _TolerantBsreadStream(channels=list(g.channels), url=self.h.url, **_bsread_kwargs(self.h))
+
+    @staticmethod
+    def _close(stream, timeout):
+        if stream is None:
+            return
+        try:
+            stream.abort()
+            stream.join(timeout=timeout)
+            stream.close()
+        except Exception as exc:
+            _logger.debug("Error closing datahub stream: %s", exc)
+
+    def _publish(self):
+        """Tell the handler (and so the Streams) the current group layout."""
+        self.groups.sort(key=_DelayGroup.sort_key)
+        self.h._set_groups([g.channels for g in self.groups], [g.delay for g in self.groups])
+        self.h.stream = self.groups[0].stream if self.groups else None
+
+    def __enter__(self):
+        try:
+            for g in self.groups:
+                self._open(g)
+        except Exception:
+            self.__exit__()
+            raise
+        self._publish()
+        if len(self.groups) > 1:
+            print(f"DataHubEventHandler: {len(self.groups)} dispatcher connections by delay: "
+                  + "; ".join(", ".join(g.channels) for g in self.groups))
+        return self
+
+    def __exit__(self, *_):
+        timeout = _bsread_receive_timeout_s(self.h) + 1.0
+        for g in self.groups:
+            if g.stream is not None:
+                g.stream.abort()  # let all receive threads leave their loops at once
+        for g in self.groups:
+            self._close(g.stream, timeout)
+            g.stream = None
+        self.h.stream = None
+        return False
+
+    # -- events --------------------------------------------------------
+    def get_event(self):
+        deadline = time.time() + self.h.receive_timeout
+        while True:
+            # One connection: block in receive(). Several: poll them, the one
+            # with the shortest delay first.
+            wait = max(0.0, deadline - time.time()) if len(self.groups) == 1 else 0
+            for i, g in enumerate(self.groups):
+                if g.stream is None:
+                    continue
+                result = g.stream.receive(timeout=wait)
+                if result is not None:
+                    return self._event(i, g, result)
+                t = getattr(g.stream, "processing_thread", None)
+                if t is not None and not t.is_alive():
+                    raise RuntimeError(f"datahub stream thread died: {g.stream.get_run_exception()!r}")
+            if time.time() >= deadline:
+                return NullEvent()
+            time.sleep(0.001)
+
+    def _event(self, i, g, result):
+        pulse_id, timestamp_ns, msg = result
+        now = time.time()
+        pulse_time = timestamp_ns * 1e-9 if timestamp_ns else now
+        values = {c: msg.get(c) for c in g.channels}  # a split group may still deliver others
+        self._account(g, now - pulse_time, values)
+        if len(self.groups) > 1:
+            if i < len(self.groups) - 1:
+                g.buffer[pulse_id] = (pulse_time, values)
+            if i > 0:
+                merged = {}
+                for earlier in self.groups[:i]:
+                    hit = earlier.buffer.get(pulse_id)
+                    if hit is not None:
+                        merged.update(hit[1])
+                merged.update(values)
+                values = merged
+            if now - self._last_prune > 1.0:
+                self._prune(now)
+        if i == 0 and len(self.groups) == 1:
+            return DataHubEvent(pulse_id, timestamp_ns, values)
+        return DataHubEvent(pulse_id, timestamp_ns, values, group=i)
+
+    def _prune(self, now):
+        self._last_prune = now
+        keep = max((g.delay or 0.0) for g in self.groups) + 5.0
+        for g in self.groups:
+            while g.buffer:
+                pid, (t, _) = next(iter(g.buffer.items()))
+                if now - t <= keep:
+                    break
+                g.buffer.popitem(last=False)
+
+    # -- delay detection -----------------------------------------------
+    def _account(self, g, delay, values):
+        g.n_msgs += 1
+        g.window_msgs += 1
+        g.delays.append(delay)
+        for c, v in values.items():
+            if v is not None:
+                g.seen[c] = g.seen.get(c, 0) + 1
+                if c in self.h._awaiting:
+                    self.h._awaiting.pop(c, None)
+        if g.window_msgs >= _DelayGroup.WINDOW and time.time() - g.window_start >= self.MIN_WINDOW_S:
+            self._evaluate(g)
+            g.window_msgs, g.seen, g.window_start = 0, {}, time.time()
+
+    def _evaluate(self, g):
+        d = sorted(g.delays)
+        g.delay = d[len(d) // 2]
+        spread = d[int(0.9 * (len(d) - 1))] - d[int(0.1 * (len(d) - 1))]
+        present = [c for c in g.channels if g.seen.get(c)]
+        absent = [c for c in g.channels if not g.seen.get(c)]
+        for c in present:
+            _CHANNEL_DELAY[c] = g.delay
+        if not self.h.auto_split:
+            return
+        if g.delay >= self.h.late_threshold_s and spread < self.SPREAD_MAX and present and absent:
+            self._split(g, present, absent)
+
+    def _split(self, g, present, absent):
+        """Move *absent* channels of the late group *g* to the group with the
+        shortest delay, or to a new connection if *g* is that group."""
+        print(
+            f"DataHubEventHandler: {', '.join(present)} arrive {g.delay:.1f} s late and "
+            f"hold back {', '.join(absent)}; giving them separate dispatcher connections."
+        )
+        g.channels = present
+        prompt = self.groups[0] if self.groups[0] is not g else None
+        if prompt is None:
+            prompt = _DelayGroup(absent)
+            prompt.delay = 0.0
+            self.groups.insert(0, prompt)
+        else:
+            prompt.channels = prompt.channels + absent
+            old = prompt.stream
+            threading.Thread(target=self._close, args=(old, _bsread_receive_timeout_s(self.h) + 1.0),
+                             daemon=True).start()
+        self._open(prompt)
+        self._publish()
+
+
+# ---------------------------------------------------------------------------
 # DataHubEventHandler — live PSI data via dispatcher or Redis
 # ---------------------------------------------------------------------------
 
@@ -327,15 +556,59 @@ class DataHubEventHandler:
     """
 
     def __init__(self, backend="bsread", url=None, receive_timeout=0.5,
-                 bsread_receive_timeout_ms=None, **stream_kwargs):
+                 bsread_receive_timeout_ms=None, auto_split=True, late_threshold_s=2.0,
+                 **stream_kwargs):
         _require_datahub()
         self.backend = backend
         self.url = url
         self.receive_timeout = receive_timeout
         self.bsread_receive_timeout_ms = bsread_receive_timeout_ms
+        self.auto_split = auto_split
+        self.late_threshold_s = late_threshold_s
         self._stream_kwargs = stream_kwargs
         self.stream = None
         self.source_ids = []
+        self.group_version = 0
+        self._group_of = {}
+        self._group_delays = []
+        self._group_lock = threading.Lock()
+        self._awaiting = {}  # channel -> time until which its first data is still expected
+
+    # ------------------------------------------------------------------
+    # Delay groups (see _GroupedDispatcherContext)
+    # ------------------------------------------------------------------
+
+    def _set_groups(self, channel_lists, delays):
+        with self._group_lock:
+            self._group_of = {c: i for i, chs in enumerate(channel_lists) for c in chs}
+            self._group_delays = list(delays)
+            self.group_version += 1
+
+    def group_of(self, channel):
+        """Index of the delay group (dispatcher connection) delivering
+        *channel*; 0 is the one with the shortest delay."""
+        return self._group_of.get(channel, 0)
+
+    @property
+    def groups(self):
+        """Current delay groups as ``[(channels, delay_s or None), ...]``."""
+        with self._group_lock:
+            lists = {}
+            for c, i in self._group_of.items():
+                lists.setdefault(i, []).append(c)
+            return [(lists.get(i, []), d) for i, d in enumerate(self._group_delays)]
+
+    def awaiting_data(self, channels):
+        """True while one of *channels* is on a fresh connection that has
+        not delivered data for it yet (e.g. while a late channel holds it
+        back until the split), for at most 30 s."""
+        now = time.time()
+        return any(self._awaiting.get(c, 0) > now for c in channels)
+
+    def expected_delay(self, channels):
+        """How late data of *channels* is expected to arrive (s), from what
+        was measured so far."""
+        return max((_CHANNEL_DELAY.get(c, 0.0) for c in channels), default=0.0)
 
     def clone(self):
         """Return a fresh, independent handler with the same configuration
@@ -350,6 +623,8 @@ class DataHubEventHandler:
             url=self.url,
             receive_timeout=self.receive_timeout,
             bsread_receive_timeout_ms=self.bsread_receive_timeout_ms,
+            auto_split=self.auto_split,
+            late_threshold_s=self.late_threshold_s,
             **self._stream_kwargs,
         )
 
@@ -409,10 +684,9 @@ class DataHubEventHandler:
                 self.stream = RedisStream(channels=channels, url=url, **kwargs)
                 _logger.debug("DataHubEventHandler: Redis stream on %s, channels=%s", url, channels)
             else:
-                # bsread dispatcher: url=None → bsread uses its own default dispatcher
-                url = self.url  # None means "use bsread default dispatcher URL"
-                self.stream = _TolerantBsreadStream(channels=channels, url=url, **kwargs)
-                _logger.debug("DataHubEventHandler: BsreadStream via dispatcher, channels=%s", channels)
+                # bsread dispatcher (url=None: bsread's default dispatcher), one
+                # connection per delay group; the context opens them.
+                return _GroupedDispatcherContext(self)
         except Exception as exc:
             _logger.error("Failed to create datahub stream (%s): %s", self.backend, exc)
             self.stream = None

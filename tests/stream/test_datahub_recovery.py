@@ -212,11 +212,21 @@ def test_context_manager_passes_bsread_timeout(monkeypatch, ms):
         def __init__(self, **kwargs):
             seen.update(kwargs)
 
+        def abort(self):
+            pass
+
+        def join(self, timeout=None):
+            pass
+
+        def close(self):
+            pass
+
     monkeypatch.setattr(dh, "_TolerantBsreadStream", Recorder)
     monkeypatch.setattr(dh, "BsreadStream", Recorder)
     h = dh.DataHubEventHandler(backend="bsread", bsread_receive_timeout_ms=ms)
     h.register_source("X")
-    h.context_manager()
+    with h.context_manager():  # the dispatcher connection opens on entering
+        pass
     assert seen.get("receive_timeout") == ms if ms else "receive_timeout" not in seen
     seen.clear()
     local = dh.DataHubLocalEventHandler(bsread_receive_timeout_ms=ms)
