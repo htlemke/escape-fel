@@ -82,3 +82,8 @@ include = ["escape*"]
 
 [tool.setuptools_scm]
 # version is derived automatically from git tags: v0.1.0 -> 0.1.0
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: integration tests with a local TestStream sender (deselect with -m 'not slow')",
+]

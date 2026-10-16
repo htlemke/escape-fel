@@ -219,6 +219,25 @@ class DataHubEvent:
 # Context manager wrapping a live datahub stream
 # ---------------------------------------------------------------------------
 
+_DATAHUB_DEFAULT_RECEIVE_TIMEOUT_MS = 3000  # datahub's query.get("receive_timeout", 3000)
+
+
+def _bsread_kwargs(handler):
+    """Stream kwargs for BsreadStream/RedisStream: the handler's extra
+    kwargs plus, if set, bsread's receive timeout under datahub's name for
+    it (``receive_timeout``, ms -- not the handler's own receive_timeout)."""
+    kwargs = dict(handler._stream_kwargs)
+    if handler.bsread_receive_timeout_ms is not None:
+        kwargs["receive_timeout"] = handler.bsread_receive_timeout_ms
+    return kwargs
+
+
+def _bsread_receive_timeout_s(handler):
+    """How long datahub's receive thread can block before it notices an abort."""
+    ms = getattr(handler, "bsread_receive_timeout_ms", None) or _DATAHUB_DEFAULT_RECEIVE_TIMEOUT_MS
+    return ms / 1000.0
+
+
 class DataHubEventSourceContext:
     """Context manager owning a started datahub streaming source.
 
@@ -240,21 +259,20 @@ class DataHubEventSourceContext:
             return NullEvent()
         result = stream.receive(timeout=self.eventhandler.receive_timeout)
         if result is None:
-            # datahub's receive thread ends for good on any error, including
-            # bsread's 3 s receive timeout ("Received None message.") --
-            # after that receive() returns None forever. Raising makes the
-            # EventWorker reconnect (with back-off).
-            if not stream.is_thread_running():
-                raise RuntimeError(
-                    f"datahub receive thread ended ({stream.get_run_exception()!r})"
-                )
+            # Buffer empty. datahub's receive thread ends for good on any
+            # error, including bsread's receive timeout ("Received None
+            # message.", every psi-datahub release up to 1.1.13) -- after that
+            # nothing ever arrives again. Raising makes EventWorker._serve
+            # reconnect (with back-off). Messages queued before the thread
+            # died are still delivered first. processing_thread, not
+            # is_running(): datahub sets `running` only inside the new thread,
+            # so a fresh stream can look "not running" for a moment.
+            t = getattr(stream, "processing_thread", None)
+            if t is not None and not t.is_alive():
+                raise RuntimeError(f"datahub stream thread died: {stream.get_run_exception()!r}")
             return NullEvent()
         pulse_id, timestamp_ns, msg = result
         return DataHubEvent(pulse_id, timestamp_ns, msg)
-
-    # bsread's own receive timeout (datahub's query["receive_timeout"], ms):
-    # how long the receive thread can be blocked before it sees an abort.
-    _BSREAD_RECEIVE_TIMEOUT_S = 3.0
 
     def __exit__(self, *_):
         stream = self.eventhandler.stream
@@ -265,7 +283,7 @@ class DataHubEventSourceContext:
                 # destroys the context first, which, with the thread still
                 # in recv(), gives "ZMQError: Socket operation on non-socket".
                 stream.abort()
-                stream.join(timeout=self._BSREAD_RECEIVE_TIMEOUT_S + 1.0)
+                stream.join(timeout=_bsread_receive_timeout_s(self.eventhandler) + 1.0)
                 stream.close()
             except Exception as exc:
                 _logger.debug("Error closing datahub stream: %s", exc)
@@ -297,17 +315,24 @@ class DataHubEventHandler:
     receive_timeout : float
         Seconds :meth:`get_event` waits for a message before returning a
         :class:`NullEvent` (allows clean shutdown). Default 0.5 s.
+    bsread_receive_timeout_ms : int, optional
+        bsread's own receive timeout in ms: after this long without a
+        message, datahub ends its receive thread and the EventWorker
+        reconnects. ``None`` (default) keeps datahub's 3000 ms. A longer
+        value (e.g. 10000) rides out short upstream stalls without a
+        reconnect.
     **stream_kwargs
         Extra keyword arguments forwarded to ``BsreadStream`` / ``RedisStream``
-        (e.g. ``queue_size=200``, ``receive_timeout=1000`` for the bsread
-        internal timeout in ms).
+        (e.g. ``queue_size=200``).
     """
 
-    def __init__(self, backend="bsread", url=None, receive_timeout=0.5, **stream_kwargs):
+    def __init__(self, backend="bsread", url=None, receive_timeout=0.5,
+                 bsread_receive_timeout_ms=None, **stream_kwargs):
         _require_datahub()
         self.backend = backend
         self.url = url
         self.receive_timeout = receive_timeout
+        self.bsread_receive_timeout_ms = bsread_receive_timeout_ms
         self._stream_kwargs = stream_kwargs
         self.stream = None
         self.source_ids = []
@@ -324,6 +349,7 @@ class DataHubEventHandler:
             backend=self.backend,
             url=self.url,
             receive_timeout=self.receive_timeout,
+            bsread_receive_timeout_ms=self.bsread_receive_timeout_ms,
             **self._stream_kwargs,
         )
 
@@ -375,7 +401,7 @@ class DataHubEventHandler:
             return DataHubEventSourceContext(self)
 
         channels = list(self.source_ids)
-        kwargs = dict(self._stream_kwargs)
+        kwargs = _bsread_kwargs(self)
 
         try:
             if _use_redis(self.backend):
@@ -418,17 +444,21 @@ class DataHubLocalEventHandler:
         Sender port (default ``9999``).
     receive_timeout : float
         Seconds per ``get_event()`` call (default 0.5 s).
+    bsread_receive_timeout_ms : int, optional
+        As for :class:`DataHubEventHandler`; ``None`` keeps datahub's 3000 ms.
     **stream_kwargs
         Forwarded to ``BsreadStream`` (e.g. ``queue_size=200``).
     """
 
     _needs_restart_on_register = False  # channels=[] receives all; no restart needed
 
-    def __init__(self, host="localhost", port=9999, receive_timeout=0.5, **stream_kwargs):
+    def __init__(self, host="localhost", port=9999, receive_timeout=0.5,
+                 bsread_receive_timeout_ms=None, **stream_kwargs):
         _require_datahub()
         self.host = host
         self.port = port
         self.receive_timeout = receive_timeout
+        self.bsread_receive_timeout_ms = bsread_receive_timeout_ms
         self._stream_kwargs = stream_kwargs
         self.stream = None
         self.source_ids = []
@@ -437,6 +467,7 @@ class DataHubLocalEventHandler:
         """See ``DataHubEventHandler.clone``."""
         return DataHubLocalEventHandler(
             host=self.host, port=self.port, receive_timeout=self.receive_timeout,
+            bsread_receive_timeout_ms=self.bsread_receive_timeout_ms,
             **self._stream_kwargs,
         )
 
@@ -462,7 +493,7 @@ class DataHubLocalEventHandler:
     def context_manager(self):
         """Connect to ``host:port`` and stream all channels."""
         url = f"{self.host}:{self.port}"
-        kwargs = dict(self._stream_kwargs)
+        kwargs = _bsread_kwargs(self)
         kwargs.setdefault("queue_size", 100)
         # The bsread Sender uses ZMQ PUSH; direct receivers must use PULL mode.
         # Datahub defaults to SUB (for dispatcher connections), so we override it.
@@ -567,9 +598,34 @@ class MultiSourceContext:
         return self
 
     def _recv_loop(self, source_idx, ctx):
+        backoff = 1.0
         while not self._stop.is_set():
-            event = ctx.get_event()
+            try:
+                event = ctx.get_event()
+            except Exception as exc:
+                # A sub-stream died (e.g. its datahub receive thread ended):
+                # reconnect just that one, as EventWorker._serve does for a
+                # single handler, instead of ending this thread.
+                print(f"MultiSourceEventHandler: source {source_idx} reconnecting in {backoff:.0f}s (error: {exc})")
+                try:
+                    ctx.__exit__(None, None, None)
+                except Exception as exit_exc:
+                    _logger.debug("Error closing sub-context: %s", exit_exc)
+                while True:
+                    if self._stop.wait(backoff):
+                        return
+                    backoff = min(backoff * 2, 30.0)
+                    try:
+                        ctx = self._handler.handlers[source_idx].context_manager()
+                        ctx.__enter__()
+                        break
+                    except Exception as conn_exc:
+                        _logger.debug("Reconnect of source %d failed: %s", source_idx, conn_exc)
+                self._contexts[source_idx] = ctx
+                continue
             pid = event.getEventId()
+            if pid is not None:
+                backoff = 1.0
             if pid is not None and hasattr(event, '_msg') and hasattr(event, '_ts_ns'):
                 self._merger.add(source_idx, pid, event._ts_ns, event._msg)
 

@@ -778,6 +778,9 @@ class EventWorker:
         self._restart_done = threading.Event()
         self._restart_done.set()
         self._stopped = False                     # set by stopEventLoop()
+        self._generation = 0                      # bumped by reset(); see _restart_make_before_break
+        self.reconnects = 0                       # connection losses handled by _serve
+        self.last_reconnect_time = None
         self._last_restart_time = None
         self._event_times = deque(maxlen=100)     # wall time of recent real events
         self._loop_times = deque(maxlen=100)      # callback-loop seconds per event
@@ -984,6 +987,7 @@ class EventWorker:
         runs only after the replacement is already serving, not instead of
         it.
         """
+        generation = self._generation
         old_handler = self._eventHandler
         clone_fn = getattr(old_handler, "clone", None)
         if clone_fn is None:
@@ -1019,7 +1023,8 @@ class EventWorker:
                 "EventWorker: replacement connection delivered no event within "
                 f"{connect_timeout}s; switching to it anyway."
             )
-        if self._stopped:  # stopEventLoop() ran meanwhile: drop the replacement
+        if self._stopped or self._generation != generation:
+            # stopEventLoop() or reset() ran meanwhile: drop the replacement
             new_stop_event.set()
             return True
 
@@ -1152,6 +1157,7 @@ class EventWorker:
             "last_event_age_s": now - times[-1] if times else None,
             "last_pulse_id": self.event.getEventId() if self.event is not None else None,
             "restart_pending": not self._restart_done.is_set(),
+            "reconnects": self.reconnects,
             "last_restart_age_s": now - self._last_restart_time if self._last_restart_time else None,
             "subscriptions": self.subscriptions,
         }
@@ -1241,7 +1247,13 @@ class EventWorker:
                                 ready_event.set()
                             time.sleep(0.001)
                             continue
-                        self.event = s.get_event()
+                        event = s.get_event()
+                        if stop_event.is_set():
+                            # Stopped (or abandoned by reset()) while blocked
+                            # in get_event(): don't dispatch, another loop may
+                            # already be running.
+                            break
+                        self.event = event
                         now = time.time()
                         dt = now - self._lastTime
                         if dt > 0:
@@ -1272,6 +1284,8 @@ class EventWorker:
             except Exception as exc:
                 if stop_event.is_set():
                     break
+                self.reconnects += 1
+                self.last_reconnect_time = time.time()
                 print(f"EventWorker reconnecting in {backoff:.0f}s (error: {exc})")
                 stop_event.wait(timeout=backoff)
                 backoff = min(backoff * 2, 30.0)
@@ -1295,6 +1309,69 @@ class EventWorker:
         self._stop_event.set()
         if self.loopThread is not None and self.loopThread.is_alive():
             self.loopThread.join(timeout=5.0)
+
+    def reset(self, hard=False):
+        """Restart this worker's connection and event loop, in place.
+
+        For when live data has stopped and nothing recovers on its own.
+        The worker object stays the same, so every existing Stream (which
+        holds a reference to it), the accumulating callbacks and the
+        subscribed channels stay valid; only the connection and the loop
+        thread are new.
+
+        ``hard=False`` cancels a pending restart, stops the loop and starts
+        a fresh one, which reconnects with the current channels.
+        ``hard=True`` is for a worker whose internals may be stuck: it does
+        not wait for the restart lock (a hung restart may hold it forever)
+        but replaces it, waits only briefly for the old loop thread, and
+        replaces the handler by ``handler.clone()`` with the same channels.
+        A loop thread that doesn't stop in time is abandoned: it exits as
+        soon as it unblocks, without dispatching anything.
+
+        Safe to call from any thread, while the loop runs, and repeatedly.
+        """
+        self._generation += 1  # an in-flight make-before-break restart drops its result
+        timer = self._restart_timer  # cancel without the lock: it may be held
+        if timer is not None:
+            timer.cancel()
+        self._restart_timer = None
+        if hard:
+            self._restart_lock = threading.Lock()
+
+        old_thread, old_stop = self.loopThread, self._stop_event
+        old_stop.set()
+        if old_thread is not None and old_thread.is_alive() and old_thread is not threading.current_thread():
+            old_thread.join(timeout=1.0 if hard else 5.0)
+        abandoned = old_thread is not None and old_thread.is_alive()
+        # A new stop event for the new loop: an abandoned thread keeps
+        # watching the old one, which stays set.
+        self._stop_event = threading.Event()
+        self.loopThread = None
+
+        if hard:
+            old_handler = self._eventHandler
+            clone_fn = getattr(old_handler, "clone", None)
+            if clone_fn is not None:
+                try:
+                    new_handler = clone_fn()
+                    for sid in list(getattr(old_handler, "source_ids", [])):
+                        new_handler.register_source(sid)
+                    self._eventHandler = new_handler
+                except Exception as exc:
+                    print(f"EventWorker.reset: clone() failed ({exc}); keeping the handler.")
+            self.runningFrequency = 0.0
+            self._last_event_keys = []
+            self.event = None
+
+        self._callback_failures.clear()
+        self._restart_done.set()
+        self.startEventLoop()
+        n_sources = len(getattr(self._eventHandler, "source_ids", None) or [])
+        print(
+            f"EventWorker {'hard ' if hard else ''}reset: new event loop"
+            f"{', new handler' if hard else ''}{', old loop thread abandoned' if abandoned else ''}; "
+            f"kept {n_sources} channels and {len(self.eventCallbacks)} callbacks."
+        )
 
     # ------------------------------------------------------------------
     # pulse_id / lab_time -- always-available pseudo-channels
@@ -1333,6 +1410,18 @@ _default_lock = threading.Lock()
 def _peek_default_eventworker():
     """The registered default EventWorker, or None. Never creates one."""
     return globals().get("eventworker")
+
+
+def reset_default_eventworker(hard=False):
+    """Reset the module-default EventWorker in place (see
+    :meth:`EventWorker.reset`) and return it. Never creates one: without a
+    default worker, prints a note and returns None."""
+    ew = _peek_default_eventworker()
+    if ew is None:
+        print("no default EventWorker")
+        return None
+    ew.reset(hard=hard)
+    return ew
 
 
 def get_default_eventworker():
