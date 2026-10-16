@@ -30,7 +30,9 @@ def snapshot_data_lines(ax):
     regardless of which escape tool happened to attach first.
     """
     if not hasattr(ax, "_escape_data_lines"):
-        ax._escape_data_lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+        from escape._plot_items import data_lines  # skips overlays and error-bar caps
+
+        ax._escape_data_lines = data_lines(ax)
     return ax._escape_data_lines
 
 

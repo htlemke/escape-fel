@@ -20,6 +20,7 @@ from IPython import get_ipython
 from IPython.display import display
 
 from escape._peak_analysis import _draw_safe, _update_peak_overlay, find_peak
+from escape._plot_items import collect_items as _collect_items, data_lines as _data_lines, new_group, tag  # noqa: F401  (tag is public here)
 
 try:
     from sidecar import Sidecar
@@ -1382,7 +1383,7 @@ def _get_or_create_axes_gui(ax, attr_name, factory):
 
 # attribute names _get_or_create_axes_gui caches interactive panels under --
 # listed here so _close_axes_guis can find and close all of them at once.
-_AXES_GUI_ATTRS = ("_escape_fit_gui", "_escape_peak_gui", "_escape_freq_gui", "_escape_select_gui")
+_AXES_GUI_ATTRS = ("_escape_fit_gui", "_escape_peak_gui", "_escape_freq_gui", "_escape_select_gui", "_escape_history_gui")
 
 
 def _close_axes_guis(fig):
@@ -1659,13 +1660,19 @@ def _insert_after_save(toolbar, action):
 
     ``toolbar._actions`` (matplotlib's own name -> ``QAction`` map) is
     private, so this is guarded and falls back, in order, to inserting in
-    front of whatever widget is ``locLabel`` itself, then to a plain append."""
+    front of whatever widget is ``locLabel`` itself, then to a plain append.
+
+    Buttons inserted this way earlier stay in front: Select then History
+    gives "Save, Select, History", in attach order."""
     actions = toolbar.actions()
     anchor = getattr(toolbar, "_actions", {}).get("save_figure")
     label = getattr(toolbar, "locLabel", None)
+    ours = getattr(toolbar, "_escape_after_save", [])
     before = None
     if anchor is not None and anchor in actions:
         idx = actions.index(anchor)
+        while idx + 1 < len(actions) and actions[idx + 1] in ours:
+            idx += 1
         if idx + 1 < len(actions):
             before = actions[idx + 1]
     if before is None:
@@ -1674,28 +1681,24 @@ def _insert_after_save(toolbar, action):
         toolbar.addAction(action)
     else:
         toolbar.insertAction(before, action)
+    toolbar._escape_after_save = [*ours, action]
 
 
 def _select_lines(ax):
-    """The curves :func:`attach_select_button` offers for ``ax``: every
-    ``Line2D`` currently on it, excluding escape's own overlay artists
-    (``_escape_overlay``, set by :func:`_update_peak_overlay` and the Fit/
-    Freq range selectors' span-handle lines).
+    """The items :func:`attach_select_button` offers for ``ax`` -- see
+    :func:`escape._plot_items.collect_items`: one per plain line, and one
+    per errortube or error-bar plot (their pieces shown/hidden together),
+    skipping escape's own overlay artists.
 
-    Deliberately a fresh ``ax.get_lines()`` scan on every call rather than
+    A fresh scan on every call rather than
     :func:`escape._axes_selection.snapshot_data_lines`'s cached,
     attach-order-dependent snapshot: that cache is frozen the first time
-    *any* escape tool attaches to ``ax``, so a curve plotted after that --
-    common for Select, since it's meant to be attached once a plot is
-    finished rather than up front like Fit/Peak/Freq -- would silently be
-    missing from the list. The trade-off is the one case
-    ``snapshot_data_lines`` exists to avoid: if a Fit/Freq panel's
-    ``SpanSelector`` is already live on the same axes when Select is
-    attached, its handle line (an auto-labelled, underscore-prefixed line)
-    would show up here as an extra, bogus "curve" -- not handled in this
-    version.
+    *any* escape tool attaches to ``ax``, so a curve plotted after that
+    would silently be missing from the list. The trade-off: if a Fit/Freq
+    panel's ``SpanSelector`` is already live on the same axes, its handle
+    line shows up here as an extra, bogus "curve" -- not handled.
     """
-    return [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+    return _collect_items(ax)
 
 
 def _run_select_button(fig):
@@ -1839,6 +1842,149 @@ def attach_select_button(fig, *, before_click=None):
             _attach_select_button_ipympl(fig)
     except Exception as e:
         print(f"[escape] couldn't attach the Select button: {e}")
+
+
+def _build_history_icon(toolbar, size=24):
+    """A "clock with a back-turning arrow" QIcon for the History toolbar
+    button, drawn in ``toolbar``'s own text colour (see
+    :func:`_build_select_icon` for why not a fixed colour or an svg)."""
+    import math
+
+    from qtpy import QtCore, QtGui
+
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtGui.QColor(0, 0, 0, 0))
+    painter = QtGui.QPainter(pixmap)
+    try:
+        painter.setRenderHint(_qt_antialiasing(QtGui))
+        pen = QtGui.QPen(toolbar.palette().color(toolbar.foregroundRole()), max(1.6, size / 13))
+        pen.setCapStyle(_qt_enum(QtCore.Qt, "PenCapStyle", "RoundCap"))
+        pen.setJoinStyle(_qt_enum(QtCore.Qt, "PenJoinStyle", "RoundJoin"))
+        painter.setPen(pen)
+        c, r = size / 2, size * 0.36
+        rect = QtCore.QRectF(c - r, c - r, 2 * r, 2 * r)
+        # open circle: from 200 deg counter-clockwise (Qt's positive
+        # direction, in 1/16 deg) via the bottom and right round to 140 deg,
+        # leaving a gap on the upper left
+        painter.drawArc(rect, int(200 * 16), int(300 * 16))
+        # arrowhead at the 140 deg end, pointing on round (counter-clockwise)
+        theta = math.radians(140)
+        tip = QtCore.QPointF(c + r * math.cos(theta), c - r * math.sin(theta))
+        direction = (-math.sin(theta), -math.cos(theta))  # screen coords, ccw tangent
+        length = size * 0.2
+        for turn in (math.radians(150), math.radians(-150)):
+            dx = direction[0] * math.cos(turn) - direction[1] * math.sin(turn)
+            dy = direction[0] * math.sin(turn) + direction[1] * math.cos(turn)
+            painter.drawLine(tip, QtCore.QPointF(tip.x() + length * dx, tip.y() + length * dy))
+        # clock hands
+        centre = QtCore.QPointF(c, c)
+        painter.drawLine(centre, QtCore.QPointF(c, c - r * 0.6))
+        painter.drawLine(centre, QtCore.QPointF(c + r * 0.45, c))
+    finally:
+        painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def _qt_enum(owner, scope, name):
+    return getattr(getattr(owner, scope, owner), name, None) or getattr(owner, name)
+
+
+def _run_history_button(fig):
+    """The History toolbar button's click handler: open (or bring back) the
+    History window for the active axes -- see :mod:`escape.history_gui`."""
+    _run_before_click(fig)
+    ax = _get_active_axes(fig)
+    if ax is None:
+        ax = fig.add_subplot()  # recalling into an empty figure is a use case too
+    existing = getattr(ax, "_escape_history_gui", None)
+    if existing is not None and _gui_is_alive(existing):
+        _raise_gui(existing)  # Qt: shown again, which re-reads plot and folder
+        if hasattr(existing, "comm"):  # ipywidgets: already inline -- refresh it
+            existing.refresh()
+        return
+    from escape.history_gui import make_ipywidgets_history_panel, make_qt_history_dialog
+
+    if _detect_plot_backend(fig) == "qt":
+        ax._escape_history_gui = make_qt_history_dialog(fig, ax)
+    else:
+        ax._escape_history_gui = make_ipywidgets_history_panel(fig, ax)
+
+
+def _attach_history_button_qt(fig):
+    toolbar = getattr(fig.canvas.manager, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "addAction"):
+        return
+
+    from qtpy import QtGui, QtWidgets
+
+    QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction  # Qt6 moved it to QtGui
+    tooltip = "History: save curves, recall saved ones"
+    action = QAction(_build_history_icon(toolbar), tooltip, toolbar)
+    action.setToolTip(tooltip)
+
+    def _on_click(checked=False):
+        _run_history_button(fig)
+
+    action.triggered.connect(_on_click)
+    _insert_after_save(toolbar, action)
+
+
+def _attach_history_button_ipympl(fig):
+    toolbar = getattr(fig.canvas, "toolbar", None)
+    if toolbar is None or not hasattr(toolbar, "toolitems"):
+        return
+    _ensure_output_host(fig)
+
+    def _on_click():
+        _defer_to_event_loop(lambda: _run_in_output_host(fig, lambda: _run_history_button(fig)))
+
+    toolbar.escape_history_button = _on_click
+    toolbar.toolitems = list(toolbar.toolitems) + [
+        ("History", "History: save curves, recall saved ones", "history", "escape_history_button")
+    ]
+
+
+def attach_history_button(fig, *, before_click=None):
+    """Attach a "History" button (clock icon) to ``fig``'s toolbar -- Qt
+    and ipympl (``%matplotlib widget``) backends. It opens a window (Qt) or
+    a panel below the figure (ipympl) to save ticked curves of the
+    active axes (with an optional note) to a history folder, and to recall
+    saved curves onto this or any other plot: best matches first (same
+    figure/axes titles, axis labels, overlapping x-range, same curve label,
+    same Array/scan parameter), searchable by text and date. See
+    :mod:`escape.plot_history` for where files go (``PLOT_HISTORY_DIR``)
+    and what's stored, :func:`tag` for adding your own searchable
+    information to curves.
+
+    Plain lines, :func:`errortube` plots and error-bar plots
+    (``Scan.plot()``, ``ax.errorbar``) are saved and recalled as one item
+    each, with their look. Recalled curves carry the save time in their
+    legend label and can be taken off again with "Remove recalled curves".
+
+    On Qt it's inserted right after Save (and after Select, if that's
+    attached first); on ipympl it's appended like the other buttons. In a
+    notebook, Delete asks for confirmation by a second click instead of a
+    dialog. ``before_click`` and the no-op-on-unsupported-backend /
+    swallow-and-print-on-failure / idempotent / ``ESCAPE_TOOLBAR_BUTTONS``
+    contract are the same as :func:`attach_fit_button`.
+    """
+    if not ESCAPE_TOOLBAR_BUTTONS:
+        return
+    _set_before_click(fig, before_click)
+    if getattr(fig, "_escape_history_attached", False):
+        return
+    try:
+        backend = _detect_plot_backend(fig)
+        if backend is None:
+            return
+        _track_active_axes(fig)
+        if backend == "qt":
+            _attach_history_button_qt(fig)
+        else:
+            _attach_history_button_ipympl(fig)
+        fig._escape_history_attached = True
+    except Exception as e:
+        print(f"[escape] couldn't attach the History button: {e}")
 
 
 def _attach_fit_button_qt(fig):
@@ -2024,7 +2170,7 @@ class _PeakEngine:
         live-updating plot redraws in place."""
         if self.line is not None and self.line in self.ax.get_lines():
             return self.line
-        data_lines = [l for l in self.ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+        data_lines = _data_lines(self.ax)  # no overlays, no error-bar caps
         return data_lines[-1] if data_lines else None
 
     def params(self):
@@ -2346,7 +2492,7 @@ def _run_peak_button(fig):
     if ax is None:
         print("[escape] no axes to analyze in this figure.")
         return
-    data_lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+    data_lines = _data_lines(ax)  # no overlays, no error-bar caps
     if not data_lines:
         print("[escape] no data line found in the active axes to analyze.")
         return
@@ -2463,11 +2609,12 @@ def attach_peak_button(fig, *, before_click=None):
 ESCAPE_TOOLBAR_BUTTONS = os.environ.get("ESCAPE_DISABLE_TOOLBAR_BUTTONS", "").strip().lower() not in ("1", "true", "yes")
 
 
-def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, select=False, before_click=None):
+def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, select=False, history=False, before_click=None):
     """Attach escape's interactive toolbar buttons -- Fit
     (:func:`attach_fit_button`), Peak (:func:`attach_peak_button`), and
-    optionally Freq (:func:`attach_freq_button`) and Select
-    (:func:`attach_select_button`) -- to ``fig`` in one call, so every place
+    optionally Freq (:func:`attach_freq_button`), Select
+    (:func:`attach_select_button`) and History
+    (:func:`attach_history_button`, opt-in like Select) -- to ``fig`` in one call, so every place
     that creates an interactive escape figure (static, via :func:`nfigure`,
     or a live-updating :mod:`escape.stream.plots` figure) wires them up the
     same way instead of each repeating the same calls -- or, for the
@@ -2494,6 +2641,8 @@ def attach_escape_buttons(fig, *, fit=True, peak=True, freq=False, select=False,
         attach_freq_button(fig, before_click=before_click)
     if select:
         attach_select_button(fig, before_click=before_click)
+    if history:
+        attach_history_button(fig, before_click=before_click)
 
 
 def attach_fit_button(fig, *, before_click=None):
@@ -2576,7 +2725,8 @@ def attach_freq_button(fig, *, before_click=None):
 
 def nfigure(
     num=_AUTO_NAME, *, detached=False, title=None,
-    fit_button=True, peak_button=False, freq_button=False, select_button=False, close_previous=True, **kwargs
+    fit_button=True, peak_button=False, freq_button=False, select_button=False,
+    history_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.figure``, but always starts from a clean figure of the
     given name -- any existing figure with that name is closed first,
@@ -2641,6 +2791,12 @@ def nfigure(
         typically adds no button *yet*; call
         ``escape.plot_utilities.attach_select_button(fig)`` again once the
         curves are actually there to get it then.
+    history_button : bool
+        Attach a "History" toolbar button (see :func:`attach_history_button`)
+        -- save curves and recall saved ones onto this or other plots. Same
+        backend restriction (Qt/ipympl) and ``ESCAPE_TOOLBAR_BUTTONS`` switch
+        as ``fit_button``. Defaults to ``False``. Works on an empty figure
+        too (recalling into a fresh plot).
     close_previous : bool
         If ``True`` (the default, and currently the only behavior this
         function has ever had), a pre-existing figure of the same ``num``
@@ -2672,6 +2828,8 @@ def nfigure(
         attach_freq_button(fig)
     if select_button:
         attach_select_button(fig)
+    if history_button:
+        attach_history_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2680,7 +2838,8 @@ def nfigure(
 
 def nsubplots(
     nrows=1, ncols=1, *, num=_AUTO_NAME, detached=False, title=None,
-    fit_button=True, peak_button=False, freq_button=False, select_button=False, close_previous=True, **kwargs
+    fit_button=True, peak_button=False, freq_button=False, select_button=False,
+    history_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.subplots``, but always starts from a clean figure of the
     given name (see :func:`nfigure` for why/how ``num`` is auto-derived when
@@ -2713,6 +2872,9 @@ def nsubplots(
         see :func:`nfigure` for why ``select_button=True`` here typically
         adds no button until you call ``attach_select_button(fig)`` again
         once the axes actually has curves on it.
+    history_button : bool
+        Attach a "History" toolbar button (see :func:`attach_history_button`)
+        to the figure. Defaults to ``False`` (see :func:`nfigure`).
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
         (same figure, same axes, same ``nrows``/``ncols`` as when it was
@@ -2749,6 +2911,8 @@ def nsubplots(
         attach_freq_button(fig)
     if select_button:
         attach_select_button(fig)
+    if history_button:
+        attach_history_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -2757,7 +2921,8 @@ def nsubplots(
 
 def nsubplot_mosaic(
     *args, num=_AUTO_NAME, detached=False, title=None,
-    fit_button=True, peak_button=False, freq_button=False, select_button=False, close_previous=True, **kwargs
+    fit_button=True, peak_button=False, freq_button=False, select_button=False,
+    history_button=False, close_previous=True, **kwargs
 ):
     """Like ``plt.subplot_mosaic``, but always starts from a clean figure of
     the given name (see :func:`nfigure` for why/how ``num`` is auto-derived
@@ -2790,6 +2955,9 @@ def nsubplot_mosaic(
         see :func:`nfigure` for why ``select_button=True`` here typically
         adds no button until you call ``attach_select_button(fig)`` again
         once the relevant axes actually has curves on it.
+    history_button : bool
+        Attach a "History" toolbar button (see :func:`attach_history_button`)
+        to the figure. Defaults to ``False`` (see :func:`nfigure`).
     close_previous : bool
         If ``False``, reuse a pre-existing figure of the same ``num`` as-is
         (same figure, same mosaic layout as when it was first created)
@@ -2825,6 +2993,8 @@ def nsubplot_mosaic(
         attach_freq_button(fig)
     if select_button:
         attach_select_button(fig)
+    if history_button:
+        attach_history_button(fig)
     if detached:
         _close_sidecar(num)
         _open_sidecar(num, title or str(num), lambda: plt.show(fig))
@@ -3870,7 +4040,7 @@ class StackViewer(widgets.VBox):
             plt.close(self.trend_fig)
 
 
-def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=None, **kwargs):
+def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=None, meta=None, **kwargs):
     """Plot a line with a shaded error band (a lighter-weight
     ``fill_between``-style alternative to matplotlib's ``errorbar``).
 
@@ -3880,6 +4050,10 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=
     implementations there rather than importing this module directly, since
     ``escape.plot_utilities`` pulls in ``ipywidgets``/``dask``/``IPython``
     that ``escape.stream`` deliberately doesn't require.
+
+    The line and band are tagged as one item (``escape_meta`` group of
+    kind ``"errortube"``), so the Select and History toolbar tools show,
+    hide, save and recall them together.
 
     Parameters
     ----------
@@ -3905,6 +4079,9 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=
         instead of a smooth line/polygon -- the natural style for a
         histogram-like quantity (one value per bin, held constant across
         it). ``'mid'`` is the usual choice when *x* holds bin centers.
+    meta : dict, optional
+        Extra information stored on the line and band (see :func:`tag`),
+        e.g. ``{"run": 142}`` -- shown and searchable in the History tool.
     **kwargs
         Forwarded to ``axis.step``/``axis.plot`` for the line itself.
 
@@ -3917,15 +4094,26 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=
     """
     if not axis:
         axis = plt.gca()
+    lh, fh = _errortube_draw(x, y, yerr, fmt, axis, falpha, step, **kwargs)
+    new_group([lh, fh], "errortube", **(meta or {}))
+    return lh, fh
+
+
+def _errortube_draw(x, y, yerr, fmt, axis, falpha, step, **kwargs):
     x = np.asarray(x)
     y = np.asarray(y)
+
+    def _keep(lh, lo, hi):
+        lh._escape_redraw = {"lo": lo, "hi": hi, "step": step, "falpha": falpha}
 
     if step is not None:
         lh = axis.step(x, y, where=step, **kwargs)[0]
         if yerr is None:
+            _keep(lh, None, None)
             return lh, None
         yerr = np.atleast_1d(yerr)
         lo, hi = (y - yerr, y + yerr) if yerr.ndim == 1 else (y - yerr[0, :], y + yerr[1, :])
+        _keep(lh, lo, hi)
         fh = axis.fill_between(
             x, lo, hi, step=step, alpha=falpha, color=lh.get_color(), lw=0,
             zorder=lh.get_zorder() - 0.1,
@@ -3939,6 +4127,10 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=
 
     if yerr is not None:
         yerr = np.atleast_1d(yerr)
+        if yerr.ndim == 1:
+            _keep(lh, y - yerr, y + yerr)
+        else:
+            _keep(lh, y - yerr[0, :], y + yerr[1, :])
         if yerr.ndim == 1:
             fh = axis.fill(
                 np.hstack([x, x[::-1]]),
@@ -3956,6 +4148,7 @@ def errortube(x, y, yerr=None, xerr=None, fmt=None, axis=None, falpha=0.3, step=
                 zorder=lh.get_zorder() - 0.1,
             )
     else:
+        _keep(lh, None, None)
         fh = None
 
     return lh, fh

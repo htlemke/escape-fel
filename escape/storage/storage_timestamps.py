@@ -577,7 +577,9 @@ class ScanTimestamps:
             yerr = ystd
         if not axis:
             axis = plt.gca()
-        axis.errorbar(x, y, yerr=yerr, *args, **kwargs)
+        from .._plot_items import array_meta, tag
+
+        tag(axis.errorbar(x, y, yerr=yerr, *args, **kwargs), **array_meta(self._array, scanpar_name))
         axis.set_xlabel(scanpar_name)
         if self._array.name:
             axis.set_ylabel(self._array.name)

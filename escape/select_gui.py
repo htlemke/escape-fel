@@ -19,6 +19,9 @@ from __future__ import annotations
 import re
 
 import matplotlib.colors as mcolors
+from matplotlib.lines import Line2D
+
+from escape._plot_items import PlotItem, all_artists_claimed, collect_items, handle_visible
 
 # A line with no explicit label gets matplotlib's own auto-generated one,
 # stable across versions: "_child%d" (the artist's position among *all*
@@ -27,19 +30,36 @@ import matplotlib.colors as mcolors
 # real ``ax.legend()`` call.
 _AUTO_LABEL_RE = re.compile(r"^_child(\d+)$")
 
+_KIND_SUFFIX = {"errortube": "  [error tube]", "errorbar": "  [error bars]"}
 
-def _display_label(line, index):
-    """A human-friendly label for ``line`` in the curve list: its own label,
-    unless that's one of matplotlib's auto-generated "no legend entry"
-    labels (leading underscore) -- then ``"(line N)"``, using the number
-    embedded in the auto label itself when there is one (``_child3`` ->
-    ``"(line 3)"``), falling back to ``index`` (position among the
-    selectable lines) for any other underscore-prefixed label shape."""
-    label = line.get_label()
-    if not label.startswith("_"):
-        return label
-    m = _AUTO_LABEL_RE.match(label)
-    return f"(line {m.group(1) if m else index})"
+
+def _display_label(item, index, with_kind=False):
+    """A human-friendly label for ``item`` (a :class:`PlotItem`, or a bare
+    ``Line2D``) in a curve list: its own label, unless that's one of
+    matplotlib's auto-generated "no legend entry" labels (leading
+    underscore) -- then ``"(line N)"``, using the number embedded in the
+    auto label itself when there is one (``_child3`` -> ``"(line 3)"``),
+    falling back to ``index`` (position in the list) otherwise."""
+    label = item.label if isinstance(item, PlotItem) else item.get_label()
+    if label.startswith("_"):
+        m = _AUTO_LABEL_RE.match(label)
+        label = f"(line {m.group(1) if m else index})"
+    if with_kind and isinstance(item, PlotItem):
+        label += _KIND_SUFFIX.get(item.kind, "")
+    return label
+
+
+def _as_items(ax, lines):
+    """``lines`` as :class:`PlotItem` objects: items pass through, a bare
+    ``Line2D`` becomes the item it belongs to on ``ax`` (or a plain one)."""
+    by_main = {id(it.main): it for it in collect_items(ax) if it.main is not None}
+    out = []
+    for obj in lines:
+        if isinstance(obj, PlotItem):
+            out.append(obj)
+        elif isinstance(obj, Line2D):
+            out.append(by_main.get(id(obj)) or PlotItem("line", obj, [obj]))
+    return out
 
 
 def _legend_kwargs(legend):
@@ -61,28 +81,81 @@ def _legend_kwargs(legend):
     return kwargs
 
 
-class _CurveSelectEngine:
-    """Show/hide a fixed set of ``lines`` on ``ax``, keeping the legend and
-    y-range consistent -- the logic shared by :class:`QtCurveSelector` and
-    :class:`IpywidgetsCurveSelector`.
+def rebuild_legend(ax, look):
+    """Replace ``ax``'s legend with one listing only visible handles, drawn
+    with ``look`` (from :func:`_legend_kwargs`). ``look=None``: the axes had
+    no legend -- remove any and create none. Returns the look to keep using
+    (refreshed from the live legend, if there was one)."""
+    legend = ax.get_legend()
+    if legend is not None:
+        look = _legend_kwargs(legend)  # as the user last left it
+        legend.remove()
+    if look is not None:
+        entries = [
+            (handle, label)
+            for handle, label in zip(*ax.get_legend_handles_labels())
+            if handle_visible(handle)
+        ]
+        if entries:
+            ax.legend(*zip(*entries), **look)
+    return look
 
-    ``lines`` is frozen at construction (same convention as
-    :class:`escape.fit_gui._FitEngine`'s target line / escape's other
-    axes-attached tools): the curve list a panel shows is whatever was on
-    the axes when it was first opened, not re-scanned on every click.
+
+def refit_y(ax):
+    """Re-fit ``ax``'s y-range to what's visible, keeping the x-range.
+
+    Plain lines only: ``relim(visible_only=True)``. With escape's combined
+    items (errortube bands, error bars) the range is computed from those
+    items' own numbers -- ``relim`` doesn't know collections. With any other
+    visible collection/patch on the axes (an untagged ``fill_between``,
+    a scatter) the range is left alone rather than guessed at.
+    """
+    items = collect_items(ax)
+    visible = [it for it in items if it.get_visible()]
+    if not visible:
+        return
+    if not ax.collections and not ax.patches:
+        ax.relim(visible_only=True)
+        ax.autoscale(enable=True, axis="y")  # a prior zoom/pan switches this off
+        ax.autoscale_view(scalex=False)
+        return
+    if not all_artists_claimed(ax, items):
+        return
+    extents = [e for e in (it.y_extent(ax.get_xlim()) for it in visible) if e is not None]
+    if not extents:
+        return
+    lo, hi = min(e[0] for e in extents), max(e[1] for e in extents)
+    if ax.get_yscale() == "log":
+        if hi <= 0:
+            return
+        lo = lo if lo > 0 else hi * 1e-3
+        pad = (hi / lo) ** ax.margins()[1]
+        ax.set_ylim(lo / pad, hi * pad)
+    else:
+        pad = (hi - lo) * ax.margins()[1] or (abs(hi) * 0.05 or 1.0)
+        ax.set_ylim(lo - pad, hi + pad)
+
+
+class _CurveSelectEngine:
+    """Show/hide a fixed set of plot ``items`` on ``ax``, keeping the legend
+    and y-range consistent -- the logic shared by the Qt dialog and the
+    ipywidgets panel. An item is a :class:`escape._plot_items.PlotItem`: a
+    plain line, or an errortube / error-bar plot whose pieces are shown and
+    hidden together.
+
+    ``items`` is frozen at construction (same convention as escape's other
+    axes-attached tools): the list a panel shows is whatever was on the axes
+    when it was first opened, not re-scanned on every click.
 
     Not preserved across a legend rebuild: ``bbox_to_anchor`` (see
-    :func:`_legend_kwargs`). ``relim()`` only knows lines/patches/images,
-    not collections (scatter, ``fill_between``, escape's own
-    :func:`escape.plot_utilities.errortube`) -- with any of those present on
-    the axes, re-fitting the y-range to the visible lines alone would be
-    wrong, so the range is left untouched in that case rather than guessed at.
+    :func:`_legend_kwargs`). For when the y-range is re-fitted and when it's
+    left alone, see :func:`refit_y`.
     """
 
-    def __init__(self, fig, ax, lines):
+    def __init__(self, fig, ax, items):
         self.fig = fig
         self.ax = ax
-        self.lines = list(lines)
+        self.items = _as_items(ax, items)
         # None: the axes never had a legend -- never create one. Captured
         # once here (refreshed from the live legend on every apply()) rather
         # than always read fresh, because with every curve hidden there is
@@ -91,33 +164,19 @@ class _CurveSelectEngine:
         legend = ax.get_legend()
         self._legend_look = None if legend is None else _legend_kwargs(legend)
 
+    @property
+    def lines(self):
+        return [it.main for it in self.items]
+
     def apply(self, states):
-        """Show exactly the curves whose entry in ``states`` (parallel to
-        :attr:`lines`) is true; hide the rest, rebuild the legend without
+        """Show exactly the items whose entry in ``states`` (parallel to
+        :attr:`items`) is true; hide the rest, rebuild the legend without
         them (other labelled artists this selector doesn't manage keep
         their entries), and re-fit the y-range to what's left."""
-        for line, state in zip(self.lines, states):
-            line.set_visible(bool(state))
-        shown = [l for l in self.lines if l.get_visible()]
-
-        legend = self.ax.get_legend()
-        if legend is not None:
-            self._legend_look = _legend_kwargs(legend)  # as the user last left it
-            legend.remove()
-        if shown and self._legend_look is not None:
-            entries = [
-                (handle, label)
-                for handle, label in zip(*self.ax.get_legend_handles_labels())
-                if getattr(handle, "get_visible", lambda: True)()
-            ]
-            if entries:
-                self.ax.legend(*zip(*entries), **self._legend_look)
-
-        if shown and not self.ax.collections:
-            self.ax.relim(visible_only=True)
-            self.ax.autoscale(enable=True, axis="y")  # a prior zoom/pan switches this off
-            self.ax.autoscale_view(scalex=False)
-
+        for item, state in zip(self.items, states):
+            item.set_visible(bool(state))
+        self._legend_look = rebuild_legend(self.ax, self._legend_look)
+        refit_y(self.ax)
         self.fig.canvas.draw_idle()
 
 
@@ -176,11 +235,11 @@ def make_qt_select_dialog(fig, ax, lines):
     holder = QtWidgets.QWidget()
     rows = QtWidgets.QVBoxLayout(holder)
     boxes = []
-    for i, line in enumerate(lines):
-        box = QtWidgets.QCheckBox(_display_label(line, i))
-        box.setIcon(_swatch_icon(QtGui, line.get_color()))
+    for i, item in enumerate(engine.items):
+        box = QtWidgets.QCheckBox(_display_label(item, i, with_kind=True))
+        box.setIcon(_swatch_icon(QtGui, item.color))
         box.setIconSize(QtCore.QSize(28, 12))
-        box.setChecked(line.get_visible())
+        box.setChecked(item.get_visible())
         rows.addWidget(box)
         boxes.append(box)
     rows.addStretch(1)
@@ -275,15 +334,15 @@ def make_ipywidgets_select_panel(fig, ax, lines):
     filter_box = widgets.Text(placeholder="filter, e.g. readback", layout=widgets.Layout(width="97%"))
     checks = []
     rows = []
-    for i, line in enumerate(lines):
-        swatch = widgets.HTML(_swatch_html(line.get_color()))
+    for i, item in enumerate(engine.items):
+        swatch = widgets.HTML(_swatch_html(item.color))
         cb = widgets.Checkbox(
-            value=line.get_visible(), description=_display_label(line, i), indent=False,
+            value=item.get_visible(), description=_display_label(item, i, with_kind=True), indent=False,
             layout=widgets.Layout(width="auto"),
         )
         checks.append(cb)
         rows.append(widgets.HBox([swatch, cb]))
-    list_box = widgets.VBox(rows, layout=widgets.Layout(max_height="400px", overflow_y="auto"))
+    list_box = widgets.VBox(rows, layout=widgets.Layout(max_height="400px", overflow="auto"))
 
     def sync(change=None):
         engine.apply([cb.value for cb in checks])
@@ -369,9 +428,10 @@ def CurveSelector(ax=None, *, lines=None, backend="auto"):
     ----------
     ax : matplotlib.axes.Axes, optional
         Axes to attach to. Defaults to the current axes.
-    lines : list of matplotlib.lines.Line2D, optional
-        Curves to offer. Defaults to every ``Line2D`` on ``ax`` not marked
-        as an escape overlay artist.
+    lines : list, optional
+        Curves to offer (``Line2D`` objects or
+        :class:`escape._plot_items.PlotItem` objects). Defaults to every
+        plotted item on ``ax`` (see :func:`escape._plot_items.collect_items`).
     backend : {"auto", "qt", "ipywidgets"}
         "auto" (the default) picks a companion Qt window if a Qt
         matplotlib backend and a Qt binding are both available, otherwise
@@ -386,7 +446,7 @@ def CurveSelector(ax=None, *, lines=None, backend="auto"):
 
     ax = ax or plt.gca()
     if lines is None:
-        lines = [l for l in ax.get_lines() if not getattr(l, "_escape_overlay", False)]
+        lines = collect_items(ax)
     if len(lines) < 2:
         raise ValueError("CurveSelector needs at least two curves to choose between.")
     chosen = backend if backend != "auto" else _detect_backend()

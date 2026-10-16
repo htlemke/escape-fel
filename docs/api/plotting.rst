@@ -16,6 +16,14 @@ Toolbar Buttons
 ----------------
 
 .. autofunction:: escape.plot_utilities.attach_select_button
+.. autofunction:: escape.plot_utilities.attach_history_button
+.. autofunction:: escape.plot_utilities.tag
+
+Plot History
+-------------
+
+.. automodule:: escape.plot_history
+   :members: PLOT_HISTORY_DIR, history_dir, save_items, list_entries, recall, remove_recalled, delete_entries, HistoryEntry
 
 Interactive ROI Selectors
 --------------------------

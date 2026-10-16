@@ -1181,7 +1181,9 @@ class Array:
         x = self.index
         if not axis:
             axis = plt.gca()
-        axis.plot(x, y, linespec, *args, **kwargs)
+        from .._plot_items import array_meta, tag
+
+        tag(axis.plot(x, y, linespec, *args, **kwargs), **array_meta(self))
 
         if self._labeled_name():
             axis.set_ylabel(self._labeled_name())
@@ -2792,7 +2794,9 @@ class Scan:
                 yerr = ystd
             if not axis:
                 axis = plt.gca()
-            axis.errorbar(x, y, yerr=yerr, *args, **kwargs)
+            from .._plot_items import array_meta, tag
+
+            tag(axis.errorbar(x, y, yerr=yerr, *args, **kwargs), **array_meta(self._array, scanpar_name))
             axis.set_xlabel(scanpar_name)
             if self._array.name:
                 axis.set_ylabel(self._array.name)
