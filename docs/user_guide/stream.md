@@ -163,7 +163,14 @@ TimeoutError: no data for 'JF03T01V02:roi_intensities[0]' (channels: JF03T01V02:
 ```
 
 `ew.stats()` returns the same numbers as a dict. A lost connection is
-re-established automatically.
+re-established automatically. If live data has stopped anyway, restart the
+connection by hand; existing Streams and plots carry on:
+
+```python
+from escape.stream import reset_default_eventworker
+reset_default_eventworker()            # or ew.reset() for your own worker
+reset_default_eventworker(hard=True)   # if that doesn't help
+```
 
 ---
 

@@ -236,7 +236,8 @@ the loop runs.
 | What happens | What escape does |
 |---|---|
 | A requested channel is missing from a message (detector stopped or slower) | `_TolerantBsreadStream` fills it with `None`. Without this, datahub 1.1.13 raises `KeyError` in its receive thread, which silently stopped *every* channel. |
-| The datahub receive thread ends (e.g. bsread's 3 s receive timeout) | `get_event()` sees that the thread has stopped and raises; `_serve` reconnects with back-off (1, 2, 4 ... 30 s, reset once data flows). |
+| The datahub receive thread ends | datahub ends it on bsread's receive timeout ("Received None message.", every release up to 1.1.13): a few seconds of upstream silence are enough. Once the buffer is empty, `get_event()` sees that `processing_thread` has stopped and raises; `_serve` reconnects with back-off (1, 2, 4 ... 30 s, reset once data flows) and counts it in `ew.reconnects`. In a `MultiSourceEventHandler`, only the affected sub-stream reconnects. |
+| A channel that is rejected at connect time (e.g. a mistyped name) | The thread dies at once, so the worker keeps retrying with back-off and prints each attempt. |
 | No event at all for `ew.stall_timeout` (15 s) while channels are requested | `_serve` reconnects the same way. With `incomplete: fill-null` every pulse is an event, so silence means the connection is dead. |
 | A Stream's callback raises | Logged with the Stream's name, rate-limited. After 20 failures, each within 10 s of the previous one, the callback is removed and the Stream releases its channels; its next timeout message shows the error. |
 | Closing the old connection | `abort()`, `join()`, then `close()`: datahub's own `close()` destroys the zmq context before stopping the thread, which caused `ZMQError: Socket operation on non-socket`. |
@@ -246,11 +247,40 @@ The missing-channel and close-order problems should be fixed in
 psi-datahub itself; `_TolerantBsreadStream` and the shutdown order can be
 removed then.
 
+### Timeouts
+
+| Setting | Meaning |
+|---|---|
+| `receive_timeout` (handler, s, default 0.5) | How long one `get_event()` waits before returning a `NullEvent`; keeps the loop responsive to stop requests. |
+| `bsread_receive_timeout_ms` (handler, default `None` = datahub's 3000) | How long datahub's receive thread waits for a message before it ends (and the worker reconnects). A longer value (e.g. 10000) rides out short upstream stalls without a reconnect. Passed to datahub as its `receive_timeout`; `clone()` keeps it. |
+| `ew.stall_timeout` (s, default 15) | No event at all for this long: reconnect. |
+
+### Manual reset
+
+`ew.reset()` / `reset_default_eventworker()` restart the connection **in
+place**: the `EventWorker` object stays the same, because every Stream
+holds a reference to it, so callbacks and subscriptions stay valid.
+
+- `reset()` cancels a pending restart, stops the loop (waits up to 5 s) and
+  starts a new one, which reconnects with the current channels. Callback
+  failure counts are cleared.
+- `reset(hard=True)` assumes the internals may be stuck: it replaces the
+  restart lock instead of waiting for it, waits only 1 s for the old loop
+  thread, and replaces the handler by `handler.clone()` with the same
+  channels.
+
+The new loop always gets a new stop event; the old one stays set. A loop
+thread stuck in a blocking call is abandoned and exits as soon as it
+unblocks, without dispatching (`_serve` checks its stop event again after
+every `get_event()`). A make-before-break restart that is still running
+during a reset discards its replacement (`ew._generation`).
+`reset_default_eventworker()` never creates a worker.
+
 ## Diagnostics
 
 | Call | Gives |
 |---|---|
-| `ew.stats()` | Event rate, callback time per event (mean/max), number of callbacks, age of the last event, pending restart, subscriptions |
+| `ew.stats()` | Event rate, callback time per event (mean/max), number of callbacks, age of the last event, pending restart, reconnects, subscriptions |
 | `ew.diagnose(channels)` | The same as text, plus for each channel how many of the last 100 events had data and when it last had data. Used in `TimeoutError` messages. |
 | `ew.subscriptions` | `{channel: number of owners}` |
 | `stream.consumers` | Who keeps a Stream accumulating |
