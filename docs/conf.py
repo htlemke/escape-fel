@@ -18,6 +18,7 @@ extensions = [
     "myst_parser",
     "sphinx_copybutton",
     "nbsphinx",
+    "sphinxcontrib.mermaid",
 ]
 
 plot_include_source = False
@@ -62,6 +63,8 @@ myst_enable_extensions = [
     "fieldlist",
 ]
 myst_heading_anchors = 3
+# ```mermaid fences become diagrams (and still render on GitHub).
+myst_fence_as_directive = ["mermaid"]
 
 nbsphinx_execute = "never"
 

@@ -3,4 +3,5 @@ myst-parser>=2.0
 furo
 sphinx-copybutton
 nbsphinx
+sphinxcontrib-mermaid
 ipython

@@ -82,6 +82,84 @@ except ImportError:
     _HAS_REDIS = False
 
 
+# ---------------------------------------------------------------------------
+# Missing channels -> None (datahub would end its receive thread instead)
+# ---------------------------------------------------------------------------
+#
+# The dispatcher leaves a channel out of a message when it has no data for it
+# (e.g. a detector that is not running, or between pulses of a lower-rate
+# one). psi-datahub's Bsread.run (1.1.13) builds every message with
+# ``data[channel]`` for each *requested* channel, so the KeyError ends the
+# receive thread -- and with it the stream for every other channel too.
+# _TolerantBsreadStream runs datahub's own run() code, but with a ``bsread``
+# module whose sources return each missing requested channel as None, which
+# is what ``incomplete: fill-null`` means. Reported upstream; drop this once
+# datahub handles it.
+
+class _MissingValue:
+    value = None
+
+
+class _FillMissingSource:
+    """bsread source wrapper: fills requested channels missing from a message."""
+
+    def __init__(self, src, channels):
+        self._src = src
+        self._channels = list(channels or [])
+
+    def __enter__(self):
+        self._src.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return self._src.__exit__(*exc)
+
+    def __getattr__(self, name):
+        return getattr(self._src, name)
+
+    def receive(self, *args, **kwargs):
+        msg = self._src.receive(*args, **kwargs)
+        if msg:
+            data = msg.data.data
+            for ch in self._channels:
+                if ch not in data:
+                    data[ch] = _MissingValue
+        return msg
+
+
+class _FillMissingBsread:
+    """Stand-in for the ``bsread`` module as seen by datahub's Bsread.run."""
+
+    def __init__(self, bsread_module):
+        self._bsread = bsread_module
+
+    def __getattr__(self, name):
+        return getattr(self._bsread, name)
+
+    def source(self, *args, channels=None, **kwargs):
+        return _FillMissingSource(self._bsread.source(*args, channels=channels, **kwargs), channels)
+
+
+def _make_tolerant_bsread_stream():
+    import types
+
+    run = getattr(BsreadStream, "run", None)
+    run_globals = getattr(run, "__globals__", {})
+    if "bsread" not in run_globals:  # datahub changed: use it unmodified
+        return BsreadStream
+    tolerant_run = types.FunctionType(
+        run.__code__,
+        dict(run_globals, bsread=_FillMissingBsread(run_globals["bsread"])),
+        run.__name__,
+        run.__defaults__,
+        run.__closure__,
+    )
+    return type("_TolerantBsreadStream", (BsreadStream,), {"run": tolerant_run})
+
+
+_TolerantBsreadStream = _make_tolerant_bsread_stream() if _HAS_DATAHUB else None
+
+
 def _require_datahub():
     if not _HAS_DATAHUB:
         raise RuntimeError(
@@ -162,14 +240,32 @@ class DataHubEventSourceContext:
             return NullEvent()
         result = stream.receive(timeout=self.eventhandler.receive_timeout)
         if result is None:
+            # datahub's receive thread ends for good on any error, including
+            # bsread's 3 s receive timeout ("Received None message.") --
+            # after that receive() returns None forever. Raising makes the
+            # EventWorker reconnect (with back-off).
+            if not stream.is_thread_running():
+                raise RuntimeError(
+                    f"datahub receive thread ended ({stream.get_run_exception()!r})"
+                )
             return NullEvent()
         pulse_id, timestamp_ns, msg = result
         return DataHubEvent(pulse_id, timestamp_ns, msg)
+
+    # bsread's own receive timeout (datahub's query["receive_timeout"], ms):
+    # how long the receive thread can be blocked before it sees an abort.
+    _BSREAD_RECEIVE_TIMEOUT_S = 3.0
 
     def __exit__(self, *_):
         stream = self.eventhandler.stream
         if stream is not None:
             try:
+                # Let the receive thread leave its loop and close its socket
+                # and zmq context itself before close(): Bsread.close()
+                # destroys the context first, which, with the thread still
+                # in recv(), gives "ZMQError: Socket operation on non-socket".
+                stream.abort()
+                stream.join(timeout=self._BSREAD_RECEIVE_TIMEOUT_S + 1.0)
                 stream.close()
             except Exception as exc:
                 _logger.debug("Error closing datahub stream: %s", exc)
@@ -289,7 +385,7 @@ class DataHubEventHandler:
             else:
                 # bsread dispatcher: url=None → bsread uses its own default dispatcher
                 url = self.url  # None means "use bsread default dispatcher URL"
-                self.stream = BsreadStream(channels=channels, url=url, **kwargs)
+                self.stream = _TolerantBsreadStream(channels=channels, url=url, **kwargs)
                 _logger.debug("DataHubEventHandler: BsreadStream via dispatcher, channels=%s", channels)
         except Exception as exc:
             _logger.error("Failed to create datahub stream (%s): %s", self.backend, exc)

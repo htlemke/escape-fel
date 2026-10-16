@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+# psi-tunnel -- dev helper: reach the PSI/SwissFEL network from an off-site
+# machine, for testing escape.stream against real bsread streams and the
+# storage/parse code against real data files.
+#
+# Two different PSI-side hosts, because the two jobs need different networks:
+#   * live bsread streams/dispatcher are only reachable from the beamline
+#     consoles  -> sshuttle via PSI_STREAM_HOST (default saresb-cons-05)
+#   * experiment files (/sf/...) live on the offline cluster
+#                -> sshfs   via PSI_FILES_HOST  (default ra)
+#
+# All ssh connections are multiplexed: a persistent master to the first jump
+# host (hopx, MFA) is opened once and every nested ProxyJump reuses it, plus
+# one persistent master per PSI-side host that sshuttle/sshfs ride on.
+#
+#   psi-tunnel connect [stream|files|all]   # open ssh masters (MFA here)
+#   psi-tunnel up [--net CIDR] [--auto-nets] [--no-dns]
+#                                           # sshuttle: TCP + DNS into PSI
+#   psi-tunnel check [HOST...]              # are the stream hosts routed?
+#   psi-tunnel kinit                        # Kerberos ticket on the files host
+#   psi-tunnel mount [--rw] /sf/bernina/data/p22478 [LOCAL_PATH]
+#   psi-tunnel status
+#   psi-tunnel down                         # stop sshuttle, restore DNS
+#   psi-tunnel umount [--all|PATH]
+#   psi-tunnel close                        # down + umount --all + close ssh
+#
+# Config (env vars):
+#   PSI_STREAM_HOST   ssh host for the sshuttle tunnel (default: saresb-cons-05)
+#   PSI_FILES_HOST    ssh host for sshfs mounts        (default: ra)
+#   PSI_TUNNEL_NETS   space-separated CIDRs to route    (default: 129.129.0.0/16 172.26.0.0/16)
+#   PSI_TUNNEL_DOMAIN search domain added locally while up (default: psi.ch)
+#   PSI_MOUNT_ROOT    fallback mount prefix when the same absolute path is not
+#                     creatable locally               (default: ~/psi-mnt)
+#
+# /sf on ra is NFS with sec=krb5: a key-based (non-password) ssh login has no
+# Kerberos ticket there, so /sf/<instrument>/data is "Permission denied" until
+# you run `psi-tunnel kinit` (once per ticket lifetime; it goes through the
+# same master connection, so it lands on the same ra-l-NNN node sshfs uses).
+#
+# Requirements (once): sudo apt install sshuttle sshfs
+# sshuttle needs sudo locally (firewall rules) and python3 on the remote.
+
+set -euo pipefail
+
+STREAM_HOST=${PSI_STREAM_HOST:-saresb-cons-05}
+FILES_HOST=${PSI_FILES_HOST:-ra}
+# 129.129/16: PSI incl. dispatcher-api/data-api; 172.26/16: SwissFEL DAQ,
+# incl. the stream sources the dispatcher hands out (sf-daqbuf-NN on
+# 172.26.120.x, sf-daqsync-NN / sf-daq-N on 172.26.40.x).
+NETS=${PSI_TUNNEL_NETS:-129.129.0.0/16 172.26.0.0/16}
+DOMAIN=${PSI_TUNNEL_DOMAIN:-psi.ch}
+MOUNT_ROOT=${PSI_MOUNT_ROOT:-$HOME/psi-mnt}
+
+STATE=${XDG_RUNTIME_DIR:-/tmp/psi-tunnel-$UID}/psi-tunnel
+mkdir -p "$STATE"
+chmod 700 "$STATE"
+PIDFILE=$STATE/sshuttle.pid
+DNSSAVE=$STATE/dns-domains
+
+die() { echo "psi-tunnel: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null || die "'$1' not found (sudo apt install $2)"; }
+
+ssh_cfg() { ssh -G "$1" 2>/dev/null | awk -v k="$2" '$1==k{print $2; exit}'; }
+
+# Use the ControlPath from ~/.ssh/config when there is one, so that nested
+# ProxyJump hops (which read the config on their own) find our masters too.
+ctl_path() {
+    local p
+    p=$(ssh_cfg "$1" controlpath)
+    if [ -z "$p" ] || [ "$p" = none ]; then p=$STATE/$1.sock; fi
+    mkdir -p "$(dirname "$p")"
+    echo "$p"
+}
+
+# First host of the ProxyJump chain, i.e. the one we connect to directly.
+first_hop() {
+    local hop=$1 next
+    for _ in 1 2 3 4 5 6; do
+        next=$(ssh_cfg "$hop" proxyjump)
+        [ -n "$next" ] && [ "$next" != none ] || break
+        next=${next%%,*}
+        hop=${next#*@}
+    done
+    echo "$hop"
+}
+
+# ClearAllForwardings: the ~/.ssh/config entries carry DynamicForwards and
+# camera LocalForwards; don't fight an existing interactive session for them.
+mux() { echo "ssh -S $(ctl_path "$1") -o ClearAllForwardings=yes -o ForwardX11=no"; }
+
+master_alive() { ssh -S "$(ctl_path "$1")" -O check "$1" >/dev/null 2>&1; }
+
+open_master() {
+    local h=$1
+    if master_alive "$h"; then echo "ssh master to $h: already open"; return; fi
+    echo "opening ssh master to $h ..."
+    ssh -M -S "$(ctl_path "$h")" -o ControlPersist=yes -o ServerAliveInterval=30 \
+        -o ClearAllForwardings=yes -o ForwardX11=no -fN "$h"
+    master_alive "$h" || die "ssh master to $h did not come up"
+}
+
+ensure_master() {
+    local h=$1 hop
+    master_alive "$h" && return
+    hop=$(first_hop "$h")
+    if [ "$hop" != "$h" ]; then
+        master_alive "$hop" || echo "(MFA prompt for the jump host $hop follows)"
+        open_master "$hop"
+    fi
+    open_master "$h"
+}
+
+cmd_connect() {
+    case ${1:-all} in
+        stream) ensure_master "$STREAM_HOST" ;;
+        files) ensure_master "$FILES_HOST" ;;
+        all) ensure_master "$STREAM_HOST"; ensure_master "$FILES_HOST" ;;
+        *) die "connect: expected stream, files or all" ;;
+    esac
+}
+
+default_iface() { ip route show default | awk '{for(i=1;i<NF;i++) if($i=="dev"){print $(i+1); exit}}'; }
+
+# The dispatcher can hand back short host names; glibc expands them with the
+# local search list *before* the (tunnelled) DNS query, so psi.ch must be in it.
+dns_add_domain() {
+    command -v resolvectl >/dev/null || return 0
+    local iface cur
+    iface=$(default_iface)
+    [ -n "$iface" ] || return 0
+    cur=$(resolvectl domain "$iface" 2>/dev/null | sed 's/^[^:]*: *//')
+    case " $cur " in *" $DOMAIN "*) return 0 ;; esac
+    printf '%s\n%s\n' "$iface" "$cur" >"$DNSSAVE"
+    # shellcheck disable=SC2086
+    sudo resolvectl domain "$iface" $cur "$DOMAIN"
+}
+
+dns_restore() {
+    [ -f "$DNSSAVE" ] || return 0
+    local iface cur
+    iface=$(sed -n 1p "$DNSSAVE")
+    cur=$(sed -n 2p "$DNSSAVE")
+    # shellcheck disable=SC2086
+    sudo resolvectl domain "$iface" $cur || true
+    rm -f "$DNSSAVE"
+}
+
+sshuttle_alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+cmd_up() {
+    need sshuttle sshuttle
+    local extra=() no_dns=""
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --auto-nets) extra+=(--auto-nets) ;;   # also route whatever the remote routes
+            --no-dns) no_dns=1 ;;
+            --net) shift; NETS="$NETS $1" ;;
+            *) die "up: unknown option $1" ;;
+        esac
+        shift
+    done
+    if sshuttle_alive; then echo "sshuttle already running (pid $(cat "$PIDFILE"))"; return; fi
+    ensure_master "$STREAM_HOST"
+    sudo -v   # ask for the sudo password now, not inside the daemonised sshuttle
+
+    # Never capture the connection to the first ssh hop (loop guard).
+    local hopip
+    hopip=$(getent ahostsv4 "$(ssh_cfg "$(first_hop "$STREAM_HOST")" hostname)" | awk 'NR==1{print $1}')
+    if [ -n "$hopip" ]; then extra+=(-x "$hopip"); fi
+
+    if [ -z "$no_dns" ]; then
+        extra+=(--dns)
+        dns_add_domain
+    fi
+    # shellcheck disable=SC2086
+    if ! sshuttle -D --pidfile "$PIDFILE" -e "$(mux "$STREAM_HOST")" -r "$STREAM_HOST" \
+        "${extra[@]}" $NETS; then
+        dns_restore
+        die "sshuttle failed to start"
+    fi
+    sleep 1
+    sshuttle_alive || { dns_restore; die "sshuttle exited right away (run it without -D to see why)"; }
+    echo "sshuttle up via $STREAM_HOST: $NETS${hopip:+ (excluding hop $hopip)}${no_dns:+, no DNS}"
+    if [ -z "$no_dns" ]; then
+        echo "note: while up, ALL local DNS goes through PSI (local LAN names may not resolve)."
+    fi
+}
+
+cmd_down() {
+    if sshuttle_alive; then
+        kill "$(cat "$PIDFILE")"
+        for _ in 1 2 3 4 5; do sshuttle_alive || break; sleep 0.5; done
+        echo "sshuttle stopped"
+    else
+        echo "sshuttle not running"
+    fi
+    rm -f "$PIDFILE"
+    dns_restore
+}
+
+cmd_kinit() {
+    ensure_master "$FILES_HOST"
+    local ssh_f
+    read -r -a ssh_f <<<"$(mux "$FILES_HOST")"
+    "${ssh_f[@]}" -t "$FILES_HOST" 'kinit && klist | head -5'
+}
+
+our_mounts() { awk -v h="$FILES_HOST:" '$3=="fuse.sshfs" && index($1,h)==1 {print $2}' /proc/mounts; }
+
+cmd_mount() {
+    need sshfs sshfs
+    local rw=0 remote="" local_path=""
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --rw) rw=1 ;;
+            -*) die "mount: unknown option $1" ;;
+            *) if [ -z "$remote" ]; then remote=$1; else local_path=$1; fi ;;
+        esac
+        shift
+    done
+    [ -n "$remote" ] || die "usage: psi-tunnel mount [--rw] REMOTE_ABS_PATH [LOCAL_PATH]"
+    case $remote in /*) ;; *) die "remote path must be absolute" ;; esac
+    ensure_master "$FILES_HOST"
+    local ssh_f
+    read -r -a ssh_f <<<"$(mux "$FILES_HOST")"
+    if ! "${ssh_f[@]}" "$FILES_HOST" test -r "$remote" 2>/dev/null; then
+        die "$remote is not readable on $FILES_HOST (missing Kerberos ticket? run: psi-tunnel kinit)"
+    fi
+
+    # Default: mount at the SAME absolute path, so paths written into the
+    # scan JSON files (/sf/<instrument>/data/<pgroup>/raw/...) resolve as-is
+    # and escape.swissfel.load_dataset_from_scan works unmodified.
+    if [ -z "$local_path" ]; then
+        if mkdir -p "$remote" 2>/dev/null && [ -w "$remote" ]; then
+            local_path=$remote
+        else
+            local_path=$MOUNT_ROOT$remote
+            echo "note: cannot create $remote locally; mounting at $local_path instead."
+            echo "      for same-path mounts run once: sudo mkdir -p /sf && sudo chown $USER /sf"
+        fi
+    fi
+    mkdir -p "$local_path"
+    if mountpoint -q "$local_path"; then die "$local_path is already a mount point"; fi
+
+    local opts="reconnect,ServerAliveInterval=15,ServerAliveCountMax=3"
+    opts+=",kernel_cache,cache_timeout=60,max_conns=4"
+    if [ $rw = 0 ]; then opts+=",ro"; fi
+    sshfs -o "ssh_command=$(mux "$FILES_HOST")" -o "$opts" "$FILES_HOST:$remote" "$local_path"
+    echo "mounted $FILES_HOST:$remote -> $local_path ($([ $rw = 1 ] && echo rw || echo ro))"
+}
+
+cmd_umount() {
+    local targets=()
+    if [ "${1:-}" = "--all" ] || [ $# -eq 0 ]; then
+        mapfile -t targets < <(our_mounts)
+    else
+        targets=("$1")
+    fi
+    [ ${#targets[@]} -gt 0 ] || { echo "nothing mounted"; return; }
+    for m in "${targets[@]}"; do
+        fusermount -u "$m" && echo "unmounted $m"
+    done
+}
+
+cmd_status() {
+    local h hop
+    for h in "$STREAM_HOST" "$FILES_HOST"; do
+        hop=$(first_hop "$h")
+        for x in $hop $h; do
+            if master_alive "$x"; then echo "ssh master : $x up"; else echo "ssh master : $x down"; fi
+        done
+    done | awk '!seen[$0]++'
+    if sshuttle_alive; then echo "sshuttle   : up via $STREAM_HOST (pid $(cat "$PIDFILE"))"; else echo "sshuttle   : down"; fi
+    local m
+    m=$(our_mounts)
+    if [ -n "$m" ]; then echo "sshfs      : from $FILES_HOST"; echo "$m" | sed 's/^/  /'; else echo "sshfs      : none"; fi
+}
+
+# Hosts escape.stream / datahub talk to (see bsread/consts.py, datahub/sources/*).
+CHECK_HOSTS=(dispatcher-api.psi.ch data-api.psi.ch sf-daqbuf-22.psi.ch sf-daqsync-01.psi.ch)
+
+cmd_check() {
+    ensure_master "$STREAM_HOST"
+    local ssh_s
+    read -r -a ssh_s <<<"$(mux "$STREAM_HOST")"
+    echo "== resolved on $STREAM_HOST, and covered by PSI_TUNNEL_NETS ($NETS)?"
+    local h ip
+    for h in "${CHECK_HOSTS[@]}" "$@"; do
+        ip=$("${ssh_s[@]}" "$STREAM_HOST" getent ahostsv4 "$h" 2>/dev/null | awk 'NR==1{print $1}')
+        if [ -z "$ip" ]; then printf '  %-28s unresolved on remote\n' "$h"; continue; fi
+        # shellcheck disable=SC2086
+        if python3 -c 'import ipaddress,sys; ip=ipaddress.ip_address(sys.argv[1]); sys.exit(0 if any(ip in ipaddress.ip_network(n) for n in sys.argv[2:]) else 1)' "$ip" $NETS; then
+            printf '  %-28s %-16s routed\n' "$h" "$ip"
+        else
+            printf '  %-28s %-16s NOT ROUTED -> up --net %s/32 (or its subnet)\n' "$h" "$ip" "$ip"
+        fi
+    done
+    if sshuttle_alive; then
+        echo "== through the tunnel from here:"
+        local code
+        code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://dispatcher-api.psi.ch/ || true)
+        echo "  https://dispatcher-api.psi.ch -> HTTP ${code:-000} (000 = unreachable)"
+    fi
+    echo "(pass extra host names, e.g. the stream host from a failing connect, as arguments)"
+}
+
+cmd_close() {
+    cmd_down
+    cmd_umount --all
+    local h
+    for h in "$STREAM_HOST" "$FILES_HOST" "$(first_hop "$STREAM_HOST")" "$(first_hop "$FILES_HOST")"; do
+        if master_alive "$h"; then ssh -S "$(ctl_path "$h")" -O exit "$h" 2>/dev/null; echo "ssh master to $h closed"; fi
+    done
+}
+
+sub=${1:-status}
+shift || true
+case $sub in
+    connect) cmd_connect "$@" ;;
+    up) cmd_up "$@" ;;
+    down) cmd_down ;;
+    kinit) cmd_kinit ;;
+    mount) cmd_mount "$@" ;;
+    umount|unmount) cmd_umount "$@" ;;
+    status) cmd_status ;;
+    check) cmd_check "$@" ;;
+    close) cmd_close ;;
+    -h|--help|help) sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//' ;;
+    *) die "unknown command '$sub' (try: psi-tunnel help)" ;;
+esac

@@ -321,10 +321,11 @@ def gather(*streams, seconds=0, n_events=None):
             time.sleep(5)
     """
     from .escape_stream import Stream
+    token = object()  # gather's own consumer: doesn't stop other plots/users
     for s in streams:
         if not isinstance(s, Stream):
             raise TypeError(f"gather() expects Stream objects; got {type(s).__name__}")
-        s.accumulate(True)
+        s.accumulate(True, owner=token)
 
     if seconds > 0 and n_events is None:
         time.sleep(seconds)
@@ -335,6 +336,6 @@ def gather(*streams, seconds=0, n_events=None):
             time.sleep(0.05)
 
     for s in streams:
-        s.accumulate(False)
+        s.accumulate(False, owner=token)
 
     return {s.name: s for s in streams}

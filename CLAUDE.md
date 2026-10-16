@@ -83,7 +83,9 @@ See the dedicated section below.
 **`escape/stream/` is not part of the stable API** (not imported by
 `escape/__init__.py`). It provides live, pulse-by-pulse data acquisition
 (`Stream`/`EventWorker`, mirroring the `Array` API — see
-`docs/user_guide/stream.md`), with pluggable event handlers: `LocalEventHandler`
+`docs/user_guide/stream.md`; internals such as subscriptions, restarts,
+threads and failure handling, with Mermaid diagrams, are in
+`docs/development/stream_architecture.md`), with pluggable event handlers: `LocalEventHandler`
 (direct bsread, no extra deps — used by the offline
 `escape/stream/example_local_stream.ipynb` demo), `EventHandler_SFEL` (bsread +
 dispatcher), and the `psi-datahub`-backed `DataHubEventHandler` /

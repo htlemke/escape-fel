@@ -7,39 +7,19 @@ mechanical substitution.
 
 ---
 
-## Architecture at a glance
+## How it fits together
 
-```
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║  DATA SOURCES                                                        ║
-  ║  bsread Sender (local)   PSI Dispatcher   Redis/Dragonfly           ║
-  ╚═══════════╤══════════════════╤══════════════════╤═════════════════════╝
-              │                  │                  │
-  ╔═══════════▼══════════════════▼══════════════════▼═════════════════════╗
-  ║  EVENT HANDLERS  (swap one keyword to change backend)                 ║
-  ║  DataHubLocalEventHandler   DataHubEventHandler   MultiSourceHandler ║
-  ╚═══════════════════════════════╤══════════════════════════════════════╝
-                                  │
-  ╔═══════════════════════════════▼══════════════════════════════════════╗
-  ║  EventWorker  ─  one background thread, calls all registered        ║
-  ║                  callbacks on each pulse                             ║
-  ╚═══════════════════════════════╤══════════════════════════════════════╝
-                                  │  per-pulse dispatch
-        ┌─────────────────────────┼────────────────────────┐
-        ▼                         ▼                        ▼
-   EventSource               ProcSource            FilteredEventSource
-   ('i0', ew)                (i / i0)              (i, mask=pump)
-        │                         │                        │
-        ▼                         ▼                        ▼
-  ┌──────────┐           ┌──────────────┐         ┌──────────────┐
-  │ Stream   │           │ Stream       │         │ Stream       │
-  │ i0       │           │ ratio        │         │ i_on         │
-  └────┬─────┘           └───────┬──────┘         └──────┬───────┘
-       │                         │                        │
-       ▼                         ▼                        ▼
-  ValueHistPlot            Plot (median)           PlotCorrelation
-  plot_hist()              plot_med()              plot_corr()
-```
+An **EventWorker** receives one pulse-aligned stream of all requested
+channels in a background thread, through an **event handler** that selects
+the transport (dispatcher, local bsread sender, Redis). Every pulse, each
+accumulating **Stream** stores its value for that pulse; derived Streams
+(`i / i0`, `i[pump]`, `evtset[25]`, ...) compute theirs from the Streams
+they are built from. Live plots redraw from the accumulated data.
+
+You never subscribe channels yourself: accumulating or plotting a Stream
+subscribes every channel it depends on. How this works internally
+(subscriptions, restarts, threads, failure handling) is described in
+[Stream internals](../development/stream_architecture.md).
 
 ---
 
@@ -133,6 +113,57 @@ i_off = i[~pump]     # ~pump = logical NOT
 for s in [ratio, i_on, i_off]:
     s.accumulate(True)
 ```
+
+### Channels at different rates
+
+All channels of one EventWorker arrive in one pulse-aligned stream. On a
+pulse where a channel has no data (a detector running at a lower rate, or
+not running at all), its value is `None`. Derived Streams follow one rule:
+
+- **A derived value exists only on pulses where all its inputs exist.**
+  `fast - slow` has a sample only on `slow`'s pulses, and `i[evtset[71]]`
+  only on pulses where the event set was received *and* bit 71 is set. A
+  lower-rate input never repeats an old value onto later pulses.
+- **Running statistics are held.** `slow.running_mean(50)` keeps its last
+  value on pulses without new `slow` data, so `fast / slow.running_mean(50)`
+  has a value on every `fast` pulse.
+- A scan parameter that is `None` on a pulse skips that pulse:
+  `slow.digitize(bins).categorize(fast)` only bins `fast` on `slow`'s pulses.
+  The parameter's channel is subscribed automatically with the binned Stream.
+
+A requested channel that has no data at all (e.g. a stopped detector) does
+not stop the other channels; its Streams just get no data, and a plot's
+timeout says so (`never had data`).
+
+### Shared Streams, shared channels
+
+- `stream[i]` and `stream[mask]` return the **same** Stream when asked again
+  with the same index or mask Stream, including what it has already
+  accumulated, so a second `.plot()` starts immediately.
+- Accumulation is held **per consumer**. Each plot, `StreamContext`, `with`
+  block or `gather()` call is its own consumer; a plain `accumulate(True)`
+  is yours. The Stream stops only when the last consumer is gone, so
+  closing one plot does not stop another plot of the same Stream.
+  `accumulate(False)` without arguments releases all consumers;
+  `stream.consumers` lists them.
+- Stopping a Stream never unsubscribes a channel that another Stream, plot
+  or eco counter still uses.
+
+### When a plot times out
+
+Adding a channel reconnects the stream. Plots wait for that reconnect
+before their `timeout` starts. If no data arrives in time, the
+`TimeoutError` names the real channels and the state of the event loop:
+
+```
+TimeoutError: no data for 'JF03T01V02:roi_intensities[0]' (channels: JF03T01V02:roi_intensities) after 20 s.
+  event loop: alive, last event 0.01 s ago (pulse 28610363873), 100 Hz, 2 callbacks, loop 0.0 ms/event
+  restart: finished 20.0 s ago
+  JF03T01V02:roi_intensities: data in 0 of the last 100 events, never had data
+```
+
+`ew.stats()` returns the same numbers as a dict. A lost connection is
+re-established automatically.
 
 ---
 
@@ -313,9 +344,12 @@ mp = ratio_vs_t.plot_med(update=0.5)
 # Scatter correlation, defaults to lab_time on the x-axis if omitted (see below)
 cp = i.plot_corr(i0, Npoints=400, update=0.5)
 
-# Stop a live plot
+# Stop redrawing (the Stream keeps accumulating)
 hp.stop()
 ```
+
+Closing a plot window stops the plot and releases its share of the
+acquisition (see "Shared Streams, shared channels" above).
 
 ### `pulse_id` / `lab_time` — always-available pseudo-channels
 
@@ -377,13 +411,15 @@ from escape.stream import StreamContext
 with StreamContext(i0, ratio):
     time.sleep(10)   # accumulate for 10 s
 
-# Tied to a figure window — stops when the plot is closed
+# Tied to a figure window: releases when the window is closed
 fig, ax = plt.subplots()
-ctx = StreamContext(i0)
+ctx = StreamContext(i0, ratio)
 ctx.tie_to_figure(fig)
 ctx.start()
-i0.plot_hist(axes=ax, update=0.5)
 ```
+
+A `StreamContext` is one consumer of its Streams, like a plot: stopping it
+does not stop a plot of the same Stream.
 
 ---
 
@@ -399,38 +435,13 @@ i0.plot_hist(axes=ax, update=0.5)
 | `LocalEventHandler(host, port)` | bsread PULL (direct) | legacy; prefer DataHubLocalEventHandler |
 | `EventHandler_SFEL()` | bsread + dispatcher | legacy; prefer DataHubEventHandler |
 
-For the full architecture diagram and design proposals see the
-[stream design review](https://claude.ai/code/artifact/cd017151-c247-442e-a358-79066e3283a2).
-
 ---
 
-## Developing against real data: `dev_proxy`
+## Developing against real data
 
-`escape/stream/dev_proxy.py` is a dev-only helper (not part of the public
-API) for debugging `escape.stream` against **real** SwissFEL channels from a
-machine that isn't itself on the PSI network, given a SOCKS-mode SSH tunnel
-into one that is:
-
-```bash
-ssh -D 8787 -N your_user@saresb-cons-05
-```
-
-```python
-from escape.stream.dev_proxy import enable_socks_proxy
-enable_socks_proxy(port=8787)   # routes both the dispatcher HTTP lookup and
-                                 # the raw bsread/mflow ZMQ data socket
-
-from escape.stream import EventWorker, DataHubEventHandler
-ew = EventWorker(DataHubEventHandler(backend='bsread'))
-ew.registerSource('SAROP21-PBPS103:INTENSITY')
-```
-
-Call `disable_socks_proxy()` before going back to local-only testing with
-`TestStream`/`LocalEventHandler` — while enabled, "localhost" means the
-tunnel endpoint's loopback, not this machine's. See the module docstring for
-why two separate mechanisms are needed (an HTTP(S) proxy env var for the
-dispatcher lookup via `requests`, plus a `zmq.Context.socket` patch for the
-raw data socket, since ZMQ bypasses Python's own socket/HTTP stack).
+To test against real SwissFEL channels from outside the PSI network (via
+`dev/psi-tunnel` or `escape.stream.dev_proxy`), see
+[Stream internals](../development/stream_architecture.md#developing-against-real-data).
 
 ---
 
@@ -451,5 +462,6 @@ per event — not a snapshot.  Filters and scan binnings follow the same rule.
 
 **Acquisition is explicit; plots are continuous.**
 `accumulate(True/False)` is the user's gate on data collection.
-Live plots run a timer-based refresh loop and do not own the acquisition.
-Closing a plot window does not discard data.
+Live plots run a timer-based refresh loop and hold their own share of the
+acquisition: closing a plot window releases only that share (see "Shared
+Streams, shared channels") and does not discard data.

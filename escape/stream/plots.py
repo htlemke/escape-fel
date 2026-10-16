@@ -130,6 +130,10 @@ class _LivePlotBase:
         self.autoscale = True
         if self.fig is not None:
             _attach_escape_buttons_lazy(self.fig)
+        # The plot is a consumer of its Streams until it is closed -- see
+        # Stream.accumulate(owner=...); closing it doesn't stop other plots.
+        for ed in self._escdata:
+            ed.accumulate(True, owner=self)
 
     # ------------------------------------------------------------------
     # Figure / close-event wiring
@@ -142,7 +146,7 @@ class _LivePlotBase:
     def _on_close(self, event):
         self.stop()
         for ed in self._escdata:
-            ed.accumulate(False)
+            ed.accumulate(False, owner=self)
 
     # ------------------------------------------------------------------
     # Update timer
@@ -830,14 +834,10 @@ class GridPlot(_LivePlotBase):
     per (Grid, stat) pair, reused across repeated ``Grid.<stat>(plot=True)``
     calls).
 
-    Closing this plot's figure stops accumulation on the Grid's
-    underlying Stream (see ``_LivePlotBase._on_close``) -- if you have
-    more than one ``GridPlot`` open for the same ``Grid`` (different
-    stats), they share that one Stream, so closing any one of them stops
-    data collection for all of them, not just itself. This mirrors every
-    other live-plot class here (one plot ~ one data source's lifecycle);
-    if you need independent lifetimes, use separate ``Grid`` instances
-    (they can wrap ``Stream``s bound to the same underlying channel(s)).
+    Like every live plot here, this plot is one consumer of the Grid's
+    underlying Stream (see ``_LivePlotBase._on_close``): closing it stops
+    accumulation only once no other plot (e.g. a second ``GridPlot`` for
+    another stat) or explicit ``accumulate(True)`` still uses that Stream.
 
     Parameters
     ----------

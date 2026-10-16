@@ -23,6 +23,7 @@ Improvements over escape_stream.py:
         ctx.tie_to_figure(fig)  # auto-stop when the figure window closes
 """
 
+import contextlib
 import threading
 import time
 import operator
@@ -87,6 +88,21 @@ class TestStream:
 # StreamContext — acquisition lifetime manager
 # ---------------------------------------------------------------------------
 
+@contextlib.contextmanager
+def _held(*streams):
+    """Keep *streams* accumulating for the duration of the block, under a
+    temporary owner -- used while a plot or tool waits for its first data,
+    before the plot object (which then becomes the owner) exists."""
+    token = object()
+    for s in streams:
+        s.accumulate(True, owner=token)
+    try:
+        yield
+    finally:
+        for s in streams:
+            s.accumulate(False, owner=token)
+
+
 class StreamContext:
     """Control accumulation lifetime for one or more Stream objects.
 
@@ -111,11 +127,11 @@ class StreamContext:
 
     def start(self):
         for obj in self._objects:
-            obj.accumulate(True)
+            obj.accumulate(True, owner=self)
 
     def stop(self):
         for obj in self._objects:
-            obj.accumulate(False)
+            obj.accumulate(False, owner=self)
 
     def tie_to_figure(self, fig):
         """Stop accumulation when *fig* is closed."""
@@ -200,18 +216,27 @@ class Scan:
             pv[ind] = np.round(pv[ind] / self._precision[ind]) * self._precision[ind]
         return tuple(pv)
 
+    def _par_values(self):
+        """This pulse's parameter values as a float array, or None if any of
+        them is missing (``None``, i.e. that channel has no data on this
+        pulse) or NaN."""
+        vals = [tp._getEventData() for tp in self._parameters]
+        if any(v is None for v in vals):
+            return None
+        vals = np.asarray(vals, dtype=float)
+        return None if np.isnan(vals).any() else vals
+
     def _isValid(self):
         if self._parameters is None:
             return True
-        parValues = [tp._getEventData() for tp in self._parameters]
-        return not np.isnan(parValues).any()
+        return self._par_values() is not None
 
     def _append(self):
         """Return (is_new_step, step_index).  None, None if scan values are invalid."""
         if self._parameters is None:
             return False, 0
-        parValues = [tp._getEventData() for tp in self._parameters]
-        if np.isnan(parValues).any():
+        parValues = self._par_values()
+        if parValues is None:
             return None, None
         parValues = self._roundParameters(parValues)
         if parValues in self._values:
@@ -518,14 +543,10 @@ class ProcSource:
     def getEventData(self):  # noqa: N802
         if self.procObj.getEventData():
             self.procObj.updateChildren(self)
-        # ret_values is still None before the very first successful compute
-        # (e.g. its own dependencies were invalid/None on every event so far,
-        # as with a running_mean over a not-yet-True filter mask) -- report
-        # "no data yet" the same way any other source does, rather than
-        # crashing on ret_values[self.returnIndex].
-        if self.procObj.ret_values is None:
-            return None
-        return self.procObj.ret_values[self.returnIndex]
+        # None when this pulse produced no result (an input had no data on
+        # this pulse, e.g. a lower-rate channel) -- see ProcObj.current_values.
+        vals = self.procObj.current_values()
+        return None if vals is None else vals[self.returnIndex]
 
 
 def _cache_getter(getter, update_time=0.1):
@@ -722,10 +743,9 @@ class EventWorker:
         entirely and go back to the old stop-then-start behavior (a real
         gap in received events, but never more than one connection open).
         Falls back to ``"break_before_make"`` automatically, per restart,
-        if the current handler doesn't support ``.clone()`` or the
-        replacement doesn't come up within ``connect_timeout``
-        (see ``_restart_make_before_break``) -- so this is safe to leave at
-        the default even for a handler that doesn't support cloning yet.
+        if the current handler doesn't support ``.clone()`` (see
+        ``_restart_make_before_break``) -- so this is safe to leave at the
+        default even for a handler that doesn't support cloning yet.
     """
 
     def __init__(self, eventHandler=None, make_default=True, restart_mode="make_before_break"):
@@ -745,10 +765,31 @@ class EventWorker:
         self._last_event_keys = []       # channel names seen in the last event
         self._restart_timer = None
         self._restart_lock = threading.Lock()
-        self._callback_failures = {}     # cb -> {"count": int, "last_log": float}
+        self._callback_failures = {}     # cb -> {"count", "last_log", "last_fail"}
         self.restart_mode = restart_mode
         self._pulse_id_stream = None     # lazily-created, cached -- see .pulse_id
         self._lab_time_stream = None     # lazily-created, cached -- see .lab_time
+        # Channel subscriptions -- see subscribe()/unsubscribe().
+        self._subs = {}                  # id(owner) -> (owner, set of channels)
+        self._channel_refs = {}          # channel -> number of owners
+        self._subs_lock = threading.Lock()
+        self._legacy_owner = object()    # registerSource()/removeSource()
+        # Restart / loop bookkeeping -- see stats(), wait_for_restart(), diagnose().
+        self._restart_done = threading.Event()
+        self._restart_done.set()
+        self._stopped = False                     # set by stopEventLoop()
+        self._last_restart_time = None
+        self._event_times = deque(maxlen=100)     # wall time of recent real events
+        self._loop_times = deque(maxlen=100)      # callback-loop seconds per event
+        self._recent_nonnull = deque(maxlen=100)  # per event: subscribed channels with data
+        self._chan_last = {}                      # channel -> (pulse id, wall time) of last data
+        self._last_slow_warning = 0.0
+        self.stall_timeout = 15.0  # s without any real event before reconnecting; None disables
+        # Channels the handler was constructed with stay subscribed.
+        initial = [c for c in (getattr(eventHandler, "source_ids", None) or []) if c != "pulse_id"]
+        if initial:
+            self._subs[id(eventHandler)] = (eventHandler, set(initial))
+            self._channel_refs.update({c: 1 for c in initial})
 
         if make_default:
             previous = globals().get("eventworker")
@@ -792,43 +833,84 @@ class EventWorker:
             return True
         return before != after
 
-    def registerSource(self, sourceID):  # noqa: N802
+    # ------------------------------------------------------------------
+    # Channel subscriptions (reference-counted per owner)
+    # ------------------------------------------------------------------
+
+    def subscribe(self, owner, *channels):
+        """Subscribe *channels* on behalf of *owner* (any object, compared by
+        identity). Idempotent per (owner, channel). The connection only
+        changes when a channel gains its first owner -- see
+        :meth:`unsubscribe`."""
+        with self._subs_lock:
+            held = self._subs.setdefault(id(owner), (owner, set()))[1]
+            added = [c for c in channels if c not in held]
+            held.update(added)
+            first = [c for c in added if self._channel_refs.get(c, 0) == 0]
+            for c in added:
+                self._channel_refs[c] = self._channel_refs.get(c, 0) + 1
+        self._apply_channels(add=first, ensure_running=True)
+
+    def unsubscribe(self, owner, *channels):
+        """Release *channels* (all channels *owner* holds, if none are
+        given). A channel is only removed from the connection once no owner
+        holds it any more -- so a Stream, plot or eco counter that stops
+        never takes a channel away from another one still using it."""
+        with self._subs_lock:
+            entry = self._subs.get(id(owner))
+            if entry is None:
+                return
+            held = entry[1]
+            released = [c for c in (channels or list(held)) if c in held]
+            held.difference_update(released)
+            if not held:
+                del self._subs[id(owner)]
+            last = []
+            for c in released:
+                self._channel_refs[c] -= 1
+                if self._channel_refs[c] == 0:
+                    del self._channel_refs[c]
+                    last.append(c)
+        self._apply_channels(remove=last)
+
+    @property
+    def subscriptions(self):
+        """``{channel: number of owners}`` -- for introspection."""
+        with self._subs_lock:
+            return dict(self._channel_refs)
+
+    def _apply_channels(self, add=(), remove=(), ensure_running=False):
+        """Push channel-set changes to the handler, restarting (debounced)
+        only if its channel set actually changed. A subscribe (even a no-op
+        one) also makes sure the event loop runs; a release never starts it."""
         before = self._source_ids_snapshot()
-        self._eventHandler.register_source(sourceID)
-        if not self._changed(before):
-            if not self.loopThread or not self.loopThread.is_alive():
-                self.startEventLoop()
-            return
-        if self._needs_restart():
-            self._schedule_restart()   # debounced: batches rapid channel additions
-        elif not self.loopThread or not self.loopThread.is_alive():
-            self.startEventLoop()
+        for sid in add:
+            self._eventHandler.register_source(sid)
+        for sid in remove:
+            self._eventHandler.remove_source(sid)
+        running = self.loopThread is not None and self.loopThread.is_alive()
+        if not running:
+            if ensure_running:
+                self.startEventLoop()  # connects with the current channel set
+        elif (add or remove) and self._changed(before) and self._needs_restart():
+            self._schedule_restart()   # debounced: batches rapid channel changes
+
+    # Compatibility wrappers (eco calls these directly): one shared owner
+    # token, so they never release a channel a Stream still holds.
+    def registerSource(self, sourceID):  # noqa: N802
+        self.subscribe(self._legacy_owner, sourceID)
 
     def removeSource(self, sourceID):  # noqa: N802
-        before = self._source_ids_snapshot()
-        self._eventHandler.remove_source(sourceID)
-        if not self._changed(before):
-            return
-        if self._needs_restart():
-            self._schedule_restart()
+        self.unsubscribe(self._legacy_owner, sourceID)
 
     def registerSources(self, *sourceIDs):  # noqa: N802
         """Register several sources in one stop/start cycle (no extra debounce needed)."""
-        before = self._source_ids_snapshot()
-        for sid in sourceIDs:
-            self._eventHandler.register_source(sid)
-        if not self._changed(before):
-            if not self.loopThread or not self.loopThread.is_alive():
-                self.startEventLoop()
-            return
-        if self._needs_restart():
-            self._schedule_restart()
-        elif not self.loopThread or not self.loopThread.is_alive():
-            self.startEventLoop()
+        self.subscribe(self._legacy_owner, *sourceIDs)
 
     def _schedule_restart(self, delay=0.15):
         """Cancel any pending restart timer and arm a new one (debounce)."""
         with self._restart_lock:
+            self._restart_done.clear()
             if self._restart_timer is not None:
                 self._restart_timer.cancel()
             self._restart_timer = threading.Timer(delay, self._do_restart)
@@ -838,12 +920,26 @@ class EventWorker:
     def _do_restart(self):
         with self._restart_lock:
             self._restart_timer = None
-        if self.restart_mode == "make_before_break":
-            if self._restart_make_before_break():
+            if self._stopped:  # stopEventLoop() won the race: stay stopped
+                self._restart_done.set()
                 return
-            # Handler doesn't support .clone(), or the replacement didn't
-            # come up in time -- fall back to the always-available path.
-        self._restart_break_before_make()
+        try:
+            if self.restart_mode == "make_before_break":
+                if self._restart_make_before_break():
+                    return
+                # Handler doesn't support .clone() -- fall back to the
+                # always-available path.
+            self._restart_break_before_make()
+        finally:
+            self._last_restart_time = time.time()
+            with self._restart_lock:
+                if self._restart_timer is None:  # no newer restart queued meanwhile
+                    self._restart_done.set()
+
+    def wait_for_restart(self, timeout=15.0):
+        """Block until no channel-change restart is pending or running (at
+        most *timeout* s). Returns whether it finished."""
+        return self._restart_done.wait(timeout)
 
     def _restart_break_before_make(self):
         """Stop the current connection, then start a new one.
@@ -857,23 +953,23 @@ class EventWorker:
         self.stopEventLoop()
         self.startEventLoop()
 
-    def _restart_make_before_break(self, connect_timeout=5.0):
+    def _restart_make_before_break(self, connect_timeout=10.0):
         """Connect a replacement connection *before* tearing down the
         current one, then hand over sequentially (never both dispatching
         events at once -- see ``_serve``'s ``active_event`` gate).
 
-        Returns True once the replacement is live and serving. Returns
-        False if make-before-break wasn't possible at all for this restart
-        (no usable ``.clone()``, or the replacement didn't come up in
-        time), so the caller (``_do_restart``) falls back to running
-        ``_restart_break_before_make`` itself.
+        Returns True once the replacement is serving. Returns False if
+        make-before-break wasn't possible at all for this restart (no
+        usable ``.clone()``), so the caller (``_do_restart``) falls back to
+        running ``_restart_break_before_make`` itself.
 
-        Not possible when the current handler has no ``.clone()`` (unknown
-        handler type, or one -- like ``MultiSourceEventHandler`` -- that
-        doesn't support it yet). Falls back the same way if the replacement
-        doesn't finish connecting within ``connect_timeout``: holding a
-        stuck half-connected replacement open indefinitely would be worse
-        than just accepting the ordinary restart gap.
+        The replacement counts as ready when it delivered its first real
+        event (a dispatcher stream is only requested and connected in the
+        background after ``context_manager()`` returns, and typically
+        needs a few seconds of alignment latency). If that takes longer
+        than ``connect_timeout``, the handover happens anyway -- the new
+        channel set is what was asked for, and a reconnect would not come
+        up faster -- and ``_serve``'s own reconnect/stall handling applies.
 
         This does not, and cannot, avoid an exception a misbehaving
         handler's own teardown raises on the *old* connection (e.g. the
@@ -916,19 +1012,17 @@ class EventWorker:
         )
         new_thread.start()
 
+        if not getattr(new_handler, "source_ids", True):
+            ready_event.set()  # no channels left: nothing to wait for
         if not ready_event.wait(timeout=connect_timeout):
-            new_stop_event.set()
-            new_thread.join(timeout=5.0)
             print(
-                "EventWorker: make-before-break replacement connection did "
-                f"not come up within {connect_timeout}s; falling back to "
-                "break-before-make for this restart."
+                "EventWorker: replacement connection delivered no event within "
+                f"{connect_timeout}s; switching to it anyway."
             )
-            return False
+        if self._stopped:  # stopEventLoop() ran meanwhile: drop the replacement
+            new_stop_event.set()
+            return True
 
-        # Replacement is live (connected -- see _serve's ready_event, set
-        # right after context_manager() is entered, not gated on having
-        # actually received a first event yet -- see its docstring for why).
         # Swap references so any concurrent registerSource/removeSource call
         # targets the right (new) handler from here on.
         old_thread = self.loopThread
@@ -947,9 +1041,13 @@ class EventWorker:
         active_event.set()
         return True
 
-    # Consecutive failures of one callback before it's auto-removed from
-    # eventCallbacks (equivalent to that Stream calling accumulate(False)).
+    # Failures of one callback, each within _CALLBACK_FAILURE_WINDOW s of the
+    # previous one, before it's auto-removed from eventCallbacks (equivalent
+    # to that Stream calling accumulate(False)). Not "consecutive events":
+    # a Stream on a lower-rate channel only runs (and fails) on that
+    # channel's pulses, with harmless no-data events in between.
     _CALLBACK_FAILURE_LIMIT = 20
+    _CALLBACK_FAILURE_WINDOW = 10.0
     # Minimum seconds between repeated log lines for the *same* callback,
     # once it has already logged once.
     _CALLBACK_LOG_INTERVAL = 5.0
@@ -970,9 +1068,12 @@ class EventWorker:
         bug in a single Stream's callback hide as unreadable console noise
         instead of a diagnosable failure — see the escape.stream bug reports.
         """
-        state = self._callback_failures.setdefault(cb, {"count": 0, "last_log": 0.0})
-        state["count"] += 1
         now = time.time()
+        state = self._callback_failures.get(cb)
+        if state is None or now - state["last_fail"] > self._CALLBACK_FAILURE_WINDOW:
+            state = self._callback_failures[cb] = {"count": 0, "last_log": 0.0, "last_fail": now}
+        state["count"] += 1
+        state["last_fail"] = now
         label = self._callback_label(cb)
         if state["count"] == 1 or (now - state["last_log"]) >= self._CALLBACK_LOG_INTERVAL:
             print(
@@ -983,7 +1084,7 @@ class EventWorker:
         if state["count"] >= self._CALLBACK_FAILURE_LIMIT:
             print(
                 f"EventWorker: callback for {label} failed "
-                f"{state['count']} times in a row -- removing it from "
+                f"{state['count']} times -- removing it from "
                 f"eventCallbacks (equivalent to that Stream's accumulate(False))."
             )
             try:
@@ -991,6 +1092,103 @@ class EventWorker:
             except ValueError:
                 pass
             self._callback_failures.pop(cb, None)
+            # Also release that Stream's consumers and channels, which would
+            # otherwise stay subscribed for nobody.
+            owner = getattr(cb, "__self__", None)
+            if isinstance(owner, Stream):
+                owner._consumers.clear()
+                owner._stopped_by_error = f"{type(exc).__name__}: {exc}"
+                self.unsubscribe(owner)
+
+    # ------------------------------------------------------------------
+    # Loop statistics and diagnostics
+    # ------------------------------------------------------------------
+
+    def _record_event(self, now, loop_s):
+        """Per-event bookkeeping for stats()/diagnose(): one dict pass over
+        the subscribed channels."""
+        self._event_times.append(now)
+        self._loop_times.append(loop_s)
+        eid = self.event.getEventId()
+        present = set()
+        for ch in list(self._channel_refs):
+            try:
+                val = self.event.getFromSource(ch)
+            except Exception:
+                val = None
+            if val is not None:
+                present.add(ch)
+                self._chan_last[ch] = (eid, now)
+        self._recent_nonnull.append(present)
+        # Falling behind: the callbacks take about as long as the time
+        # between events, so the handler's receive queue fills up and
+        # eventually drops messages.
+        n = len(self._event_times)
+        if n >= 50 and now - self._last_slow_warning > 30.0:
+            interval = (self._event_times[-1] - self._event_times[0]) / (n - 1)
+            loop = sum(self._loop_times) / len(self._loop_times)
+            if interval > 0 and loop > 0.8 * interval:
+                self._last_slow_warning = now
+                print(
+                    f"EventWorker: callbacks take {loop * 1e3:.1f} ms per event "
+                    f"(events every {interval * 1e3:.1f} ms, {len(self.eventCallbacks)} "
+                    "callbacks) -- the event loop is falling behind and may drop data."
+                )
+
+    def stats(self):
+        """Health of the event loop, as a dict: event rate, callback-loop
+        time per event, number of callbacks, age of the last event, restart
+        state and channel subscriptions."""
+        now = time.time()
+        times = list(self._event_times)
+        loops = list(self._loop_times)
+        rate = (len(times) - 1) / (times[-1] - times[0]) if len(times) > 1 and times[-1] > times[0] else 0.0
+        return {
+            "loop_alive": bool(self.loopThread and self.loopThread.is_alive()),
+            "rate_Hz": rate,
+            "loop_ms_mean": 1e3 * sum(loops) / len(loops) if loops else None,
+            "loop_ms_max": 1e3 * max(loops) if loops else None,
+            "n_callbacks": len(self.eventCallbacks),
+            "last_event_age_s": now - times[-1] if times else None,
+            "last_pulse_id": self.event.getEventId() if self.event is not None else None,
+            "restart_pending": not self._restart_done.is_set(),
+            "last_restart_age_s": now - self._last_restart_time if self._last_restart_time else None,
+            "subscriptions": self.subscriptions,
+        }
+
+    def diagnose(self, channels=()):
+        """Human-readable summary of :meth:`stats` plus, for each of
+        *channels*, whether it is subscribed and how often it had data in
+        the recent events -- used in Stream timeout messages."""
+        st = self.stats()
+        lines = []
+        if not st["loop_alive"]:
+            lines.append("event loop: NOT running")
+        elif st["last_event_age_s"] is None:
+            lines.append("event loop: alive, no event received yet")
+        else:
+            lines.append(
+                f"event loop: alive, last event {st['last_event_age_s']:.2f} s ago "
+                f"(pulse {st['last_pulse_id']}), {st['rate_Hz']:.0f} Hz, "
+                f"{st['n_callbacks']} callbacks, loop {st['loop_ms_mean']:.1f} ms/event"
+            )
+        if st["restart_pending"]:
+            lines.append("restart: pending or in progress")
+        elif st["last_restart_age_s"] is not None:
+            lines.append(f"restart: finished {st['last_restart_age_s']:.1f} s ago")
+        recent = list(self._recent_nonnull)
+        now = time.time()
+        for ch in channels:
+            if ch in ("pulse_id", "lab_time"):
+                continue
+            if ch not in st["subscriptions"]:
+                lines.append(f"{ch}: not subscribed")
+                continue
+            n = sum(ch in r for r in recent)
+            last = self._chan_last.get(ch)
+            seen = f", last data {now - last[1]:.1f} s ago (pulse {last[0]})" if last else ", never had data"
+            lines.append(f"{ch}: data in {n} of the last {len(recent)} events{seen}")
+        return "\n".join("  " + line for line in lines)
 
     def eventLoop(self):  # noqa: N802
         self._serve(self._eventHandler, self._stop_event)
@@ -1016,27 +1214,31 @@ class EventWorker:
         ``eventLoop``), this gate is skipped entirely and behavior is
         identical to before this method existed.
 
-        "Live", for *ready_event*, means *eventHandler.context_manager()*
-        was constructed and its context entered successfully -- not that a
-        first real event has actually been received yet. Waiting for an
-        actual event would be a stronger guarantee but risks hanging
-        indefinitely on a channel that's merely quiet right now; this is a
-        deliberate, documented tradeoff, not an oversight.
+        *ready_event* is set on the first real event (non-None event id),
+        not on entering the context: for a dispatcher stream, the request
+        and connect only happen in the background after that. The caller
+        bounds the wait (see ``_restart_make_before_break``), so a quiet
+        channel can't hang a restart.
+
+        If no real event arrives for ``self.stall_timeout`` seconds while
+        channels are subscribed (with ``incomplete: fill-null`` every pulse
+        is an event, so this means the connection is dead -- e.g. the
+        datahub receive thread ended), the connection is re-established,
+        with the same back-off as after an error.
         """
         backoff = 1.0
         while not stop_event.is_set():
             try:
                 ctx = eventHandler.context_manager()
                 with ctx as s:
-                    backoff = 1.0  # reset on successful connect
-                    if ready_event is not None:
-                        ready_event.set()
+                    last_real = time.time()
                     while not stop_event.is_set():
                         if active_event is not None and not active_event.is_set():
                             # Still warming up: stay connected (keeps the
                             # subscription alive and ready) but don't touch
                             # shared state or dispatch callbacks yet.
-                            s.get_event()
+                            if s.get_event().getEventId() is not None and ready_event is not None:
+                                ready_event.set()
                             time.sleep(0.001)
                             continue
                         self.event = s.get_event()
@@ -1046,15 +1248,26 @@ class EventWorker:
                             self.runningFrequency = 1.0 / dt
                         self._lastTime = now
                         if self.event.getEventId() is not None:
+                            last_real = now
+                            backoff = 1.0  # reset once data actually flows
+                            if ready_event is not None:
+                                ready_event.set()
                             keys = self.event.get_channel_names()
                             if keys:
                                 self._last_event_keys = keys
+                            t0 = time.perf_counter()
                             for cb in list(self.eventCallbacks):
                                 try:
                                     cb()
-                                    self._callback_failures.pop(cb, None)
                                 except Exception as exc:
                                     self._handle_callback_error(cb, exc)
+                            self._record_event(now, time.perf_counter() - t0)
+                        elif (
+                            self.stall_timeout
+                            and getattr(eventHandler, "source_ids", None)  # real channels requested
+                            and now - last_real > self.stall_timeout
+                        ):
+                            raise RuntimeError(f"no events for {now - last_real:.0f} s")
                         time.sleep(0.001)
             except Exception as exc:
                 if stop_event.is_set():
@@ -1064,11 +1277,21 @@ class EventWorker:
                 backoff = min(backoff * 2, 30.0)
 
     def startEventLoop(self):  # noqa: N802
+        self._stopped = False
         self._stop_event.clear()
         self.loopThread = threading.Thread(target=self.eventLoop, daemon=True)
         self.loopThread.start()
 
     def stopEventLoop(self):  # noqa: N802
+        # Cancel a pending channel-change restart, which would otherwise
+        # start the loop again right after this stop (e.g. after the last
+        # Stream's accumulate(False) just before stopping).
+        with self._restart_lock:
+            self._stopped = True
+            if self._restart_timer is not None:
+                self._restart_timer.cancel()
+                self._restart_timer = None
+            self._restart_done.set()
         self._stop_event.set()
         if self.loopThread is not None and self.loopThread.is_alive():
             self.loopThread.join(timeout=5.0)
@@ -1452,6 +1675,9 @@ class Stream:
         self.data = self._dataManager.data
         self.eventIds = self._dataManager.eventIds
         self._lastEventId = None
+        self._consumers = {}             # id(owner) -> owner, see accumulate()
+        self._derived_cache = {}         # see _cached_derived()
+        self._stopped_by_error = None    # set when its callback was auto-removed
 
     # ------------------------------------------------------------------
     # Alternate constructors
@@ -1595,7 +1821,7 @@ class Stream:
     # Accumulation control
     # ------------------------------------------------------------------
 
-    def accumulate(self, do_accumulate=None):
+    def accumulate(self, do_accumulate=None, owner=None):
         """Start or stop accumulation.  Toggle with no argument.
 
         For a derived Stream (arithmetic, :meth:`filter`/``[mask]``,
@@ -1604,28 +1830,54 @@ class Stream:
         on -- there is no need to separately ``accumulate(True)`` a mask
         stream or an upstream operand just so a derived Stream built from it
         receives data.
+
+        Accumulation is held per consumer: *owner* (a plot, a context, ...;
+        default: this Stream itself, i.e. the user) is added on ``True`` and
+        released on ``False``, and the Stream keeps accumulating while any
+        consumer is left -- closing one plot does not stop another one on
+        the same Stream. ``accumulate(False)`` without *owner* releases all
+        consumers. Channel subscriptions are reference-counted by the
+        EventWorker, so stopping never unsubscribes a channel that another
+        Stream still needs.
         """
         if do_accumulate is None:
             do_accumulate = not self._is_accumulating()
             print(f"Toggling accumulation {'ON' if do_accumulate else 'OFF'} for {self.name!r}")
 
         ew = self._source.eventWorker
+        key = self if owner is None else owner
         if do_accumulate:
-            channels = _collect_source_channels(self._source)
-            if channels:
-                ew.registerSources(*channels)
+            self._stopped_by_error = None
+            self._consumers[id(key)] = key
+            ew.subscribe(self, *self._channels())
             if self._appendEventData not in ew.eventCallbacks:
                 ew.eventCallbacks.append(self._appendEventData)
         else:
-            try:
-                ew.eventCallbacks.remove(self._appendEventData)
-            except ValueError:
-                pass
-            # Only unregister for a plain, directly-named channel -- a derived
-            # source's dependencies may still be in use by sibling Streams, and
-            # _collect_source_channels doesn't reference-count consumers.
-            if isinstance(self._source, EventSource):
-                ew.removeSource(self._source.name)
+            if owner is None:
+                self._consumers.clear()
+            else:
+                self._consumers.pop(id(owner), None)
+            if not self._consumers:
+                try:
+                    ew.eventCallbacks.remove(self._appendEventData)
+                except ValueError:
+                    pass
+                ew.unsubscribe(self)
+
+    def _channels(self):
+        """Every real channel this Stream needs: its data's, and those of
+        its scan parameters (e.g. the key of ``key.digitize(b).categorize(x)``)."""
+        channels = _collect_source_channels(self._source)
+        for par in self.scan._parameters or []:
+            if hasattr(par, "_source"):  # a Stream, not e.g. a step-index source
+                _collect_source_channels(par._source, channels)
+        return channels
+
+    @property
+    def consumers(self):
+        """Who currently keeps this Stream accumulating (plots, contexts,
+        or the Stream itself for a plain ``accumulate(True)``)."""
+        return list(self._consumers.values())
 
     def _is_accumulating(self):
         return self._appendEventData in self._source.eventWorker.eventCallbacks
@@ -1636,12 +1888,15 @@ class Stream:
 
     def __enter__(self):
         """Start accumulation when used as a ``with`` statement."""
-        self.accumulate(True)
+        token = object()
+        self.__dict__.setdefault("_with_tokens", []).append(token)
+        self.accumulate(True, owner=token)
         return self
 
     def __exit__(self, *_):
-        """Stop accumulation when the ``with`` block exits."""
-        self.accumulate(False)
+        """Stop accumulation when the ``with`` block exits (unless someone
+        else, e.g. a plot, still uses this Stream)."""
+        self.accumulate(False, owner=self._with_tokens.pop())
         return False
 
     def to_frame(self):
@@ -1838,6 +2093,7 @@ class Stream:
             # step -- like wrapFunc_singleOutput(), it deliberately does not
             # inherit self.scan.
             scan=Scan(),
+            hold_last=True,
         )
         result = p.createChildren()[0]
         result.N_acc = N_acc  # plain, freely reassignable attribute -- see _RunningStat
@@ -1954,6 +2210,9 @@ class Stream:
         filtered channel's real underlying channels -- there's no need to
         separately call ``mask_stream.accumulate(True)``.
 
+        Filtering by the same mask Stream again returns the same Stream (with
+        whatever it has accumulated so far), not a new one.
+
         See Also
         --------
         Stream.__getitem__ : ``i[pump]`` is shorthand for ``i.filter(pump)``.
@@ -1969,6 +2228,13 @@ class Stream:
             p_lo = mask_or_lo if isinstance(mask_or_lo, Param) else Param(mask_or_lo, f"{self.name} min")
             p_hi = hi if isinstance(hi, Param) else Param(hi, f"{self.name} max")
             mask = (self >= p_lo) & (self <= p_hi)
+        if on_change is None and mask is mask_or_lo:
+            # stream[mask] twice gives the same live Stream (and its data).
+            return self._cached_derived(
+                ("filter", id(mask)),
+                lambda: Stream(source=FilteredEventSource(self._source, mask, inner_stream=self)),
+                mask,
+            )
         filtered_src = FilteredEventSource(self._source, mask, inner_stream=self)
         filtered = Stream(source=filtered_src)
         if on_change == "reset":
@@ -2008,11 +2274,12 @@ class Stream:
         """
         from escape.hist_select import HistogramFilter
 
-        self.accumulate(True)
-        self._wait_for_samples(timeout)
-        if np.prod(self._peek_shape(), dtype=int) > 1:
-            raise NotImplementedError("filter_interactive needs a scalar-valued Stream.")
-        tool = HistogramFilter(self, bins=n_bins, values=self._rolling_values(), label=f"{self.name} ({self.unit})", **kwargs)
+        with _held(self):  # until the tool (its owner from then on) exists
+            self._wait_for_samples(timeout)
+            if np.prod(self._peek_shape(), dtype=int) > 1:
+                raise NotImplementedError("filter_interactive needs a scalar-valued Stream.")
+            tool = HistogramFilter(self, bins=n_bins, values=self._rolling_values(), label=f"{self.name} ({self.unit})", **kwargs)
+            self._own_by_tool(tool)
         lo = tool.range[0] if lo is None else lo
         hi = tool.range[1] if hi is None else hi
         p_lo = lo if isinstance(lo, Param) else Param(lo, f"{self.name} min")
@@ -2034,6 +2301,11 @@ class Stream:
         filtered = self.filter(p_lo, p_hi, on_change=on_change)
         filtered.tool = tool
         return filtered
+
+    def _own_by_tool(self, tool):
+        """Keep accumulating (for the tool's histogram) until its figure closes."""
+        self.accumulate(True, owner=tool)
+        tool.fig.canvas.mpl_connect("close_event", lambda _e: self.accumulate(False, owner=tool))
 
     def _rolling_values(self):
         """The retained (rolling-buffer) samples of this Stream, flat."""
@@ -2128,6 +2400,9 @@ class Stream:
         underlying channel (``evtset``'s) -- there's no need to separately
         call ``evtset.accumulate(True)``.
 
+        Asking for the same element again returns the same Stream (with
+        whatever it has accumulated so far), not a new one.
+
         Parameters
         ----------
         index : int
@@ -2147,15 +2422,38 @@ class Stream:
         # source expressions for [arr, idx], return the equivalent Python
         # expression for this op.
         index_func._graph_codegen = lambda arg_exprs: f"{arg_exprs[0]}[{arg_exprs[1]}]"
-        p = ProcObj(
-            index_func,
-            args=[self, index],
-            returns_is_esc=[True],
-            returns_names=[f"{self.name}[{index}]"],
-            returns_units=[self.unit],
-            scan=self.scan,
-        )
-        return p.createChildren()[0]
+
+        def build():
+            p = ProcObj(
+                index_func,
+                args=[self, index],
+                returns_is_esc=[True],
+                returns_names=[f"{self.name}[{index}]"],
+                returns_units=[self.unit],
+                scan=self.scan,
+            )
+            return p.createChildren()[0]
+
+        if isinstance(index, (int, np.integer)):
+            # stream[i] twice gives the same live Stream (and its data).
+            return self._cached_derived(("element", int(index)), build)
+        return build()
+
+    def _cached_derived(self, key, build, *anchors):
+        """Return the Stream built earlier for *key* if it still exists (and
+        every *anchor*, e.g. the mask Stream, is still the same object --
+        ``id()`` values can be reused), else ``build()`` and remember it.
+        Weak references only: the cache never keeps a Stream alive (an
+        accumulating one is kept alive by the EventWorker's callbacks)."""
+        hit = self._derived_cache.get(key)
+        if hit is not None:
+            ref, anchor_refs = hit
+            obj = ref()
+            if obj is not None and all(r() is a for r, a in zip(anchor_refs, anchors)):
+                return obj
+        obj = build()
+        self._derived_cache[key] = (weakref.ref(obj), [weakref.ref(a) for a in anchors])
+        return obj
 
     def __getitem__(self, key):
         """Index a Stream.
@@ -2251,13 +2549,14 @@ class Stream:
         """
         from escape.hist_select import HistogramDigitizer
 
-        self.accumulate(True)
-        self._wait_for_samples(timeout)
-        if np.prod(self._peek_shape(), dtype=int) > 1:
-            raise NotImplementedError("digitize_interactive needs a scalar-valued Stream.")
-        tool = HistogramDigitizer(
-            self, n_bins=n_bins, values=self._rolling_values(), label=f"{self.name} ({self.unit})", **kwargs
-        )
+        with _held(self):  # until the tool (its owner from then on) exists
+            self._wait_for_samples(timeout)
+            if np.prod(self._peek_shape(), dtype=int) > 1:
+                raise NotImplementedError("digitize_interactive needs a scalar-valued Stream.")
+            tool = HistogramDigitizer(
+                self, n_bins=n_bins, values=self._rolling_values(), label=f"{self.name} ({self.unit})", **kwargs
+            )
+            self._own_by_tool(tool)
         bins = Param(tool.bins.copy(), f"{self.name} bins")
         tool.link(bins)
 
@@ -2487,10 +2786,20 @@ class Stream:
     # ------------------------------------------------------------------
 
     def _wait_for_data(self, timeout=5):
+        ew = self._source.eventWorker
+        # A channel change reconnects the stream; don't spend the timeout on it.
+        if ew is not None:
+            ew.wait_for_restart()
         deadline = time.time() + timeout
         while len(self) < 2:
             if time.time() > deadline:
-                raise TimeoutError(f"Timed out waiting for data from {self.name!r}.")
+                channels = self._channels()
+                msg = f"no data for {self.name!r} (channels: {', '.join(channels) or '-'}) after {timeout} s."
+                if self._stopped_by_error:
+                    msg += f"\n  stopped after repeated errors in its computation: {self._stopped_by_error}"
+                if ew is not None:
+                    msg += "\n" + ew.diagnose(channels)
+                raise TimeoutError(msg)
             time.sleep(0.05)
 
     def _wait_for_samples(self, timeout=5, n_samples=100, extra=2.0):
@@ -2522,19 +2831,19 @@ class Stream:
         value histogram nor a scan-step-count histogram is meaningful
         per array element.
         """
-        self.accumulate(True)
         if axes is None:
             fig, axes = plt.subplots()
         else:
             fig = axes.figure
-        self._wait_for_data(timeout)
-        if np.prod(self._peek_shape(), dtype=int) > 1:
-            fig.suptitle(f"{self.name}  (live, last {N_acc} events)")
-            hp = plots.WaterfallPlot(self, N_acc=N_acc, axes=axes, update_interval=update or 0.5)
-        else:
-            has_scan = self.scan._parameters is not None
-            fig.suptitle(f"{self.name}  histogram" if has_scan else f"{self.name}  value distribution")
-            hp = plots.HistPlot(self, axes=axes) if has_scan else plots.ValueHistPlot(self, axes=axes, n_bins=n_bins)
+        with _held(self):  # until the plot (its owner from then on) exists
+            self._wait_for_data(timeout)
+            if np.prod(self._peek_shape(), dtype=int) > 1:
+                fig.suptitle(f"{self.name}  (live, last {N_acc} events)")
+                hp = plots.WaterfallPlot(self, N_acc=N_acc, axes=axes, update_interval=update or 0.5)
+            else:
+                has_scan = self.scan._parameters is not None
+                fig.suptitle(f"{self.name}  histogram" if has_scan else f"{self.name}  value distribution")
+                hp = plots.HistPlot(self, axes=axes) if has_scan else plots.ValueHistPlot(self, axes=axes, n_bins=n_bins)
         hp.plot()
         if update:
             hp.start(interval=update)
@@ -2557,13 +2866,13 @@ class Stream:
             this Stream passing its own, friendlier name. Defaults to
             ``self.name``.
         """
-        self.accumulate(True)
         title = label if label is not None else self.name
         if axes is None:
             fig, axes = plt.subplots()
             fig.suptitle(f"{title}  median")
-        self._wait_for_data(timeout)
-        mp = plots.Plot(self, axes=axes, peak_overlay=peak_overlay, label=label)
+        with _held(self):  # until the plot (its owner from then on) exists
+            self._wait_for_data(timeout)
+            mp = plots.Plot(self, axes=axes, peak_overlay=peak_overlay, label=label)
         mp.plot()
         if update:
             mp.start(interval=update)
@@ -2593,12 +2902,12 @@ class Stream:
         n_history : int
             Scalar Streams only: how many recent samples to show as a trend.
         """
-        self.accumulate(True)
         if axes is None:
             fig, axes = plt.subplots()
-        self._wait_for_data(timeout)
         interval = 1.0 / rate_Hz if rate_Hz else 1.0
-        tp = plots.TracePlot(self, axes=axes, n_history=n_history, update_interval=interval)
+        with _held(self):  # until the plot (its owner from then on) exists
+            self._wait_for_data(timeout)
+            tp = plots.TracePlot(self, axes=axes, n_history=n_history, update_interval=interval)
         tp.plot()
         if rate_Hz:
             tp.start(interval=interval)
@@ -2640,12 +2949,19 @@ class Stream:
             else:
                 raise ValueError("default_x must be 'lab_time' or 'pulse_id'")
 
-        self.accumulate(True)
-        xVar.accumulate(True)
         if axes is None:
             fig, axes = plt.subplots()
         else:
             fig = axes.figure
+        with _held(self, xVar):  # until the plot (their owner from then on) exists
+            cp = self._make_corr_plot(xVar, fig, axes, timeout, Npoints, update, N_acc)
+        cp.plot()
+        if update:
+            cp.start(interval=update)
+        self._corrPlot = cp
+        return cp
+
+    def _make_corr_plot(self, xVar, fig, axes, timeout, Npoints, update, N_acc):
         self._wait_for_data(timeout)
         xVar._wait_for_data(timeout)
 
@@ -2671,10 +2987,6 @@ class Stream:
         else:
             fig.suptitle(f"{self.name}  vs  {xVar.name}")
             cp = plots.PlotCorrelation(xVar, self, Nlast=Npoints, axes=axes)
-        cp.plot()
-        if update:
-            cp.start(interval=update)
-        self._corrPlot = cp
         return cp
 
     def __repr__(self):
@@ -2917,6 +3229,7 @@ class ProcObj:
         returns_units=None,
         scan=None,
         scanIndex=None,
+        hold_last=False,
     ):
         if kwargs is None:
             kwargs = {}
@@ -2932,6 +3245,10 @@ class ProcObj:
         self.kwargs_is_esc = {k: isesc(v) for k, v in kwargs.items()}
         self.ret_values = None
         self._last_processed_eventId = None
+        # Pulse that produced ret_values. A result is only valid for that
+        # pulse, unless hold_last (running statistics -- see current_values).
+        self._ret_eventId = None
+        self.hold_last = hold_last
         self.children = None
 
         if scan is None:
@@ -2995,7 +3312,20 @@ class ProcObj:
             return False
         result = self.func(*args, **kwargs)
         self.ret_values = result if isinstance(result, tuple) else (result,)
+        self._ret_eventId = eid
         return True
+
+    def current_values(self):
+        """``ret_values`` if they were computed for the current pulse, else
+        None -- a derived value exists only on pulses where all its inputs
+        exist. With ``hold_last`` the last result is returned on every pulse
+        instead (running statistics: ``a / a[mask].running_mean(50)`` needs
+        the mean on pulses where ``a[mask]`` is None)."""
+        if self.ret_values is None:
+            return None
+        if self.hold_last or self._ret_eventId == self.eventWorker.event.getEventId():
+            return self.ret_values
+        return None
 
     def updateChildren(self, caller):  # noqa: N802
         for child in self.children:
