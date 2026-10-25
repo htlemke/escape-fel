@@ -478,6 +478,24 @@ def test_auto_removed_callback_releases_its_channels(ew):
         s._wait_for_data(timeout=0.1)
 
 
+def test_occasional_failures_do_not_remove_the_callback(ew):
+    s = es.Stream("fast", ew)
+    get = s._getEventData
+
+    def every_tenth_pulse_fails():
+        if ew.event.getEventId() % 10 == 0:
+            raise ValueError("bad pulse")
+        return get()
+
+    s._getEventData = every_tenth_pulse_fails
+    s.accumulate(True)
+    time.sleep(1.0)  # ~100 failures, each within a few ms of the last
+    assert s._is_accumulating()
+    n = len(s)
+    assert wait_until(lambda: len(s) > n + 20)
+    s.accumulate(False)
+
+
 def test_removing_last_channel_restarts_quickly():
     ew = es.EventWorker(FakeDataHubHandler(), make_default=False)
     try:

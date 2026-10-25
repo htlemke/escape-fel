@@ -160,7 +160,7 @@ def make_qt_history_dialog(fig, ax):
 
         def showEvent(self, event):
             super().showEvent(event)
-            self.refresh()
+            self.guarded(self.refresh)()  # a Qt virtual: an exception here aborts too
 
         def refresh(self):
             self.refresh_save_list()

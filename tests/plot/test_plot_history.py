@@ -321,3 +321,16 @@ def test_history_on_an_empty_figure_recalls_into_it():
     dialog.table.selectAll()
     dialog.add_selected()
     assert len(collect_items(fig.axes[0])) == 4
+
+
+def test_unreadable_history_folder_does_not_abort(monkeypatch, capsys):
+    # PyQt aborts the process on an exception escaping a slot or a Qt virtual
+    def denied(*args, **kwargs):
+        raise PermissionError("history folder not readable")
+
+    monkeypatch.setattr(ph, "list_entries", denied)
+    ax = busy_plot()
+    attach_history_button(ax.figure)
+    next(a for a in toolbar_actions(ax.figure) if a.toolTip() == HISTORY_TIP).trigger()
+    pump()
+    assert "history folder not readable" in capsys.readouterr().out

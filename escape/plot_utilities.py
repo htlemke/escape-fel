@@ -1923,7 +1923,12 @@ def _attach_history_button_qt(fig):
     action.setToolTip(tooltip)
 
     def _on_click(checked=False):
-        _run_history_button(fig)
+        # PyQt5 aborts the process if an exception escapes a slot, and this
+        # one reads the history folder (PermissionError on a foreign one)
+        try:
+            _run_history_button(fig)
+        except Exception as e:
+            print(f"[escape] history: {e}")
 
     action.triggered.connect(_on_click)
     _insert_after_save(toolbar, action)

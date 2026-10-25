@@ -1050,7 +1050,10 @@ class EventWorker:
     # previous one, before it's auto-removed from eventCallbacks (equivalent
     # to that Stream calling accumulate(False)). Not "consecutive events":
     # a Stream on a lower-rate channel only runs (and fails) on that
-    # channel's pulses, with harmless no-data events in between.
+    # channel's pulses, with harmless no-data events in between. A callback
+    # that returns True (a Stream that actually appended data) starts the
+    # count again, so occasional failures (one bad pulse in a hundred) never
+    # add up to a removal.
     _CALLBACK_FAILURE_LIMIT = 20
     _CALLBACK_FAILURE_WINDOW = 10.0
     # Minimum seconds between repeated log lines for the *same* callback,
@@ -1274,7 +1277,8 @@ class EventWorker:
                             t0 = time.perf_counter()
                             for cb in list(self.eventCallbacks):
                                 try:
-                                    cb()
+                                    if cb() is True and self._callback_failures:
+                                        self._callback_failures.pop(cb, None)
                                 except Exception as exc:
                                     self._handle_callback_error(cb, exc)
                             self._record_event(now, time.perf_counter() - t0)
@@ -1911,6 +1915,8 @@ class Stream:
         if data is not None:
             self._dataManager.append(data, eventId)
         self._lastEventId = eventId
+        # True for real data: the EventWorker then resets this callback's failure count
+        return data is not None
 
     def _update(self):
         self._appendEventData()
