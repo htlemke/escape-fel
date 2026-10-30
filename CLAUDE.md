@@ -74,11 +74,14 @@ plus the `escape.utilities` / `escape.utilities_detectors` subpackages. If a
 class/function isn't re-exported here, treat it as internal unless a docs
 page says otherwise.
 
-`escape.wavefront` and `escape.exafs` are separate **opt-in** subpackages —
-real, documented, and installable (`docs/api/wavefront.rst`,
-`docs/api/exafs.rst`) but *not* imported by `escape/__init__.py`, so they
-only load on explicit `from escape import wavefront` / `import escape.exafs`.
-See the dedicated section below.
+`escape.wavefront`, `escape.exafs` and `escape.adaptive_scan` are separate
+**opt-in** subpackages — real, documented, and installable
+(`docs/api/wavefront.rst`, `docs/api/exafs.rst`, `docs/api/adaptive_scan.rst`)
+but *not* imported by `escape/__init__.py`, so they only load on explicit
+`from escape import wavefront` / `import escape.exafs` /
+`from escape import adaptive_scan`. (`escape.storage.test_data` imports
+`escape.adaptive_scan.model`, so that package does get loaded with `escape`,
+just not exposed.) See the dedicated section below.
 
 **`escape/stream/` is not part of the stable API** (not imported by
 `escape/__init__.py`). It provides live, pulse-by-pulse data acquisition
@@ -174,6 +177,12 @@ range. Has its own parallel HDF5 persistence classes.
   `Store` class stub) and not imported anywhere in the package. Don't build
   on it; if HDF5 array persistence is needed, that's in `storage.py`
   (`ArrayH5Dataset`/`ArrayH5File`).
+- **`escape/storage/test_data.py`** — `get_test_data()`/`TestData`: the
+  older shot-by-shot pump-probe generator (I0, timetool jitter, pump
+  drop-outs, slow drift, shot noise). Its pump response is an
+  `escape.adaptive_scan.ImpulsiveResponse` (default: the classic
+  `1 - cos(2π t/0.7)·exp(-t/2)`); it also takes arbitrary per-step `delays=`
+  and a `seed=`.
 - **`escape/storage/example_data.py`** — synthetic FEL-like data generators
   (`make_scan`, `make_pump_probe_scan`, `make_image_scan`,
   `make_grid_scan`, `make_detector_photon_stack`, …), all seedable. This is
@@ -194,12 +203,13 @@ Built on top of `map_index_blocks`, mostly also reachable as
 - `masking.py` — polygon-ROI masking of image stacks.
 - `thresholding.py` — elementwise pixel value thresholding/clipping.
 
-### Scientific reduction modules — `escape/wavefront/` and `escape/exafs/`
+### Scientific modules — `escape/wavefront/`, `escape/exafs/`, `escape/adaptive_scan/`
 
-Both are opt-in subpackages (not imported from `escape/__init__.py`, see
-"Public API surface" above) that apply a domain-specific reduction on top of
-the core `Array`/`map_index_blocks` machinery, following the same lazy/dask
-pattern as `utilities_detectors/`.
+All three are opt-in subpackages (not imported from `escape/__init__.py`, see
+"Public API surface" above). `wavefront`/`exafs` apply a domain-specific
+reduction on top of the core `Array`/`map_index_blocks` machinery, following
+the same lazy/dask pattern as `utilities_detectors/`; `adaptive_scan` works on
+already-reduced per-delay points (plain numpy/scipy).
 
 - **`escape/wavefront/`** — Talbot X-ray wavefront sensing, distilled from
   M. Seaberg's `lcls_beamline_toolbox`/`wfs_interface`. `propagation.py` is a
@@ -231,6 +241,36 @@ pattern as `utilities_detectors/`.
   `docs/api/exafs.rst`; examples: `examples/exafs_quickstart.ipynb`,
   `examples/exafs_understanding_the_steps.ipynb`,
   `examples/exafs_batch_escape.ipynb`.
+
+- **`escape/adaptive_scan/`** — a portfolio of adaptive scan strategies
+  ("where/with which exposure/in which order to measure next"), all on one
+  planner in `strategy.py`: `ScanStrategy.plan(n, position)` maximises
+  expected value / (move time + exposure + acquisition overhead), commits
+  picks greedily as a path, keeps an `explore` share space-filling, then
+  orders the batch with `costs.order_route` (asymmetric TSP; exact ≤10
+  points). `costs.py`: `Axis` (overhead, speed/accel, backlash + preferred
+  `direction`, `reverse_penalty`, `calibrate()` from logged moves), `Motion`
+  (multi-axis), `ExposureModel` (options/"auto", noise
+  `sqrt(coeff²/e + floor²)` auto-calibrated), `grid_points` (= the
+  `utilities.roundto` grid; `grid_step=` on every strategy). Strategies:
+  `UniformScan` (baseline), `ModelFreeScan` (noise-aware interpolation-error
+  loss, default) / `GradientScan` (noise-aware slope/arc-length loss, à la
+  `adaptive.Learner1D`) in `modelfree.py`; `StepScan` and `OscillationScan`
+  (alias `AdaptiveScan`; 1-3 oscillations with own decay and, with
+  `fit_rise`, rise times) in `design.py` on `fit.py`'s variable-projection
+  fit of `model.ImpulsiveResponse` (exact erfcx jitter smearing); `PeakScan2D`
+  (tilted split-Gaussian `Peak2D`, canonical u=major axis) in `peak2d.py`.
+  Model-based ones subclass `ModelScan`: D_s-optimal info gain on targets,
+  BIC-weighted hypotheses + discrimination term; quote `estimates()` /
+  `summary()` (mixture over hypotheses), not `best.errors()`.
+  `simulate.py`: `PumpProbeSimulator` (full `get_test_data` chain,
+  Σi/Σi0 ratio; its drift gives a ~0.0035 per-point error floor),
+  `GaussianSimulator` (also 2-D), `Instrument` (clock + motion), `run_plan`.
+  Measured, not assumed: uniform sampling is near-optimal when the signal
+  fills the range evenly; adaptive pays off for localised features / wide
+  ranges (benchmarks in the user guide). Docs:
+  `docs/user_guide/adaptive_scan.md`; example: `examples/adaptive_scan.ipynb`;
+  tests: `tests/adaptive_scan/`.
 
 ### Beamline integration — `escape/swissfel/`
 
