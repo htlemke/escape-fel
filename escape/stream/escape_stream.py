@@ -780,6 +780,7 @@ class EventWorker:
         self._stopped = False                     # set by stopEventLoop()
         self._generation = 0                      # bumped by reset(); see _restart_make_before_break
         self.reconnects = 0                       # connection losses handled by _serve
+        self._last_pulse = {}                     # delay group -> last dispatched pulse id
         self.last_reconnect_time = None
         self._last_restart_time = None
         self._event_times = deque(maxlen=100)     # wall time of recent real events
@@ -1203,6 +1204,22 @@ class EventWorker:
             lines.append(f"{ch}: data in {n} of the last {len(recent)} events{seen}")
         return "\n".join("  " + line for line in lines)
 
+    # A pulse id this far below the last one is a restarted sender (e.g. a
+    # local TestStream starting at 1 again), not a repeat.
+    _PULSE_RESET = 20000
+
+    def _is_new_pulse(self, event, eid):
+        """Dispatch each pulse once, in order, per delay group: after a
+        restart, a replacement connection the dispatcher holds back (a
+        slower channel in the request) starts with pulses already
+        dispatched by the old one."""
+        group = getattr(event, "group", 0)
+        last = self._last_pulse.get(group)
+        if last is not None and eid <= last and last - eid < self._PULSE_RESET:
+            return False
+        self._last_pulse[group] = eid
+        return True
+
     def eventLoop(self):  # noqa: N802
         self._serve(self._eventHandler, self._stop_event)
 
@@ -1266,11 +1283,15 @@ class EventWorker:
                         if dt > 0:
                             self.runningFrequency = 1.0 / dt
                         self._lastTime = now
-                        if self.event.getEventId() is not None:
+                        eid = self.event.getEventId()
+                        if eid is not None:
                             last_real = now
                             backoff = 1.0  # reset once data actually flows
                             if ready_event is not None:
                                 ready_event.set()
+                            if not self._is_new_pulse(self.event, eid):
+                                time.sleep(0.001)
+                                continue
                             keys = self.event.get_channel_names()
                             if keys:
                                 self._last_event_keys = keys

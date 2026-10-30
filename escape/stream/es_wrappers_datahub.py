@@ -314,6 +314,42 @@ class DataHubEventSourceContext:
 # (_CHANNEL_DELAY), so a known late channel gets its own connection at once.
 
 _CHANNEL_DELAY = {}  # channel -> last measured dispatcher delay (s)
+# Channels confirmed late by a split -> their delay (s). Only these are put on
+# their own connection from the start: a prompt channel can measure late too,
+# when the dispatcher holds back a whole stream for a slower channel in it.
+_LATE_CHANNELS = {}
+
+_CLOCK = {"offset": None, "time": 0.0}  # local clock - server clock (s), see _clock_offset
+
+
+def _clock_offset(url=None, max_age=600.0):
+    """How far the local clock is ahead of PSI's (s), so that a delay
+    measured as "local now - pulse time" is not off by it (a machine
+    without NTP sync can easily be seconds off). Estimated from the
+    dispatcher's HTTP Date header (1 s resolution: +-0.5 s), cached for
+    *max_age*; 0 if that fails."""
+    if _CLOCK["offset"] is not None and time.time() - _CLOCK["time"] < max_age:
+        return _CLOCK["offset"]
+    offsets = []
+    try:
+        import email.utils
+        import requests
+        from bsread.dispatcher import DEFAULT_DISPATCHER_URL
+        for _ in range(3):
+            t0 = time.time()
+            r = requests.head(url or DEFAULT_DISPATCHER_URL, timeout=3)
+            t1 = time.time()
+            server = email.utils.parsedate_to_datetime(r.headers["Date"]).timestamp() + 0.5
+            offsets.append((t0 + t1) / 2 - server)
+            time.sleep(0.35)
+    except Exception as exc:
+        _logger.debug("clock offset estimate failed: %s", exc)
+    offset = sorted(offsets)[len(offsets) // 2] if offsets else 0.0
+    if abs(offset) > 1.0 and (_CLOCK["offset"] is None or abs(offset - _CLOCK["offset"]) > 1.0):
+        print(f"DataHubEventHandler: the local clock is {offset:+.1f} s off (not NTP-synchronised?); "
+              "correcting dispatcher delay measurements for it.")
+    _CLOCK.update(offset=offset, time=time.time())
+    return offset
 
 
 class _DelayGroup:
@@ -328,6 +364,7 @@ class _DelayGroup:
         self.n_msgs = 0
         self.delays = deque(maxlen=self.WINDOW)
         self.seen = {}            # channel -> messages with data in this window
+        self.last_data = {}       # channel -> time of its last data on this connection
         self.window_msgs = 0
         self.window_start = time.time()
         self.delay = None         # median delay (s) of the last window
@@ -336,14 +373,15 @@ class _DelayGroup:
     def sort_key(self):
         if self.delay is not None:
             return self.delay
-        return max((_CHANNEL_DELAY.get(c, 0.0) for c in self.channels), default=0.0)
+        return max((_LATE_CHANNELS.get(c, 0.0) for c in self.channels), default=0.0)
 
 
 def _plan_groups(channels, threshold):
     """Split *channels* into delay groups from what was learned so far:
-    unknown and prompt channels together, late ones clustered by delay."""
-    prompt = [c for c in channels if _CHANNEL_DELAY.get(c, 0.0) < threshold]
-    late = sorted((_CHANNEL_DELAY[c], c) for c in channels if c not in prompt)
+    channels confirmed late (by a split) clustered by delay, all others
+    together."""
+    prompt = [c for c in channels if c not in _LATE_CHANNELS]
+    late = sorted((_LATE_CHANNELS[c], c) for c in channels if c in _LATE_CHANNELS)
     groups = [prompt] if prompt else []
     last = None
     for d, c in late:
@@ -364,6 +402,8 @@ class _GroupedDispatcherContext:
         self.h = handler
         self.groups = [_DelayGroup(chs) for chs in _plan_groups(handler.source_ids, handler.late_threshold_s)]
         self._last_prune = time.time()
+        self._clock = 0.0  # local clock offset, set on entering
+        self._offset = 0   # see _publish
 
     # -- connections ---------------------------------------------------
     FIRST_DATA_WAIT = 30.0  # s a fresh connection may take to deliver a channel
@@ -389,12 +429,22 @@ class _GroupedDispatcherContext:
             _logger.debug("Error closing datahub stream: %s", exc)
 
     def _publish(self):
-        """Tell the handler (and so the Streams) the current group layout."""
+        """Tell the handler (and so the Streams) the current group layout.
+        Group numbers are positions by delay; number 0 is kept for prompt
+        channels, so with only late connections they start at 1 (the
+        EventWorker dispatches pulses in order per group number, and a late
+        connection's pulses are older than the prompt ones before)."""
         self.groups.sort(key=_DelayGroup.sort_key)
-        self.h._set_groups([g.channels for g in self.groups], [g.delay for g in self.groups])
+        prompt = self.groups and any(c not in _LATE_CHANNELS for c in self.groups[0].channels)
+        self._offset = 0 if prompt else 1
+        self.h._set_groups([[]] * self._offset + [g.channels for g in self.groups],
+                           [None] * self._offset + [g.delay for g in self.groups])
         self.h.stream = self.groups[0].stream if self.groups else None
 
+    ABSENT_S = 10.0  # s without any data before a channel counts as held back
+
     def __enter__(self):
+        self._clock = _clock_offset(self.h.url)
         try:
             for g in self.groups:
                 self._open(g)
@@ -443,7 +493,7 @@ class _GroupedDispatcherContext:
         now = time.time()
         pulse_time = timestamp_ns * 1e-9 if timestamp_ns else now
         values = {c: msg.get(c) for c in g.channels}  # a split group may still deliver others
-        self._account(g, now - pulse_time, values)
+        self._account(g, now - self._clock - pulse_time, values)
         if len(self.groups) > 1:
             if i < len(self.groups) - 1:
                 g.buffer[pulse_id] = (pulse_time, values)
@@ -457,9 +507,7 @@ class _GroupedDispatcherContext:
                 values = merged
             if now - self._last_prune > 1.0:
                 self._prune(now)
-        if i == 0 and len(self.groups) == 1:
-            return DataHubEvent(pulse_id, timestamp_ns, values)
-        return DataHubEvent(pulse_id, timestamp_ns, values, group=i)
+        return DataHubEvent(pulse_id, timestamp_ns, values, group=i + self._offset)
 
     def _prune(self, now):
         self._last_prune = now
@@ -479,6 +527,7 @@ class _GroupedDispatcherContext:
         for c, v in values.items():
             if v is not None:
                 g.seen[c] = g.seen.get(c, 0) + 1
+                g.last_data[c] = time.time()
                 if c in self.h._awaiting:
                     self.h._awaiting.pop(c, None)
         if g.window_msgs >= _DelayGroup.WINDOW and time.time() - g.window_start >= self.MIN_WINDOW_S:
@@ -490,9 +539,17 @@ class _GroupedDispatcherContext:
         g.delay = d[len(d) // 2]
         spread = d[int(0.9 * (len(d) - 1))] - d[int(0.1 * (len(d) - 1))]
         present = [c for c in g.channels if g.seen.get(c)]
-        absent = [c for c in g.channels if not g.seen.get(c)]
+        # Held back = no data at all for ABSENT_S on this connection, not just
+        # in this window (a 0.1 Hz channel can miss a 2 s window).
+        now = time.time()
+        absent = [c for c in g.channels
+                  if not g.seen.get(c) and now - g.last_data.get(c, g.connected) >= self.ABSENT_S]
         for c in present:
             _CHANNEL_DELAY[c] = g.delay
+            if g.delay < self.h.late_threshold_s:
+                _LATE_CHANNELS.pop(c, None)  # not (or no longer) late
+            elif c in _LATE_CHANNELS:
+                _LATE_CHANNELS[c] = g.delay
         if not self.h.auto_split:
             return
         if g.delay >= self.h.late_threshold_s and spread < self.SPREAD_MAX and present and absent:
@@ -506,6 +563,8 @@ class _GroupedDispatcherContext:
             f"hold back {', '.join(absent)}; giving them separate dispatcher connections."
         )
         g.channels = present
+        for c in present:
+            _LATE_CHANNELS[c] = g.delay
         prompt = self.groups[0] if self.groups[0] is not g else None
         if prompt is None:
             prompt = _DelayGroup(absent)
@@ -596,7 +655,7 @@ class DataHubEventHandler:
             lists = {}
             for c, i in self._group_of.items():
                 lists.setdefault(i, []).append(c)
-            return [(lists.get(i, []), d) for i, d in enumerate(self._group_delays)]
+            return [(lists[i], d) for i, d in enumerate(self._group_delays) if lists.get(i)]
 
     def awaiting_data(self, channels):
         """True while one of *channels* is on a fresh connection that has
@@ -608,7 +667,7 @@ class DataHubEventHandler:
     def expected_delay(self, channels):
         """How late data of *channels* is expected to arrive (s), from what
         was measured so far."""
-        return max((_CHANNEL_DELAY.get(c, 0.0) for c in channels), default=0.0)
+        return max([0.0] + [_CHANNEL_DELAY.get(c, 0.0) for c in channels])
 
     def clone(self):
         """Return a fresh, independent handler with the same configuration

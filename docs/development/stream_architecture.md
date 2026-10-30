@@ -229,11 +229,11 @@ connections, found automatically:
 
 ```mermaid
 flowchart TB
-    A["connection delivers messages"] --> B["per message: delay = now - pulse time,<br/>which channels had data"]
+    A["connection delivers messages"] --> B["per message: delay = now - clock offset - pulse time,<br/>which channels had data"]
     B --> C{"100 messages and 2 s collected?"}
     C -- no --> A
     C -- yes --> D["median delay; remember it for each<br/>channel with data (_CHANNEL_DELAY)"]
-    D --> E{"delay >= late_threshold_s (2 s),<br/>steady (p90 - p10 < 1 s),<br/>some channels never had data?"}
+    D --> E{"delay >= late_threshold_s (2 s),<br/>steady (p90 - p10 < 1 s),<br/>some channels without data for 10 s?"}
     E -- no --> A
     E -- yes --> F["move the channels without data<br/>to the connection with the shortest delay<br/>(a new one if this is it)"]
     F --> G["publish groups: handler.group_version += 1"]
@@ -241,14 +241,27 @@ flowchart TB
 
 - Short upstream stalls don't split anything: their delay is not steady, and
   no channel stays empty.
-- Delays are remembered per channel for the Python session. A channel known
-  to be late is put on its own connection from the start
+- A slower channel the dispatcher can still wait for (cameras, ~2 s) does
+  not split anything either: the dispatcher then holds back the *whole*
+  stream by that much and delivers every channel. Only a delay beyond its
+  wait (the Jungfrau's 12 s) leaves channels without data.
+- "Without data" means none for 10 s (`ABSENT_S`) on that connection, not
+  just in one window: a 0.1 Hz channel can miss a 2 s window.
+- The delay is measured against the local clock, which can be seconds off
+  (a machine without NTP sync: +3.5 s measured on a laptop). The offset is
+  estimated once per 10 min from the dispatcher's HTTP `Date` header
+  (+-0.5 s, `_clock_offset`) and subtracted; above 1 s it is reported.
+- A split confirms its channels as late (`_LATE_CHANNELS`, for the Python
+  session); only those are put on their own connection from the start
   (`_plan_groups`), so the split, and the ~15 s without prompt data it
-  costs, happens once per session. Channels with similar delays (within
+  costs, happens once per session. Other measured delays
+  (`_CHANNEL_DELAY`) only extend plot timeouts: in a held-back stream every
+  channel measures late. Channels with similar delays (within
   `late_threshold_s`) share a connection.
 - `auto_split=False` on the handler disables it; delays are still measured.
 
-**Dispatching.** Groups are numbered by delay, 0 = shortest. Each event is
+**Dispatching.** Groups are numbered by delay, 0 = shortest; with only late
+connections they start at 1, so 0 always means prompt data. Each event is
 dispatched when it arrives and carries its group number. A Stream only
 processes events of `Stream._event_group()`: the latest group among its
 channels. A late group's event also carries the values the earlier groups
@@ -268,6 +281,24 @@ longest delay plus 5 s. So:
 - `_wait_for_data()` adds the known delay to a plot's `timeout`, and keeps
   waiting (at most 30 s) while a channel is on a fresh connection that has
   not delivered it yet (`handler.awaiting_data()`), e.g. until a split.
+
+**Pulse order.** `EventWorker._is_new_pulse` dispatches each pulse once, in
+increasing order, per group number. This matters for every handler, not
+only with delay groups: after a restart, a replacement connection that the
+dispatcher holds back (a camera added to the request) starts with pulses the
+old connection already delivered; measured live, 90-160 pulses were
+dispatched twice before this check. A pulse id more than 20000 below the
+last one counts as a restarted sender (a local `TestStream` starts at 1
+again) and is accepted. Going the other way, removing the slow channel, the
+new connection starts at the current pulse, so the backlog the old one was
+holding back (~2 s for a camera) is skipped.
+
+**Known limitation.** Any channel change restarts *all* connections. The
+make-before-break handover completes as soon as the replacement delivers
+its first event, which comes from the prompt connection, so a late
+connection's data that is still in flight (up to its delay, ~12 s for the
+Jungfrau) is lost at each channel change. Restarting only the connection
+whose channels change would avoid that.
 
 ## Threads
 
