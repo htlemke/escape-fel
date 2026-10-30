@@ -14,4 +14,5 @@ API Reference
    live
    wavefront
    exafs
+   adaptive_scan
 
