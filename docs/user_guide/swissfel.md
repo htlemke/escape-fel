@@ -142,6 +142,29 @@ A reload that finds the cache is typically about ten times faster (a 121-step,
 166-channel run: 35 s → 3.5 s). `clear_parsing_result=True` rebuilds it;
 `checknstore_parsing_result=False` switches caching off.
 
+## Adding the Channel-Monitor Data
+
+During a run, eco's namespace monitor records the beamline's EPICS channels
+(motor positions, temperatures, settings, …) whenever their value changes,
+in `aux/namespace_monitor.ixp.h5`. `merge_data_sources=True` adds those
+channels to the loaded DataSet:
+
+```python
+ds = load_dataset_from_scan(run_number=42, pgroup="p12345", merge_data_sources=True)
+# prints: merged <n> channel(s) from aux/namespace_monitor.ixp.h5 (<m> shadowed by this run's own Array data)
+```
+
+The monitor channels are {class}`~escape.ArrayTimestamps` (value vs. time,
+not one value per pulse) and are only read when first used, so even files
+with tens of thousands of channels load in a second or two. Plot one against
+clock time with `.plot()`.
+
+When a name exists in more than one source, the more precise one wins: the
+run's own per-pulse data over the monitor data, and the monitor data over
+the snapshot taken at run start. The file is written at the very end of a
+run; if it is missing or unreadable, a note is printed and everything else
+loads as usual.
+
 ## Reducing a Run While It Is Being Acquired
 
 `escape.swissfel.live_reduce` watches a run that is still being recorded.
@@ -169,8 +192,8 @@ final pass over the whole run. Channels larger than `--max-element-size`
 back at any time with
 {meth}`DataSet.load_from_result_file <escape.DataSet.load_from_result_file>`.
 
-The final pass also tries to add the run's channel-monitor data
-(`merge_data_sources`); pass `--no-merge-data-sources` to skip that.
+The final pass also adds the run's channel-monitor data (see above); pass
+`--no-merge-data-sources` to skip that.
 
 ## Saving Results to a File
 
