@@ -345,11 +345,13 @@ during a reset discards its replacement (`ew._generation`).
 The PSI stream hosts are not reachable from the offline cluster. Two ways
 to test against real channels from a machine outside the PSI network:
 
-- **`dev/psi-tunnel` (sshuttle)** routes TCP and DNS for the PSI subnets
-  through ssh at the OS level, via a beamline console. Unmodified code
-  (bsread, datahub, escape) then reaches the dispatcher and the stream
-  hosts directly. The same script can `sshfs`-mount data directories from
-  `ra` (run `dev/psi-tunnel help`).
+- **`psi-tunnel` (sshuttle)**, in the
+  [Hoppla repository](https://github.com/swissfel/hoppla) as
+  `tools/psi-tunnel`, routes TCP and DNS for the PSI subnets through ssh
+  at the OS level, via a beamline console. Unmodified code (bsread,
+  datahub, escape) then reaches the dispatcher and the stream hosts
+  directly. The same script can `sshfs`-mount data directories from `ra`
+  (run `psi-tunnel help`).
 - **`escape/stream/dev_proxy.py`** routes only this Python process through
   a SOCKS tunnel (`ssh -D 8787 -N user@saresb-cons-05`, then
   `enable_socks_proxy(port=8787)`). It patches both the dispatcher HTTP

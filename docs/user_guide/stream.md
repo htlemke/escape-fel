@@ -462,7 +462,7 @@ does not stop a plot of the same Stream.
 ## Developing against real data
 
 To test against real SwissFEL channels from outside the PSI network (via
-`dev/psi-tunnel` or `escape.stream.dev_proxy`), see
+Hoppla's `tools/psi-tunnel` or `escape.stream.dev_proxy`), see
 [Stream internals](../development/stream_architecture.md#developing-against-real-data).
 
 ---
