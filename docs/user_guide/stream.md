@@ -114,6 +114,21 @@ for s in [ratio, i_on, i_off]:
     s.accumulate(True)
 ```
 
+A Stream can also be combined with anything that is read on demand rather
+than streamed: an eco `Detector`/`Adjustable` (anything with
+`get_current_value()`) or a plain function without arguments.
+
+```python
+from escape.stream import from_getter
+
+corrected = i - some_eco_detector              # wrapped automatically
+scaled = 2.5 * from_getter(motor.get_current_value, update_time=0.5)
+```
+
+`from_getter` reads the value at most every `update_time` seconds (default
+0.1 s) and reuses it for the pulses in between, so it is not
+pulse-synchronous.
+
 ### Channels at different rates
 
 All channels of one EventWorker arrive in one pulse-aligned stream. On a
@@ -352,6 +367,52 @@ ratio_vs_t = t.digitize(bins).categorize(ratio)
 ratio_vs_t.accumulate(True)
 ```
 
+### Two-dimensional scans — live `Grid`
+
+For a mesh scan, bin a Stream by two (or more) step indices and reshape it
+into a grid with `Grid`, the live counterpart of
+{doc}`escape.Grid <grid>`. The indices usually come from the scan loop
+itself: any object with a `name` and an `_getEventData()` method returning
+the current index works as a scan parameter.
+
+```python
+from escape.stream import Scan, Grid
+
+class StepIndex:                       # set .value from your scan loop
+    def __init__(self, name):
+        self.name, self.value = name, 0
+    def _getEventData(self):
+        return self.value
+
+ix, iy = StepIndex("x"), StepIndex("y")
+binned = Stream(source=i._source, scan=Scan(parameters=[ix, iy]))
+binned.accumulate(True)
+
+grid = Grid(binned, shape=(3, 2), positions=[xs, ys], dimension_names=["x", "y"])
+# scan loop: ix.value, iy.value = a, b  ...
+grid.mean(plot=True)                   # live heatmap of the per-cell mean
+grid.fill_count()                      # (filled cells, total, percent)
+```
+
+`mean`, `std`, `median`, `sum`, `min`, `max` and `count` all reshape to the
+grid; with `plot=True` each opens (or updates) its own live heatmap. eco's
+mesh scans with a bs counter use this.
+
+### From Stream to Array
+
+`stream.to_array()` turns what a Stream has accumulated so far into a static
+{class}`escape.Array`, indexed by pulse ID and with one scan step per bin,
+so it can be stored in a `DataSet`, aligned with offline data or analysed
+further:
+
+```python
+arr = ratio_vs_t.to_array()            # name/unit from the Stream
+arr.scan.par_steps                     # one row per bin
+```
+
+It is a snapshot, not a live link. Only samples still held in the Stream's
+buffer (`maxlen`, default 1000 per step) are included.
+
 ---
 
 ## Live plots (ipympl / %matplotlib widget)
@@ -372,6 +433,12 @@ hp.stop()
 
 Closing a plot window stops the plot and releases its share of the
 acquisition (see "Shared Streams, shared channels" above).
+
+`plot_med()` draws a live peak analysis on top of the median line (center,
+FWHM, background; for an edge, its position and width), the same analysis
+as the Peak button of {doc}`plot_tools`. Pass `peak_overlay=False` for
+channels that are not peak- or edge-shaped. Live plot figures carry the Fit
+and Peak toolbar buttons.
 
 ### `pulse_id` / `lab_time` — always-available pseudo-channels
 

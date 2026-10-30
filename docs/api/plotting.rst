@@ -15,9 +15,23 @@ Figure Creation
 Toolbar Buttons
 ----------------
 
+See the :doc:`user guide <../user_guide/plot_tools>`.
+
+.. autofunction:: escape.plot_utilities.attach_escape_buttons
+.. autofunction:: escape.plot_utilities.attach_fit_button
+.. autofunction:: escape.plot_utilities.attach_peak_button
+.. autofunction:: escape.plot_utilities.attach_freq_button
 .. autofunction:: escape.plot_utilities.attach_select_button
 .. autofunction:: escape.plot_utilities.attach_history_button
 .. autofunction:: escape.plot_utilities.tag
+
+Fit, Peak and Frequency Panels
+-------------------------------
+
+.. autofunction:: escape.fit_gui.AxesFitter
+.. autofunction:: escape.fit_gui.parse_model_expression
+.. autofunction:: escape.plot_utilities.find_peak
+.. autofunction:: escape.freq_gui.FreqAnalyzer
 
 Plot History
 -------------

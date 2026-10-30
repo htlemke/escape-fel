@@ -83,7 +83,8 @@ sig, i0, pump_on, delay = make_pump_probe_scan(n_steps=20)
 | `array.shape` | Shape of `data` |
 | `array.ndim` | Number of dimensions of `data` |
 | `array.dtype` | Data dtype |
-| `array.name` | Optional string label |
+| `array.name` | Optional string label (arrays loaded with `load_dataset_from_scan` are named after their channel) |
+| `array.unit` | Optional physical unit, e.g. `"eV"` |
 | `array.scan` | {class}`~escape.Scan` object with step metadata |
 | `array.is_dask_array()` | `True` if data is backed by dask |
 
@@ -91,6 +92,15 @@ sig, i0, pump_on, delay = make_pump_probe_scan(n_steps=20)
 print(sig.shape)   # (5000,)
 print(sig.index[:5])  # [0 1 2 3 4]
 print(sig.scan)    # Scan over 10 steps ...
+```
+
+`name` and `unit` (constructor keywords, or set later) label the axes of
+`Array.plot()` and `Array.hist()`, e.g. `signal (counts)`. {func}`escape.concatenate`
+keeps them when all inputs agree.
+
+```python
+sig.unit = "counts"
+sig.plot()            # y-axis: "signal (counts)"
 ```
 
 ## Dask-Backed Arrays
@@ -115,6 +125,28 @@ dask scheduler for efficiency:
 ```python
 sig_np, i0_np = escape.compute(sig, i0)
 ```
+
+`inplace=True` (on both) replaces the Array's own data with the computed
+NumPy array instead of returning a new Array:
+
+```python
+arr.compute(inplace=True)
+escape.compute(sig, i0, inplace=True)
+```
+
+### How long will a compute take?
+
+`array.nbytes` tells you the size of the result, not how long it takes to
+get there. {meth}`~escape.Array.estimate_compute_time` computes a few chunks
+spread over the Array, times them and extrapolates to all chunks:
+
+```python
+arr.estimate_compute_time()            # prints e.g. "probed 2/240 chunk(s) in 1.3 s ... ~2.6 min"
+t_s = arr.estimate_compute_time(n_probe=5, print_result=False)
+```
+
+It assumes all chunks cost about the same and does not model parallel
+execution, so treat it as a rough estimate.
 
 ## Aggregation Methods
 

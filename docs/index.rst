@@ -27,6 +27,8 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    user_guide/grid
    user_guide/dataset
    user_guide/custom_processing
+   user_guide/plot_tools
+   user_guide/detectors
    user_guide/wavefront
    user_guide/exafs
    user_guide/adaptive_scan
@@ -45,6 +47,12 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    examples/quickstart
    examples/pump_probe
    examples/stack_viewer_and_dual_axis
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Tips
+
+   did_you_know/index
 
 .. toctree::
    :maxdepth: 1

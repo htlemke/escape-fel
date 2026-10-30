@@ -186,6 +186,29 @@ binned = sig.digitize_interactive(n_bins=20)
 binned.scan.plot(live=True)
 ```
 
+### Timetool binning
+
+`array.tools.timetool_binning` does the timetool correction and the binning
+in one call. What it adds to the timetool signal per scan step depends on
+`time_vec`:
+
+```python
+# timetool = jitter correction only: add each step's nominal delay
+# (read from timetool's first scan parameter)
+sig_t = sig.tools.timetool_binning(tt_jitter, time_bins=50e-15)
+
+# timetool = already fully corrected per-shot delay: use it as it is
+sig_t = sig.tools.timetool_binning(t_corrected, time_vec=None, time_bins=50e-15)
+
+# or give the nominal delay per step explicitly
+sig_t = sig.tools.timetool_binning(tt_jitter, time_vec=nominal_delays, time_bins=50e-15)
+```
+
+`time_bins` is either an array of bin edges or a bin width; a width spans the
+observed range of the corrected delay, rounded outward to multiples of the
+width. Before 2026-08 the nominal delay was always added, which counted it
+twice for an already corrected delay.
+
 ## Re-Sorting with Another Array
 
 Using another Array as an index subscript applies that Array's *boolean data*

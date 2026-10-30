@@ -65,10 +65,10 @@ def apply_calibration(raw, gain_idx, pedestal, gain, offset=None):
 
     Parameters
     ----------
-    raw, gain_idx : ndarray, shape (n_events, *pixel_shape)
+    raw, gain_idx : ndarray, shape ``(n_events, *pixel_shape)``
         Raw ADC values and per-event gain index (0/1/2, ...).
-    pedestal, gain : ndarray, shape (n_gains, *pixel_shape)
-    offset : ndarray, shape (n_gains, *pixel_shape), optional
+    pedestal, gain : ndarray, shape ``(n_gains, *pixel_shape)``
+    offset : ndarray, shape ``(n_gains, *pixel_shape)``, optional
         Additive raw-ADC pedestal correction per gain, e.g. as returned by
         :func:`find_dynamic_pedestal_offsets`.
     """
@@ -286,8 +286,8 @@ def find_gain_switch_offset(
     Parameters
     ----------
     monitor : ndarray, shape (n_events,)
-    raw, gain_idx : ndarray, shape (n_events, *pixel_shape)
-    pedestal, gain : ndarray, shape (n_gains, *pixel_shape)
+    raw, gain_idx : ndarray, shape ``(n_events, *pixel_shape)``
+    pedestal, gain : ndarray, shape ``(n_gains, *pixel_shape)``
         The existing (static/forced-gain) calibration.
     g_low, g_high : int
         Adjacent gain indices of the transition to calibrate, e.g. (0, 1)
@@ -320,11 +320,11 @@ def find_gain_switch_offset(
 
     Returns
     -------
-    offset : ndarray, shape (*pixel_shape,)
+    offset : ndarray, shape ``(*pixel_shape,)``
         Additive raw-ADC correction to ``pedestal[g_high]``. nan where
         the pixel never has enough statistics on both sides of the switch
         (i.e. it is not one of the "gain-switching pixels").
-    n_low, n_high : ndarray, shape (*pixel_shape,)
+    n_low, n_high : ndarray, shape ``(*pixel_shape,)``
         Total event counts feeding the low-side / high-side local fit, for
         diagnostics and masking.
     """
@@ -382,7 +382,7 @@ def find_dynamic_pedestal_offsets(
 
     Returns
     -------
-    offsets : ndarray, shape (n_gains, *pixel_shape)
+    offsets : ndarray, shape ``(n_gains, *pixel_shape)``
         Additive raw-ADC pedestal offsets, indexed like ``pedestal``.
         offsets[g_low] for the lowest gain of ``gain_pairs`` is left at 0
         (it is the reference branch); nan elsewhere statistics were

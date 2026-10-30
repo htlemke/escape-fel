@@ -192,16 +192,16 @@ range. Has its own parallel HDF5 persistence classes.
 
 ### Detector-image processing — `escape/utilities_detectors/`
 
-Built on top of `map_index_blocks`, mostly also reachable as
-`array.tools.<method>`:
-- `droplets.py` — connected-component / single-photon "droplet" clustering.
+Imported directly (`from escape.utilities_detectors import find_droplets`),
+not via `array.tools`. Documented as experimental in
+`docs/user_guide/detectors.md` / `docs/api/detectors.rst`:
+- `droplets.py` — connected-component / single-photon "droplet" clustering
+  (`find_droplets`, lazy via `map_index_blocks`) and a zero-truncated
+  Poisson fit of photon multiplicities.
 - `dynamic_pedestal.py` — per-pixel dynamic-gain pedestal calibration for
-  gain-switching detectors (Jungfrau-family). **Beta, not yet validated
-  against real detector data** — treat recovered offsets as a hypothesis to
-  verify, not a drop-in calibration (see the warning in
-  `docs/api/detectors.rst`).
-- `masking.py` — polygon-ROI masking of image stacks.
-- `thresholding.py` — elementwise pixel value thresholding/clipping.
+  gain-switching detectors (Jungfrau-family), plain NumPy. **Beta, not yet
+  validated against real detector data** — treat recovered offsets as a
+  hypothesis to verify, not a drop-in calibration.
 
 ### Scientific modules — `escape/wavefront/`, `escape/exafs/`, `escape/adaptive_scan/`
 
@@ -349,3 +349,7 @@ deriving function parameters from notebook-namespace variables.
 - Anything meant to be public should be re-exported from `escape/__init__.py`
   (and, for docs, added under `docs/api/`) — don't assume a class is public
   just because it's importable from a submodule.
+- User-visible features get a short "Did you know?" tip: one file per
+  feature in `docs/did_you_know/` (`<YYYY-MM-DD>-<slug>.md`, format in that
+  folder's `index.md`), linking to the full user-guide page. Opt-in modules
+  that are not validated yet get the `experimental` tag.

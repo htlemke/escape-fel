@@ -141,6 +141,18 @@ check_result_file("run0042.esc.h5")               # {'chan': 'orphan_timestamps'
 check_result_file("run0042.esc.h5", repair=True)
 ```
 
+### Clearing stored data
+
+To store an array again from scratch under the same name, clear its stored
+data first; otherwise `store()` stops with an `ArrayStorageConflict`:
+
+```python
+ds.clear_results_file(["signal"])   # asks for confirmation; no names = every channel
+ds.clear_results_file(confirm=False)  # in scripts, no prompt
+```
+
+Without a terminal to answer the prompt, nothing is deleted.
+
 ## Computing and Storing Multiple Arrays Efficiently
 
 For dask-backed Arrays you can compute them all in one scheduler pass:

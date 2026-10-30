@@ -184,17 +184,24 @@ class ArrayTimestamps:
     ):
         """Plot this array's data against its timestamps on a datetime axis.
 
-        Args:
-            axis: matplotlib axis to plot into (default: current axis).
-            linespec: matplotlib line/marker spec for the data points.
-            show_scan_steps: if True (default) and this array's scan has
-                timestamp_intervals defined, shade each step's time range
-                with a faint band behind the data points.
-            timestamp_unit: unit of the stored timestamps, forwarded to
-                ``pandas.to_datetime`` (default ``"s"`` for Unix epoch
-                seconds).
-            step_color, step_alpha: color/opacity of the scan-step shading.
-            *args, **kwargs: forwarded to ``axis.plot()``.
+        Parameters
+        ----------
+        axis : matplotlib.axes.Axes, optional
+            Axis to plot into (default: current axis).
+        linespec : str
+            Matplotlib line/marker spec for the data points.
+        show_scan_steps : bool
+            If True (default) and this array's scan has
+            timestamp_intervals defined, shade each step's time range
+            with a faint band behind the data points.
+        timestamp_unit : str
+            Unit of the stored timestamps, forwarded to
+            ``pandas.to_datetime`` (default ``"s"`` for Unix epoch
+            seconds).
+        step_color, step_alpha
+            Color/opacity of the scan-step shading.
+        *args, **kwargs
+            Forwarded to ``axis.plot()``.
         """
         if axis is None:
             axis = plt.gca()

@@ -1,5 +1,10 @@
 # EXAFS Data Reduction
 
+```{warning}
+**Experimental — for testing.** This module is new; please report results
+that look wrong.
+```
+
 `escape.exafs` turns raw XAS data — absorption `μ(E)` versus energy — into the
 EXAFS signal `χ(k)` and its Fourier transform `χ(R)`. It is a small, readable
 re-implementation of the standard reduction recipe, written to be **understood

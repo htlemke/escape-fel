@@ -1,5 +1,10 @@
 # X-ray Wavefront Sensing
 
+```{warning}
+**Experimental — for testing.** This module is new; please report results
+that look wrong.
+```
+
 `escape.wavefront` is a compact, teaching-oriented implementation of
 **single-grating (Talbot) X-ray wavefront sensing** for FEL beams, together
 with the free-space propagation needed to **back-propagate a measured beam to

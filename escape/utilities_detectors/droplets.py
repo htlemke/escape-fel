@@ -56,7 +56,7 @@ def droplets_to_image_block(block, threshold, structure=None):
 
     Parameters
     ----------
-    block : ndarray, shape (n_frames, *frame_shape)
+    block : ndarray, shape ``(n_frames, *frame_shape)``
         One dask chunk of raw detector frames.
     threshold : float
         Pixels at or below this value are background.

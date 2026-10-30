@@ -112,6 +112,66 @@ run43_steps = mask[mask].index.tolist()
 sig_run43 = sig.scan[run43_steps]
 ```
 
+## Loading Part of a Scan
+
+`step_selection` loads only some scan steps, e.g. for a quick first look at
+a long scan, or at the steps already finished in a running one:
+
+```python
+ds = load_dataset_from_scan(run_number=42, pgroup="p12345",
+                            step_selection=slice(0, 10))   # first 10 steps
+ds = load_dataset_from_scan(run_number=42, pgroup="p12345",
+                            step_selection=[0, 5, 9])      # or a list of steps
+```
+
+## Faster Reloading: the Parse Cache
+
+Most of the time of a first load goes into scanning the structure of the raw
+HDF5 files. `escape` stores the result of that scan (not the data) and reuses
+it on the next load of the same files. With the default
+`checknstore_parsing_result="auto"` this happens without any setup:
+
+1. a cache in the run's own `aux/` directory is used if it exists (one the
+   DAQ can write during acquisition, see {doc}`../development/daq_live_parsing`);
+2. otherwise a cache in the pgroup's work directory
+   (`/das/work/pNNN/pNNNNN`) is created and used, if that directory is
+   writable;
+3. otherwise nothing is cached. Missing paths or permissions never raise.
+
+A reload that finds the cache is typically about ten times faster (a 121-step,
+166-channel run: 35 s → 3.5 s). `clear_parsing_result=True` rebuilds it;
+`checknstore_parsing_result=False` switches caching off.
+
+## Reducing a Run While It Is Being Acquired
+
+`escape.swissfel.live_reduce` watches a run that is still being recorded.
+Every poll it loads the steps whose files are complete and appends their
+small (scalar or short-array) channels to a results file, so the reduced data
+can be opened during the run and is ready when it ends:
+
+```bash
+python -m escape.swissfel.live_reduce --run-number 42 --pgroup p12345 \
+    --results-directory ./results --poll-interval 15
+```
+
+or from Python:
+
+```python
+from escape.swissfel.live_reduce import live_reduce_scan
+
+live_reduce_scan(run_number=42, pgroup="p12345", results_directory="./results")
+```
+
+It stops after several polls in which neither a new step became complete nor
+the scan grew (`--idle-polls-before-final-pass`, default 4), then makes one
+final pass over the whole run. Channels larger than `--max-element-size`
+(default 5000 values per event, i.e. images) are not stored. Read the results
+back at any time with
+{meth}`DataSet.load_from_result_file <escape.DataSet.load_from_result_file>`.
+
+The final pass also tries to add the run's channel-monitor data
+(`merge_data_sources`); pass `--no-merge-data-sources` to skip that.
+
 ## Saving Results to a File
 
 To persist the parsed data for fast reloading, pass a result filename:
