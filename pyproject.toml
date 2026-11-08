@@ -13,7 +13,7 @@ requires-python = ">=3.9"
 dependencies = [
     "numpy",
     "scipy",
-    "dask[array,dataframe]",
+    "dask[array,dataframe]>=2024.6.0",
     "h5py",
     "zarr",
     "hickle",
@@ -25,7 +25,7 @@ dependencies = [
     "ipywidgets",
     "ipython",
     "lazy-object-proxy",
-    "distributed",
+    "distributed>=2024.6.0",
     "oschmod",
 ]
 classifiers = [

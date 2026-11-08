@@ -86,6 +86,51 @@ that judgment call is still yours; make it by tagging manually beforehand.
    one (`gh release create vX.Y.Z --generate-notes`) gives users a readable
    changelog and is recommended.
 
+## conda-forge
+
+`escape-fel` is also on conda-forge (`conda install -c conda-forge escape-fel`).
+Its recipe lives in a separate repository, the feedstock
+[conda-forge/escape-fel-feedstock](https://github.com/conda-forge/escape-fel-feedstock)
+(`recipe/recipe.yaml`). Nothing in this repo publishes to conda-forge
+directly. Each PyPI release is picked up automatically:
+
+1. A new version appears on PyPI (normally via the auto-tag push above).
+2. Within a few hours, the conda-forge update bot opens a PR on the feedstock
+   that bumps the version and sha256.
+3. The feedstock CI builds the package and tests it on Linux, macOS and Windows:
+   `import escape` / `escape.storage` and `pip check` on the oldest
+   and newest Python that conda-forge supports.
+4. Automerge is enabled (`bot: automerge: true` in the feedstock's
+   `conda-forge.yml`), so a green bot PR merges itself. The package is
+   installable about 1-2 hours later.
+
+If the CI fails, the bot PR stays open and nothing is published. The
+conda-forge version just lags PyPI until the PR is fixed. GitHub notifies
+feedstock maintainers of these PRs.
+
+```{important}
+The bot only bumps the version and hash; it does **not** reliably sync
+dependencies. When you add, remove or re-pin a dependency in
+`pyproject.toml`, make the same change to the feedstock recipe's
+`requirements: run:` list.
+- A new hard dependency missing from the recipe usually makes the bot PR's
+  import test fail. Fix it in that PR.
+- A removed dependency fails nothing. It just stays installed for conda
+  users until you remove it from the recipe.
+
+conda package names occasionally differ from PyPI names: for example,
+`matplotlib` → `matplotlib-base`, and `dask[array,dataframe]` → `dask`.
+```
+
+Rules for changing the feedstock:
+
+- Never push to `conda-forge/escape-fel-feedstock` directly. Fork it, change a
+  branch in your fork, and open a PR (you can edit a bot PR's branch too).
+- A recipe-only change with no new upstream version needs `build: number:`
+  incremented. A new version resets it to `0`.
+- Changes to `conda-forge.yml` other than the `bot:` section may need a
+  re-render. Comment `@conda-forge-admin, please rerender` on the PR.
+
 ## Choosing the version number
 
 `escape-fel` is still pre-1.0, so by [semver](https://semver.org/#spec-item-4)

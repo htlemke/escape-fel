@@ -303,20 +303,17 @@ deriving function parameters from notebook-namespace variables.
 
 ## Project status / known pending work
 
-- **conda-forge packaging is mid-flight.** A staged-recipes submission is
-  open at `conda-forge/staged-recipes` PR #33847 (from fork
-  `htlemke/staged-recipe-escale-fel`). It sat with red CI and zero reviewer
-  activity for two months because `meta.yaml` pinned `version = "0.1.0"`,
-  which was **never actually published to PyPI** (source URL 404'd), and
-  because `escape/storage/source.py` used to import `datastorage`
-  unconditionally at module level — unlike `dataset.py`/`parse.py`, which
-  already guarded it — so `import escape` would also have failed the test
-  step, since `datastorage` isn't packaged on conda-forge. Fixed 2026-08-26:
-  the import was made lazy and `datastorage` moved to an optional `legacy`
-  extra (released as v0.2.2), and `meta.yaml`/the fork were updated to point
-  at that release with correct deps/sha256, plus a review-request comment
-  was posted. Check the PR for current CI/review status before assuming
-  it's still stuck.
+- **conda-forge: done.** `escape-fel` is on conda-forge since 2026-11-07
+  (staged-recipes PR #33847 merged). The recipe lives in
+  [conda-forge/escape-fel-feedstock](https://github.com/conda-forge/escape-fel-feedstock),
+  not in this repo (`conda-forge-recipe/` is only a pointer). Each PyPI release
+  is picked up by the conda-forge bot; feedstock automerge publishes green
+  bot PRs (flow and rules: `docs/development/releasing.md`, "conda-forge").
+  **When you change `[project] dependencies` in `pyproject.toml`, the
+  feedstock's `requirements: run:` must be updated by hand** (via a PR from
+  a fork, never a direct push); the bot only bumps the version and sha256. The
+  dask/distributed `>=2024.6.0` floor exists because an unpinned dask let the
+  solver pick dask 2023.3.0 (not numpy-2 compatible) on the newest Python.
 - **`escape/stream/` was rewritten 2026-09-04** to fix a class of bugs where
   the event loop silently never started on channel registration (a
   `hasattr(self, "loopThread")`-vs-`None` guard in
