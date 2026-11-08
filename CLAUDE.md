@@ -74,6 +74,25 @@ plus the `escape.utilities` / `escape.utilities_detectors` subpackages. If a
 class/function isn't re-exported here, treat it as internal unless a docs
 page says otherwise.
 
+**`escape/__init__.py` is lazy (PEP 562, since 2026-11-06):** the names
+above and the `storage`/`utilities`/`utilities_detectors` submodules are
+imported on first access (`escape.Array`, `from escape import Array`,
+`from escape import *` all work as before; `import escape` itself takes
+~0.1 s). This is what lets `escape.bernina` run without dask/h5py/zarr - in
+the browser build of bernina-scripts and on Binder, where escape-fel is
+installed with `--no-deps`. Don't add eager heavy imports back to
+`escape/__init__.py`; put new public names into `_LAZY`.
+
+**`escape.bernina`** (opt-in, extra `escape-fel[bernina]`: hklforge >= 0.1,
+xraydb): the Bernina diffractometer (You geometry in the SwissFEL frame),
+`diffraction` (the prep apps' Sample/table API), `recspace` (eco's RecSpace
+API; eco's `recspace_calc` re-exports it), JUNGFRAU `detectors`,
+`detector_view`, `otti`, and the three.js page `diffractometer_3d.html`
+(`VIEWER_HTML`). Shared by eco and the bernina-scripts apps - a change to
+these calculations or to the 3D page is made here. numpy/pandas/hklforge
+only, no other escape module. Tests: `tests/bernina/` (diffcalc battery in
+`check_engine.py`; needs diffcalc-core). Docs: `docs/api/bernina.rst`.
+
 `escape.wavefront`, `escape.exafs` and `escape.adaptive_scan` are separate
 **opt-in** subpackages — real, documented, and installable
 (`docs/api/wavefront.rst`, `docs/api/exafs.rst`, `docs/api/adaptive_scan.rst`)

@@ -16,4 +16,5 @@ API Reference
    wavefront
    exafs
    adaptive_scan
+   bernina
 

@@ -62,6 +62,10 @@ legacy = ["datastorage"]
 # fallback) if used without networkx installed. escape.stream itself is not
 # part of the stable API (see CLAUDE.md) so this stays independently optional.
 stream_graph = ["networkx"]
+# escape.bernina: Bernina diffractometer/detector calculations (also used by
+# eco and the bernina-scripts prep apps); hklforge >= 0.1 brings
+# hklforge.orient and Geometry.detector_towards, xraydb the structure factors
+bernina = ["hklforge>=0.1.0", "xraydb"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"
@@ -79,6 +83,8 @@ include = ["escape*"]
 # Fit/Peak toolbar button icons (escape.plot_utilities._build_fit_icon/
 # _build_peak_icon) -- edited in Inkscape, loaded at runtime via QIcon().
 "escape" = ["icons/*.svg"]
+# escape.bernina's 3D page of the diffractometer (three.js, self-contained)
+"escape.bernina" = ["diffractometer_3d.html"]
 
 [tool.setuptools_scm]
 # version is derived automatically from git tags: v0.1.0 -> 0.1.0
