@@ -11,7 +11,7 @@ browser (Pyodide/xeus-python). ``escape.Array``, ``from escape import Array``
 and ``from escape import *`` behave as before.
 """
 
-import importlib
+import importlib as _importlib
 
 try:
     from importlib.metadata import version, PackageNotFoundError
@@ -47,11 +47,17 @@ STORAGE_LOCK = None
 
 def __getattr__(name):
     if name in _LAZY:
-        value = getattr(importlib.import_module(_LAZY[name]), name)
-    elif name in _SUBMODULES:
-        value = importlib.import_module(f"escape.{name}")
+        value = getattr(_importlib.import_module(_LAZY[name]), name)
     else:
-        raise AttributeError(f"module 'escape' has no attribute {name!r}")
+        # any subpackage on first access (escape.adaptive_scan,
+        # escape.plot_utilities, escape.stream, ...), as an eager import of
+        # escape.storage used to provide some of them as a side effect
+        try:
+            value = _importlib.import_module(f"escape.{name}")
+        except ModuleNotFoundError as exc:
+            if exc.name != f"escape.{name}":
+                raise  # the subpackage exists but needs something missing
+            raise AttributeError(f"module 'escape' has no attribute {name!r}") from None
     globals()[name] = value
     return value
 
