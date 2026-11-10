@@ -3203,16 +3203,20 @@ class Scan:
                 pass
         mesh_specs = getattr(self._array, "_mesh_specs", None)
         if mesh_specs:
-            hickle.dump(mesh_specs, scan_group, path="mesh_specs")
-            infos = (self.parameter.get("scan_step_info") or {}).get("values") or []
-            if len(infos) == len(self):
-                scan_group["mesh_indices"] = np.asarray(
-                    [
-                        i.get("mesh_index", -1) if isinstance(i, dict) else -1
-                        for i in infos
-                    ],
-                    dtype=int,
-                )
+            # extra metadata: a problem here must never cost storing the data
+            try:
+                hickle.dump(mesh_specs, scan_group, path="mesh_specs")
+                infos = (self.parameter.get("scan_step_info") or {}).get("values") or []
+                if len(infos) == len(self):
+                    scan_group["mesh_indices"] = np.asarray(
+                        [
+                            i.get("mesh_index", -1) if isinstance(i, dict) else -1
+                            for i in infos
+                        ],
+                        dtype=int,
+                    )
+            except Exception as exc:
+                logger.warning("mesh metadata not stored: %s", exc)
          
 
     @staticmethod
