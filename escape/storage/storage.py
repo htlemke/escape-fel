@@ -244,6 +244,8 @@ class Array:
             ``"mm"``), used to annotate axis labels in ``plot``/``hist``.
         source: Optional source metadata object.
         grid_specs: Optional metadata used to build ``scan.grid``.
+        mesh_specs: Optional mesh metadata (eco's ``mesh_specs``: nodes, names,
+            units, kind, resolution) for ``mesh``.
     """
     # Recorded provenance (see escape.storage.lineage); None unless a Param or
     # another Array with lineage was involved in producing this Array.
@@ -259,6 +261,7 @@ class Array:
         unit=None,
         source=None,
         grid_specs=None,
+        mesh_specs=None,
     ):
         data = _coerce_data(data, name)
         self.index_dim = 0
@@ -290,6 +293,8 @@ class Array:
         self._touched = False
         self._tools = None
         self._grid_specs = grid_specs
+        self._mesh_specs = mesh_specs
+        self._mesh = None
 
     @property
     def scan(self):
@@ -303,6 +308,20 @@ class Array:
             return self.scan.grid
         else:
             return None
+
+    @property
+    def mesh(self):
+        """Where in its N-d space each step measured: an
+        :class:`~escape.storage.mesh.ArrayMesh` (always there -- a plain 1-d
+        scan is a 1-d mesh). ``arr.mesh.mean()`` & co. give one value per
+        node (events of repeated steps pooled), N-d for a grid; ``bins=``,
+        ``interpolate=``, ``merge=False``, ``plot=`` -- see
+        :mod:`escape.storage.mesh`."""
+        if getattr(self, "_mesh", None) is None:
+            from .mesh import ArrayMesh
+
+            self._mesh = ArrayMesh.from_array(self)
+        return self._mesh
 
     @property
     def tools(self) -> ArrayTools:
@@ -1031,11 +1050,13 @@ class Array:
         h5 = ArrayH5Dataset(parent_h5py, name)
         try:
             parameter, step_lengths, grid_specs = Scan._load_from_h5(parent_h5py[name])
+            mesh_specs = Scan._load_mesh_specs(parent_h5py[name])
         except:
             # print(f"could not read scan metadata of {name}")
             parameter = None
             step_lengths = None
             grid_specs = None
+            mesh_specs = None
 
         data = h5.get_data_da()
         if data is None:
@@ -1047,6 +1068,7 @@ class Array:
                 parameter=parameter,
                 step_lengths=step_lengths,
                 grid_specs=grid_specs,
+                mesh_specs=mesh_specs,
                 name=name,
             )
             # Attach the ArrayH5Dataset already built above so a later
@@ -1807,12 +1829,14 @@ def load_from_h5_file(file_name, name, parent_group_name=""):
     )
     with h5py.File(file_name, "r") as f:
         parameter, step_lengths, grid_specs = Scan._load_from_h5(f[h5.group_name])
+        mesh_specs = Scan._load_mesh_specs(f[h5.group_name])
     return Array(
         index=h5.index,
         data=h5.get_data_da(),
         parameter=parameter,
         step_lengths=step_lengths,
         grid_specs=grid_specs,
+        mesh_specs=mesh_specs,
         name=name,
     )
 
@@ -1826,6 +1850,7 @@ def load_from_h5(parent_h5py, name):
         parameter=parameter,
         step_lengths=step_lengths,
         grid_specs=grid_specs,
+        mesh_specs=Scan._load_mesh_specs(parent_h5py),
         name=name,
     )
 
@@ -1954,6 +1979,7 @@ def escaped(func, convertOutput2EscData="auto"):
                         step_lengths=stepLengths,
                         parameter=scan.parameter,
                         grid_specs=scan.grid.get_grid_specs() if hasattr(scan, "grid") else None,
+                        mesh_specs=getattr(scan._array, "_mesh_specs", None),
                     ),
                 )
 
@@ -2983,7 +3009,11 @@ class Scan:
                 sel = len(self) + sel
             return self.get_step_array(sel, grid_specs=grid_specs)
         else:
-            return concatenate([self.get_step_array(n, grid_specs=grid_specs) for n in sel], grid_specs=grid_specs)
+            return concatenate(
+                [self.get_step_array(n, grid_specs=grid_specs) for n in sel],
+                grid_specs=grid_specs,
+                mesh_specs=getattr(self._array, "_mesh_specs", None),
+            )
 
     def get_step_array(self, n, grid_specs=None):
         """array getter for scan"""
@@ -3017,7 +3047,8 @@ class Scan:
                 if "attributes" in par.keys():
                     parameter[par_name]["attributes"] = par["attributes"]
         return Array(
-            data=data, index=index, parameter=parameter, step_lengths=step_lengths, grid_specs=grid_specs
+            data=data, index=index, parameter=parameter, step_lengths=step_lengths, grid_specs=grid_specs,
+            mesh_specs=getattr(self._array, "_mesh_specs", None),
         )
 
     def get_step_data(self, n):
@@ -3170,6 +3201,18 @@ class Scan:
                 ).reshape(len(self), len(self.grid.shape))
             except Exception:
                 pass
+        mesh_specs = getattr(self._array, "_mesh_specs", None)
+        if mesh_specs:
+            hickle.dump(mesh_specs, scan_group, path="mesh_specs")
+            infos = (self.parameter.get("scan_step_info") or {}).get("values") or []
+            if len(infos) == len(self):
+                scan_group["mesh_indices"] = np.asarray(
+                    [
+                        i.get("mesh_index", -1) if isinstance(i, dict) else -1
+                        for i in infos
+                    ],
+                    dtype=int,
+                )
          
 
     @staticmethod
@@ -3203,7 +3246,29 @@ class Scan:
                     for gi in group["scan"]["grid_indices"][()].tolist()
                 ]
             }
+        if "mesh_indices" in group["scan"].keys():
+            mesh_indices = group["scan"]["mesh_indices"][()].tolist()
+            # the per-step dicts can't be stored as parameter values: rebuilt
+            # here (with the grid_index from grid_indices, if any)
+            infos = (parameter.get("scan_step_info") or {}).get("values") or []
+            if len(infos) != len(mesh_indices):
+                infos = [{} for _ in mesh_indices]
+            infos = [i if isinstance(i, dict) else {} for i in infos]
+            for info, mi in zip(infos, mesh_indices):
+                if mi >= 0:
+                    info["mesh_index"] = int(mi)
+            parameter["scan_step_info"] = {"values": infos}
         return parameter, step_lengths, grid_specs
+
+    @staticmethod
+    def _load_mesh_specs(group):
+        """The scan's mesh_specs stored next to it, or None."""
+        try:
+            if "scan" in group.keys() and "mesh_specs" in group["scan"].keys():
+                return hickle.load(group["scan"], path="mesh_specs")
+        except Exception:
+            pass
+        return None
 
     def __repr__(self):
         s = "Scan over {} steps".format(len(self))
@@ -3375,6 +3440,10 @@ def _make_scan_step_method(name):
 for _name in _SCAN_STEP_DELEGATE:
     setattr(Scan, _name, _make_scan_step_method(_name))
 del _name
+
+from .mesh import attach_step_methods as _attach_mesh_methods  # noqa: E402
+
+_attach_mesh_methods([*_SCAN_STEP_DELEGATE, "count", "nancount"])
 
 
 def to_dataframe(*args):
@@ -3670,7 +3739,7 @@ def get_lock():
         return True
 
 
-def concatenate(arraylist, grid_specs=None):
+def concatenate(arraylist, grid_specs=None, mesh_specs=None):
     """Concatenate a list of Arrays along the event axis.
 
     Merges data, indices, and scan metadata (step lengths and parameter values)
@@ -3683,6 +3752,8 @@ def concatenate(arraylist, grid_specs=None):
         Arrays to concatenate.  They must have identical scan parameter keys.
     grid_specs : dict, optional
         Grid metadata to attach to the resulting Array.
+    mesh_specs : dict, optional
+        Mesh metadata to attach (default: that of the first Array).
 
     Returns
     -------
@@ -3729,6 +3800,7 @@ def concatenate(arraylist, grid_specs=None):
         parameter=parameter,
         step_lengths=step_lengths,
         grid_specs=grid_specs,
+        mesh_specs=mesh_specs if mesh_specs is not None else getattr(arraylist[0], "_mesh_specs", None),
         name=names.pop() if len(names) == 1 else None,
         unit=units.pop() if len(units) == 1 else None,
     )

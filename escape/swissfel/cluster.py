@@ -578,6 +578,7 @@ def create_arrays_from_dstores(ch, s, dstores_flat, parameter, step_selection, g
             step_lengths=s_sl,
             parameter=tparameter,
             grid_specs=grid_specs,
+            mesh_specs=s["scan_parameters"].get("mesh_specs"),
             name=ch,
         )
         return tarr
@@ -1054,6 +1055,7 @@ def _build_escape_array_v02(
             step_lengths=step_lengths,
             parameter=tparameter,
             grid_specs=grid_specs,
+            mesh_specs=scan_info["scan_parameters"].get("mesh_specs"),
             name=ch,
         )
     except Exception as exc:

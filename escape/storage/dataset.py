@@ -80,6 +80,7 @@ def _dedupe_array_for_alias(data, name):
             unit=data.unit,
             source=data.source,
             grid_specs=getattr(data, "_grid_specs", None),
+            mesh_specs=getattr(data, "_mesh_specs", None),
         )
     assert new_array.__dict__ is not data.__dict__
     return new_array

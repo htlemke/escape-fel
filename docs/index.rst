@@ -25,6 +25,7 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    user_guide/live
    user_guide/scan
    user_guide/grid
+   user_guide/mesh
    user_guide/dataset
    user_guide/custom_processing
    user_guide/plot_tools
