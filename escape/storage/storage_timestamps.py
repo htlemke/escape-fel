@@ -1,6 +1,9 @@
 from numbers import Number
 from pathlib import Path
+import hashlib
+import pickle
 import re
+import threading
 import numpy as np
 import matplotlib.pyplot as plt
 import dask
@@ -17,6 +20,7 @@ from .storage import (
     _check_parent_open,
     _coerce_data,
     _describe_storage,
+    _h5_readable,
     _rollback_keys,
     _to_storable,
 )
@@ -229,22 +233,50 @@ class ArrayTimestamps:
 
     #   >> storing
 
-    def store(self, parent_h5py=None, name=None, unit=None, lock="auto", **kwargs):
-        """a way to store data, especially expensively computed data, into a new file."""
+    def store(
+        self,
+        parent_h5py=None,
+        name=None,
+        unit=None,
+        lock="auto",
+        flush=True,
+        read_back=True,
+        **kwargs,
+    ):
+        """a way to store data, especially expensively computed data, into a new file.
+
+        Parameters
+        ----------
+        flush : bool
+            Flush the results file after this array (default), so a process
+            killed later still leaves a readable file up to here. A caller
+            writing many arrays can pass ``False`` and flush or close the
+            file once at the end.
+        read_back : bool
+            Afterwards, read this array's data and timestamps from the file
+            (default), so it keeps working against the stored copy. Pass
+            ``False`` when the array is not used again after storing; the
+            file contents are the same either way.
+        """
         if lock == "auto":
             lock = get_lock()
         if not hasattr(self, "h5"):
             self.h5 = ArrayH5Dataset(parent_h5py, name)
 
-        with ProgressBar():
-            self.h5.append(self.data, self.timestamps, self.scan, lock=lock, **kwargs)
-        self._data = self.h5.get_data_da()
-        self._timestamps = self.h5.timestamps
+        data = self.data
+        if isinstance(data, da.Array):
+            with ProgressBar():
+                self.h5.append(data, self.timestamps, lock=lock, **kwargs)
+        else:
+            self.h5.append(data, self.timestamps, lock=lock, **kwargs)
+        if read_back:
+            self._data = self.h5.get_data_da()
+            self._timestamps = self.h5.timestamps
         self.scan._save_to_h5(self.h5.grp)
         # a process killed later still leaves a readable file up to here
-        flush = getattr(getattr(self.h5.grp, "file", None), "flush", None)
-        if flush is not None:
-            flush()
+        file_flush = getattr(getattr(self.h5.grp, "file", None), "flush", None)
+        if flush and file_flush is not None:
+            file_flush()
 
     def materialize(self):
         """Load data and timestamps into memory and return ``self``.
@@ -626,8 +658,18 @@ class ScanTimestamps:
 
     def _save_to_h5(self, group):
         self._check_consistency()
+        # Always delete, then write a new group -- never change a scan group
+        # in place. In an h5py file, arrays with an identical scan share one
+        # scan group through hard links (see _link_saved_scan); deleting
+        # removes only this array's name for it, so re-storing one array
+        # leaves the others untouched. Changing the group in place would
+        # change it for all of them.
         if "scan" in group.keys():
+            _forget_saved_scan(group)
             del group["scan"]
+        fingerprint = _scan_fingerprint(self)
+        if _link_saved_scan(group, fingerprint):
+            return
         try:
             scan_group = group.require_group("scan", track_order=True)
         except:
@@ -647,6 +689,7 @@ class ScanTimestamps:
                     if isinstance(attvalue, str):
                         attvalue = str(attvalue)
                     tpg["attributes"][attname] = attvalue
+        _remember_saved_scan(scan_group, fingerprint)
 
     @staticmethod
     def _load_from_h5(group):
@@ -717,6 +760,102 @@ def _make_scan_ts_step_method(name):
 for _name in _SCAN_TIMESTAMPS_STEP_DELEGATE:
     setattr(ScanTimestamps, _name, _make_scan_ts_step_method(_name))
 del _name
+
+
+# Scan groups already written per open h5py file, so the next array with an
+# identical scan gets a hard link to it instead of its own copy. Recordings
+# store thousands of arrays sharing one scan; one copy each made storing
+# several times slower and the file several times larger.
+# {(filename, fileno): {fingerprint: (path, objno)}}
+_SAVED_SCANS = {}
+_SAVED_SCANS_LOCK = threading.Lock()
+_SAVED_SCANS_MAX_FILES = 32
+
+
+def _scan_fingerprint(scan):
+    """Hash of everything ScanTimestamps._save_to_h5 writes, or None if some
+    value cannot be hashed reliably (then the scan is never linked)."""
+    h = hashlib.sha1()
+
+    def add(x):
+        a = np.asarray(x)
+        if a.dtype.kind == "O":
+            h.update(b"O" + pickle.dumps(x, protocol=4))
+        else:
+            h.update(f"{a.dtype.str}{a.shape}".encode())
+            h.update(np.ascontiguousarray(a).tobytes())
+
+    try:
+        add(scan.timestamp_intervals)
+        for parname, pardict in scan.parameter.items():
+            h.update(b"\0par\0" + str(parname).encode())
+            add(pardict.get("values", None))
+            for attname, attvalue in pardict.get("attributes", {}).items():
+                h.update(b"\0att\0" + str(attname).encode())
+                add(attvalue)
+        h.update(str(len(scan)).encode())
+    except Exception:
+        return None
+    return h.hexdigest()
+
+
+def _h5_file_key(obj):
+    return (obj.file.filename, obj.file.id.fileno)
+
+
+def _h5_objno(obj):
+    return tuple(h5py.h5g.get_objinfo(obj.id).objno)
+
+
+def _link_saved_scan(group, fingerprint):
+    """Hard-link an identical scan group already in this file as
+    ``group["scan"]``; False if there is none (or this is not h5py)."""
+    if fingerprint is None or not isinstance(group, h5py.Group):
+        return False
+    key = _h5_file_key(group)
+    with _SAVED_SCANS_LOCK:
+        saved = _SAVED_SCANS.get(key, {}).get(fingerprint)
+    if saved is None:
+        return False
+    path, objno = saved
+    f = group.file
+    # check the saved group is still there (not deleted or rewritten since)
+    if path not in f or _h5_objno(f[path]) != objno:
+        with _SAVED_SCANS_LOCK:
+            _SAVED_SCANS.get(key, {}).pop(fingerprint, None)
+        return False
+    group["scan"] = f[path]
+    return True
+
+
+def _remember_saved_scan(scan_group, fingerprint):
+    if fingerprint is None or not isinstance(scan_group, h5py.Group):
+        return
+    key = _h5_file_key(scan_group)
+    entry = (scan_group.name, _h5_objno(scan_group))  # just created: one name
+    with _SAVED_SCANS_LOCK:
+        saved = _SAVED_SCANS.pop(key, {})
+        # this path or object now holds this scan, whatever it held before
+        for fp in [fp for fp, e in saved.items() if e[0] == entry[0] or e[1] == entry[1]]:
+            del saved[fp]
+        saved[fingerprint] = entry
+        _SAVED_SCANS[key] = saved  # re-insert: most recently used file last
+        while len(_SAVED_SCANS) > _SAVED_SCANS_MAX_FILES:
+            del _SAVED_SCANS[next(iter(_SAVED_SCANS))]
+
+
+def _forget_saved_scan(group):
+    """Drop ``group["scan"]``, about to be deleted, from the cache. Uses the
+    path, not ``.name``: a hard-linked group may report another of its names."""
+    if not isinstance(group, h5py.Group):
+        return
+    path = group.name.rstrip("/") + "/scan"
+    key = _h5_file_key(group)
+    with _SAVED_SCANS_LOCK:
+        saved = _SAVED_SCANS.get(key)
+        if saved:
+            for fp in [fp for fp, e in saved.items() if e[0] == path]:
+                del saved[fp]
 
 
 def _known_len(x):
@@ -919,7 +1058,7 @@ class ArrayH5Dataset:
 
                 chunk_size[0] = int(memlimit_MB // size_element)
 
-            allarrays.append(da.from_array(ds, chunks=chunk_size))
+            allarrays.append(da.from_array(_h5_readable(ds), chunks=chunk_size))
         # if len(allarrays) < 1:
         #     print(ds, ds.shape, chunk_size)
         if len(allarrays) == 0:

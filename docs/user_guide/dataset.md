@@ -86,7 +86,15 @@ lazy callables, and plain sequences:
 * `ArrayTimestamps` raises `ValueError` if `data` and `timestamps` differ in
   length.
 
-Data that has no HDF5/zarr equivalent (strings, Python objects) makes
+Strings can be stored in an HDF5 results file when the array uses h5py's
+string dtype, and they load back as `str`:
+
+```python
+states = np.array(["Open", "Closed"]).astype(h5py.string_dtype())
+```
+
+Other data that has no HDF5/zarr equivalent (plain numpy strings, Python
+objects, strings in a zarr file) makes
 `store()` raise a `TypeError` naming the array and the results file. The check
 happens before anything is written, and a store that fails part-way removes
 what it had written, so the file is never left with a half-stored array.
@@ -182,6 +190,31 @@ quantities:
 # Store all scalar or small-array channels (skip large detector images)
 ds.store_datasets_max_element_size(max_element_size=5000)
 ```
+
+### Many small timestamped channels
+
+Storing thousands of `ArrayTimestamps` with a few points each (for example a
+recording of every slow channel during a scan) is dominated by per-array
+overhead. Two options of `ArrayTimestamps.store()` remove most of it:
+
+```python
+for name, arr in channels.items():
+    ds.append(arr, name=name)
+    arr.store(flush=False, read_back=False)
+ds.results_file.flush()   # or close the file
+```
+
+* `flush=False` skips flushing the file after each array. By default every
+  array is flushed, so a process killed later still leaves a readable file up
+  to that array; with `flush=False` that holds only from your own flush on.
+* `read_back=False` keeps the array's in-memory data instead of re-opening it
+  from the file. Use it when the arrays are not used again after storing.
+
+The file contents are the same either way. Arrays whose scans are identical
+(the usual case for such a recording, which has one shared time window) also
+share one stored `scan` group through HDF5 hard links, whatever options are
+used. Each array still reads its own `<name>/scan`, so readers see no
+difference, but storing is faster and the file is smaller.
 
 ## Using DataSet as a Context Manager
 
