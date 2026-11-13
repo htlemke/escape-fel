@@ -340,12 +340,14 @@ class HistogramDigitizer(_HistRangeSelector):
     over the histogram and listed in the status line.
 
     * **bin size (rounded)** -- the default. Bins of the given size on a grid
-      anchored at zero: every edge is a multiple of the size (like
-      :func:`escape.utilities.roundto`), and the selection is snapped to the
-      nearest grid edges. Bins from different selections/runs then always line
-      up. With ``align="center"`` the *centers* of the bins sit on multiples of
-      the size instead (edges at odd multiples of half the size) -- the
-      convention of the time-tool binning.
+      anchored at zero, and the selection is snapped to that grid. Bins from
+      different selections/runs then always line up. By default the bin
+      *centers* sit on multiples of the size (edges at odd multiples of half
+      the size), so each bin is labelled by the
+      :func:`escape.utilities.roundto` value of the data in it -- the
+      convention of the time-tool binning and of
+      :func:`~escape.storage.storage.bin_edges`. With ``align="edge"`` the bin *edges* sit on
+      the multiples instead.
     * **bin size** -- equal bins starting exactly at ``min`` and lying fully
       inside the selection (a remainder smaller than one bin at the top is
       left out).
@@ -366,9 +368,9 @@ class HistogramDigitizer(_HistRangeSelector):
         the displayed range.
     mode : {"rounded", "size", "number"}
         Initially selected bin specification.
-    align : {"edge", "center"}
-        Whether the rounded grid has edges or bin centers on multiples of the
-        size.
+    align : {"center", "edge"}
+        Whether the rounded grid has bin centers (the default, as in
+        :func:`~escape.storage.storage.bin_edges`) or bin edges on multiples of the size.
     bins, cut_percentage, figsize
         Histogram display settings (``numpy.histogram_bin_edges`` bins rule,
         percentage of outliers cut from each end of the displayed range, and
@@ -403,7 +405,7 @@ class HistogramDigitizer(_HistRangeSelector):
         array,
         n_bins=10,
         mode="rounded",
-        align="edge",
+        align="center",
         bins="auto",
         cut_percentage=0,
         figsize=(8, 6),

@@ -17,8 +17,9 @@ available, so nothing depends on the scan's step list.
 
 ## One value per node
 
-The step methods of `arr.scan` (`mean`, `std`, `median`, `sum`, `count`, ...)
-exist on `arr.mesh` too:
+The step methods of `arr.scan` (`mean`, `std`, `median`, `sum`, `count`,
+`median_and_mad`, `weighted_stat`, ...) exist on `arr.mesh` too -- all of them,
+so `arr.mesh` really is the general form of `arr.grid` and not a subset:
 
 ```python
 import numpy as np
@@ -35,6 +36,14 @@ r.coords[0]            # array([0., 1., 2.])
 arr.mesh.mean(merge=False)   # one per recorded step, in recorded order
 arr.mesh.step_nodes          # node of every recorded step: [0, 1, 2, 0, 1, 2]
 arr.mesh.visits()            # steps per node: [2, 2, 2]
+```
+
+A method that gives several values per group -- `median_and_mad`,
+`weighted_avg_and_std`, `weighted_stat`, `correlation_analysis_to` -- gives one
+mesh per value:
+
+```python
+med, mad = sig.mesh.median_and_mad()    # both (n_delay, n_motor), both with coords
 ```
 
 The result is a **plain numpy array** that also carries its coordinates
@@ -82,6 +91,20 @@ original axis grid --, else the distinct coordinates if there are few, else a
 number of bins), `"nodes"` (the distinct coordinates per dimension), a number
 of bins, edges, or one of these per dimension (a list, or a dict by dimension
 name).
+
+This bins the mesh's *own* dimensions. To make a new dimension out of a
+per-shot channel -- a timetool's arrival time, a pulse energy -- bin that
+channel into scan steps with `digitize` and cross it with the scan:
+
+```python
+from escape.storage.storage import unravel_scans
+
+tt_bins = tt.digitize(bin_width=50, range=(-400, 400), unit="fs")
+grid = unravel_scans(mu, tt_bins, categorize_target=mu)
+grid.mesh.dimension_names    # ['...mono...energy', 'bernina.tt_kb.edge_position_fs']
+```
+
+See [Making an axis out of a per-shot channel](grid.md#binning-a-per-shot-channel).
 
 ## Interpolation: after the method
 

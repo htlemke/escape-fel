@@ -166,9 +166,11 @@ same graphically: drag a span on the histogram for the region to digitize, then
 choose how to bin it with the radio buttons and the value box:
 
 - **bin size (rounded)** (default) — bins of that size on a grid anchored at
-  zero, i.e. every edge is a multiple of the size (as in
-  {func}`escape.utilities.roundto`); the selection snaps to the nearest grid
-  edges. Pass `align="center"` to put bin *centers* on the multiples instead.
+  zero, so bins from different selections or runs line up; the selection snaps
+  to that grid. By default the bin *centers* are the multiples of the size, as
+  in {func}`escape.utilities.roundto` — the same grid
+  {func}`~escape.storage.storage.bin_edges` and `digitize(bin_width=...)` use. Pass
+  `align="edge"` to put the bin *edges* on the multiples instead.
 - **bin size** — equal bins starting exactly at the selection's min.
 - **number of bins** — equal bins spanning exactly the selection.
 
@@ -204,10 +206,31 @@ sig_t = sig.tools.timetool_binning(t_corrected, time_vec=None, time_bins=50e-15)
 sig_t = sig.tools.timetool_binning(tt_jitter, time_vec=nominal_delays, time_bins=50e-15)
 ```
 
-`time_bins` is either an array of bin edges or a bin width; a width spans the
-observed range of the corrected delay, rounded outward to multiples of the
-width. Before 2026-08 the nominal delay was always added, which counted it
-twice for an already corrected delay.
+`time_bins` is either an array of bin edges or a bin width. A width covers the
+observed range of the corrected delay with bins on the grid of multiples of
+that width (bin centers on the multiples — {func}`~escape.storage.storage.bin_edges`), so bins
+from different runs line up; `time_range=` bins a fixed interval instead of
+the observed one. Before 2026-08 the nominal delay was always added, which
+counted it twice for an already corrected delay.
+
+By default the delay bins **replace** the Array's own scan grouping, which is
+what a pure delay scan wants. When the run scans something else as well — an
+energy scan whose shots also carry an arrival time — `cross_scan=True` crosses
+the two instead, giving a 2-D grid:
+
+```python
+# mu(E, arrival time), 50 fs bins
+grid = mu.tools.timetool_binning(
+    tt, time_vec=None, time_bins=50.0,
+    time_range=(-400, 400), cross_scan=True, unit="fs",
+)
+grid.mesh.shape                 # (n_energies, n_bins)
+grid.mesh.nanmean(plot=True)
+```
+
+Note that `time_vec="auto"` makes no sense there: the "nominal delay" it would
+add per step is the *energy* setpoint. See
+{doc}`grid` → *Making an axis out of a per-shot channel*.
 
 ## Re-Sorting with Another Array
 
@@ -233,6 +256,53 @@ preserving per-step metadata:
 combined = escape.concatenate([scan_run1, scan_run2])
 print(combined.scan.par_steps)  # steps from both runs
 ```
+
+## Terminal Display — `repr` and `show()`
+
+In a terminal, `repr(arr)` is an overview: what the Array is, an ASCII
+histogram of all its values, and its scan.
+
+```
+<escape.storage.storage.Array object at 0x...> bernina.jet.det_jf.dap_roi0; shape (300648,)
+5544                        |
+                    ||||||||||||||||
+                |||||||||||||||||||||||||
+             ||||||||||||||||||||||||||||||||||
+5.468e+05                                        7.88e+05
+Scan over 301 steps
+Parameters bernina.mono...energy_delay_corr, ...
+.show() for the histogram of every step
+```
+
+{meth}`~escape.Array.show` prints the long form: one histogram line per scan
+step, stacked into a picture of how the distribution travels through the scan,
+then the overall histogram.
+
+```python
+arr.show()                  # every step
+arr.show(max_steps=20)      # the first and last ten, saying how many were skipped
+arr.show(per_step=False)    # only the overall histogram
+arr.show(perc_limits=[0, 100])   # span everything, outliers included
+```
+
+In IPython the last result is `_`, so `_.show()` after an expression works.
+`display(arr)` does not give a longer view — it is an IPython builtin, but it
+routes through the same `repr`.
+
+`show()` spans the 1st–99th percentile by default, wider than `repr`'s 5th–95th:
+the point of the stacked lines is to watch the distribution *move*, and over an
+absorption edge the pre-edge steps sit well outside the bulk.
+
+```{note}
+Before 2026-11, `repr` printed those per-step lines itself, with no limit — a
+scan binned by a per-shot channel has thousands of steps, and computing a line
+for each of them made merely echoing a variable expensive.
+```
+
+Both work on N-d Arrays: the non-event axes are flattened, so a per-shot
+spectrum or image ROI is described by the distribution of all its values. Above
+`REPR_HIST_MAX_SAMPLES` values a regular subsample is drawn from — these are
+pictures, not results.
 
 ## Notebook Display — Rich Repr
 

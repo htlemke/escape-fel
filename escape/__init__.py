@@ -34,6 +34,7 @@ _LAZY = {
         "unravel_scans",
         "unravel_arrays",  # backward-compat alias for unravel_scans
         "digitize",
+        "bin_edges",
         "filter",
     )},
     **{name: "escape.storage.dataset" for name in ("DataSet", "merge_datasets", "convert_resultsfile")},

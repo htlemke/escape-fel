@@ -60,6 +60,16 @@ HIST_DASK_WARN_BYTES = 500 * 1024**2
 # rather than just warning (see _eagerly_compute_dask below).
 DASK_EAGER_COMPUTE_WARN_BYTES = 500 * 1024**2
 
+# Above this many values, the ASCII histograms of repr(Array)/Array.show() are
+# drawn from a regular subsample. They are a picture of the data, not a result,
+# and a per-shot spectrum stack runs to billions of values. 0 uses all of them.
+REPR_HIST_MAX_SAMPLES = 200_000
+
+# The most bins bin_edges() will make. A width in other units than the data --
+# 20e-15 against a delay axis in ps, say -- otherwise asks for a petabyte of
+# edges; the same limit the interactive digitizer uses.
+MAX_BINS = 10000
+
 
 def _eagerly_compute_dask(darray, op_name, array_name):
     """Materialize a dask array needed by an eager, data-dependent operation.
@@ -138,7 +148,11 @@ def _apply_method(
         axis = kwargs.get("axis", "noaxis")
         if isinstance(axis, Number):
             axis = [axis]
-        if (axis == "noaxis") or (0 in axis):
+        # An explicit axis=None means numpy's "over everything", so it takes
+        # the event axis with it exactly as omitting it does -- and the result
+        # is a plain value, not an Array. (Without this it fell through to
+        # ``0 in None``.)
+        if (axis == "noaxis") or (axis is None) or (0 in axis):
             convertOutput2EscData = []
 
     if is_dask_array:
@@ -186,8 +200,10 @@ _ARRAY_DELEGATE_METHODS = {
     "max":           (np.max,           da.max,           True,  None),
     "all":           (np.all,           da.all,           True,  None),
     "any":           (np.any,           da.any,           True,  None),
-    "abs":           (np.abs,           da.abs,           True,  None),
     # Element-wise — always returns an Array with the same shape
+    # ("abs" belongs here, not above: it maps values, it does not reduce them,
+    # and as a "reduction" it returned a bare ndarray for want of an axis.)
+    "abs":           (np.abs,           da.abs,           False, [0]),
     "isnan":         (np.isnan,         da.isnan,         False, [0]),
     "isinf":         (np.isinf,         da.isinf,         False, [0]),
     "isfinite":      (np.isfinite,      da.isfinite,      False, [0]),
@@ -494,6 +510,78 @@ class Array:
         std_rel, std_fx_rel = get_corr(td.data, tr.data, order=order)
         return std_rel, std_fx_rel
 
+    def median_and_mad(self, axis=None, k_dist=1.4826, norm_samples=False):
+        """This Array's median and median absolute deviation.
+
+        The per-group form of :meth:`Scan.median_and_mad`, which applies it to
+        every step; ``arr.mesh.median_and_mad()`` applies it per mesh node.
+
+        Parameters
+        ----------
+        axis : int, sequence of int or None, optional
+            Passed to the median calls.
+        k_dist : float, optional
+            Scale factor on the deviation: 1 for the real MAD, the default
+            1.4826 for the Gaussian-equivalent standard deviation.
+        norm_samples : bool, optional
+            Divide the deviation by the root of the number of finite events,
+            giving the error of the median rather than the spread.
+
+        Returns
+        -------
+        med, mad
+        """
+        med = self.median(axis=axis)
+        mad = ((self - med).abs() * k_dist).median(axis=axis)
+        if norm_samples:
+            mad = mad / np.sqrt(self.nancount())
+        return med, mad
+
+    def weighted_avg_and_std(self, weights=None, norm_samples=False, axis=0):
+        """This Array's weighted average and standard deviation.
+
+        The per-group form of :meth:`Scan.weighted_avg_and_std`. *weights* is
+        an Array aligned to this one (``None``: uniform, i.e. ``nanmean`` /
+        ``nanstd``); *norm_samples* divides the deviation by the root of the
+        number of events.
+
+        Returns
+        -------
+        avg, std
+        """
+        if weights is not None:
+            values, aligned = match_arrays(self, weights)
+            avg, std = utilities.weighted_avg_and_std(values.data, aligned.data, axis=axis)
+        else:
+            avg, std = utilities.weighted_avg_and_std(self.data, axis=axis)
+        if norm_samples:
+            std = std / da.sqrt(len(self))
+        return avg, std
+
+    def weighted_stat(self, weights=None):
+        """This Array's weighted median and its +-1 sigma-equivalent error.
+
+        The per-group form of :meth:`Scan.weighted_stat`, from the weighted
+        quantiles at the 1 sigma coverage. *weights* is an Array aligned to
+        this one (``None``: uniform).
+
+        Returns
+        -------
+        med : float
+        err : ndarray, shape (2,)
+            The lower and upper error of the median.
+        """
+        qsig = 0.682689492
+        if weights is not None:
+            values, aligned = match_arrays(self, weights)
+            data, sample_weight = values.data, aligned.data
+        else:
+            data, sample_weight = self.data, None
+        quantiles = utilities.weighted_quantile(
+            data, [0.5 - qsig / 2, 0.5, 0.5 + qsig / 2], sample_weight=sample_weight
+        )
+        return quantiles[1], np.diff(quantiles) / np.sqrt(len(data))
+
     def __len__(self):
         self._touch()
         return len(self.index)
@@ -609,11 +697,18 @@ class Array:
         )
         # Save indices for potential use in derived functions
         self._data_selector = args
+        # Selecting events leaves *what* this is alone -- the name, the unit
+        # and the scan's geometry describe the same quantity afterwards, so a
+        # filtered channel still knows what it is (and still has its grid).
         return Array(
             data=self.data.__getitem__(*args),
             index=self.index.__getitem__(events),
             step_lengths=stepLengths,
             parameter=scan.parameter,
+            name=self.name,
+            unit=self.unit,
+            grid_specs=self._grid_specs,
+            mesh_specs=self._mesh_specs,
         )
 
     def get_random_events(self, n, seed=None):
@@ -727,6 +822,10 @@ class Array:
                 index=self.index,
                 step_lengths=self.scan.step_lengths,
                 parameter=self.scan.parameter,
+                name=self.name,
+                unit=self.unit,
+                grid_specs=self._grid_specs,
+                mesh_specs=self._mesh_specs,
             )
         else:
             if self.name:
@@ -1085,33 +1184,113 @@ class Array:
             parameter=self.scan.parameter,
         )
 
-    def _get_ana_str(self, perc_limits=[5, 95]):
-        sqaxes = list(range(self.data.ndim))
-        sqaxes.pop(self.index_dim)
+    def _ana_values(self, values=None):
+        """This Array's values as one flat numpy array fit for histogramming.
+
+        The non-event axes are flattened, so a 2-D Array -- a spectrum or an
+        image ROI per shot -- is described by the distribution of all its
+        values rather than not at all. Above ``REPR_HIST_MAX_SAMPLES`` values
+        a regular subsample is taken: this draws a picture, it does not
+        compute a result.
+        """
+        if values is None:
+            values = self.data
+        values = np.asarray(values).reshape(-1)
+        if REPR_HIST_MAX_SAMPLES and values.size > REPR_HIST_MAX_SAMPLES:
+            values = values[:: int(np.ceil(values.size / REPR_HIST_MAX_SAMPLES))]
+        return values
+
+    def _hist_range(self, values, perc_limits=[5, 95]):
+        """The value range the ASCII histograms are drawn over, or None."""
+        if values.dtype == bool:
+            return [0, 1]
         try:
-            d = self.data.squeeze(axis=tuple(sqaxes))
-        except:
+            finite = values[np.isfinite(values)]
+        except TypeError:
+            return None  # not a numeric dtype
+        if finite.size == 0:
+            return None
+        lo, hi = np.percentile(finite, perc_limits)
+        return [lo, hi] if hi > lo else None
+
+    def _get_ana_str(self, perc_limits=[5, 95], per_step=False, max_steps=None,
+                     bins=40):
+        """An ASCII picture of this Array's values.
+
+        The distribution of all of them; with *per_step*, also one line per
+        scan step, stacked, so the picture shows how the distribution moves
+        through the scan. See :meth:`show`, which prints it -- ``repr`` keeps
+        to the overview, because a scan binned by a per-shot channel has
+        thousands of steps.
+        """
+        values = self._ana_values()
+        hrange = self._hist_range(values, perc_limits)
+        if hrange is None:
             return ""
-        if d.ndim == 1:
-            ostr = ""
-            if d.dtype == bool:
-                hrange = [0, 1]
+        ostr = ""
+        if per_step and self.scan:
+            n_steps = len(self.scan)
+            if max_steps and n_steps > max_steps:
+                head = max_steps // 2
+                shown = list(range(head)) + list(range(n_steps - (max_steps - head), n_steps))
             else:
-                hrange = np.percentile(d[~np.isnan(d)], perc_limits)
-            formnum = lambda num: "{:<9}".format("%0.4g" % (num))
-            for n, td in enumerate(self.scan):
+                shown = range(n_steps)
+            previous = None
+            for n in shown:
+                if previous is not None and n != previous + 1:
+                    ostr += "     ...  : (%d further steps)\n" % (n - previous - 1)
+                step_values = self._ana_values(self.scan.get_step_array(n).data)
                 ostr += (
                     "Step %04d:" % n
                     + hist_asciicontrast(
-                        td.data.squeeze(), bins=40, range=hrange, disprange=False
+                        step_values, bins=bins, range=hrange, disprange=False
                     )
                     + "\n"
                 )
-            ho = Hist_ascii(d, range=hrange, bins=40)
-            ostr += ho.horizontal()
-            return ostr
-        else:
-            return ""
+                previous = n
+        ostr += Hist_ascii(values, range=hrange, bins=bins).horizontal()
+        return ostr
+
+    def show(self, per_step=True, max_steps=None, bins=40, perc_limits=[1, 99]):
+        """Print the long ASCII picture of this Array, the one ``repr`` leaves out.
+
+        One histogram line per scan step, stacked into a picture of how the
+        values move through the scan, then the distribution of all of them.
+        In IPython the last result is ``_``, so ``_.show()`` after an
+        expression works; ``display(arr)`` does not -- it shows the same
+        ``repr``, not a longer view.
+
+        Parameters
+        ----------
+        per_step : bool, optional
+            False leaves out the per-step lines (what ``repr`` shows).
+        max_steps : int, optional
+            Show only the first and last few steps, saying how many were left
+            out. The default shows every step.
+        bins : int, optional
+            Histogram bins per line.
+        perc_limits : sequence of two floats, optional
+            Percentiles of the values the picture spans. Wider here than in
+            ``repr`` (1-99 against 5-95), because the point of the stacked
+            lines is to watch the distribution *travel*: over an absorption
+            edge the pre-edge steps sit well outside the bulk, and a 5-95 span
+            draws them as blank lines. Widen it further for a scan that moves
+            more; ``[0, 100]`` spans everything, outliers included.
+
+        See Also
+        --------
+        escape.Array.hist : the same data as a matplotlib histogram.
+        """
+        if not isinstance(self.data, np.ndarray):
+            print(
+                f"{self.name or 'array'}: still a dask array -- .compute() it "
+                "first, or .hist() to plot it lazily."
+            )
+            return
+        text = self._get_ana_str(
+            perc_limits=perc_limits, per_step=per_step, max_steps=max_steps, bins=bins
+        )
+        print(text if text else f"{self.name or 'array'}: nothing to draw")
 
     def get_index_array(self, N_index_aggregation=None):
         """Return an Array whose data equals its own index (pulse IDs), optionally
@@ -1309,6 +1488,11 @@ class Array:
                 s += self._get_ana_str()
         if self.scan:
             s += self.scan.__repr__()
+            # The per-step picture used to be printed here, one line per step
+            # -- thousands of them for a scan binned by a per-shot channel.
+            # It moved to show(), and this says so, once, where it was.
+            if isinstance(self.data, np.ndarray) and len(self.scan) > 1:
+                s += "\n.show() for the histogram of every step"
         return s
 
     @property
@@ -1855,6 +2039,23 @@ def load_from_h5(parent_h5py, name):
     )
 
 
+_GRAPH_MODULE = None
+
+
+def _graph_module():
+    """``escape.storage.graph``, imported once.
+
+    It imports this module, so it cannot be imported at module scope -- but
+    resolving it inside every escaped() call is pure overhead on a hot path.
+    """
+    global _GRAPH_MODULE
+    if _GRAPH_MODULE is None:
+        from . import graph as _graph
+
+        _GRAPH_MODULE = _graph
+    return _GRAPH_MODULE
+
+
 def escaped(func, convertOutput2EscData="auto"):
     """Decorator that lifts a NumPy/dask function to operate on escape Arrays.
 
@@ -1908,7 +2109,7 @@ def escaped(func, convertOutput2EscData="auto"):
         # node instead of executing it. Gated on an explicit check so every
         # ordinary real-data call below is completely unaffected -- same
         # branch shape as escape.stream's ProcObj recording.
-        from . import graph as _graph
+        _graph = _graph_module()
 
         if any(_graph.is_placeholder(a) for a in args) or any(
             _graph.is_placeholder(v) for v in kwargs.values()
@@ -2220,11 +2421,13 @@ def match_scans(a0, a1, parameters=[]):
 
 
 class Grid:
-    def __init__(self, shape, positions, scan=None, grid_dimension_names=None,**kwargs):
+    def __init__(self, shape, positions, scan=None, grid_dimension_names=None,
+                 grid_units=None, **kwargs):
         self.scan = scan
         self.shape = shape
         self.positions = positions
         self.dimension_names = grid_dimension_names
+        self.units = grid_units
         
     def get_grid_indices(self):
         grid_indices = [
@@ -2276,11 +2479,14 @@ class Grid:
                 name for name, sel in zip(self.dimension_names, selectors)
             ]
 
-        return {
+        specs = {
             "shape": new_shape,
             "positions": new_positions,
             "grid_dimension_names": new_dimension_names,
         }
+        if self.units is not None:
+            specs["grid_units"] = [u for u, sel in zip(self.units, selectors)]
+        return specs
 
     def __getitem__(self, sel):
         if not hasattr(self, "scan") or self.scan is None:
@@ -2320,21 +2526,37 @@ class Grid:
         return self.scan.__getitem__(selected_steps, grid_specs=grid_specs)
 
     def to_grid(self, data):
+        """Lay per-step values out on the grid, one entry per scan step.
+
+        The first axis of *data* has to be the steps -- a result shaped the
+        other way round (``Scan.weighted_stat``'s ``(2, n_steps)`` error, which
+        is what ``errorbar`` wants) would otherwise be zipped against the grid
+        indices and come back silently mis-shaped.
+        """
         cdata = np.asanyarray(data)
+        grid_indices = self.get_grid_indices()
+        if len(cdata) != len(grid_indices):
+            raise ValueError(
+                f"to_grid: {len(cdata)} values for {len(grid_indices)} scan "
+                "steps -- the first axis has to be the steps"
+            )
         grid_shape = self.shape
         grid_data = np.empty(list(grid_shape) + list(np.shape(cdata)[1:]), dtype=cdata.dtype)
         grid_data[:] = np.nan  # or any other fill value
 
-        for tdat,step_index in zip(data,self.get_grid_indices()):
+        for tdat,step_index in zip(cdata, grid_indices):
             grid_data[tuple(step_index)] = tdat
         return grid_data
     
     def get_grid_specs(self):
-        return {
+        specs = {
             "shape": self.shape,
             "positions": self.positions,
-            "grid_dimension_names": self.dimension_names
+            "grid_dimension_names": self.dimension_names,
         }
+        if self.units is not None:
+            specs["grid_units"] = self.units
+        return specs
     
     def fill_count(self):
         """Return (filled_positions, total_positions, percent_filled).
@@ -2637,19 +2859,11 @@ class Scan:
                 1 for real MAD.
                 Defaults to 1.4826 for gaussian distribution.
         """
-        # if self._array.is_dask_array():
-        #     absfoo = da.abs
-        # else:
-        #     absfoo = np.abs
-
-        med = [step.median(axis=axis) for step in self]
-        mad = [
-            (((step - tmed).abs()) * k_dist).median(axis=axis)
-            for step, tmed in zip(self, med)
+        per_step = [
+            step.median_and_mad(axis=axis, k_dist=k_dist, norm_samples=norm_samples)
+            for step in self
         ]
-        if norm_samples:
-            mad = [tmad / da.sqrt(ct) for tmad, ct in zip(mad, self.count())]
-        return med, mad
+        return [m for m, _ in per_step], [d for _, d in per_step]
 
     # def weighted_median_and_mad(self, weights=None, axis=None, k_dist=1.4826, norm_samples=False):
     #     """Calculate median and median absolute deviation for steps of a scan.
@@ -2694,19 +2908,14 @@ class Scan:
         std : dask.array
             Per-step weighted standard deviations, shape ``(n_steps, …)``.
         """
-        avg = []
-        std = []
-        for step in self:
-            if weights is not None:
-                (ta, tw) = match_arrays(step, weights)
-                (tavg, tstd) = utilities.weighted_avg_and_std(ta.data, tw.data, axis=axis)
-            else:
-                (tavg, tstd) = utilities.weighted_avg_and_std(step.data, axis=axis)
-            avg.append(tavg)
-            std.append(tstd)
-        if norm_samples:
-            std = [tstd / da.sqrt(ct) for tstd, ct in zip(std, self.count())]
-        return da.asarray(avg), da.asarray(std)
+        per_step = [
+            step.weighted_avg_and_std(
+                weights=weights, norm_samples=norm_samples, axis=axis
+            )
+            for step in self
+        ]
+        return (da.asarray([a for a, _ in per_step]),
+                da.asarray([d for _, d in per_step]))
 
     def weighted_stat(self, weights=None):
         """Per-step weighted median and ±1σ-equivalent error via weighted quantiles.
@@ -2726,21 +2935,15 @@ class Scan:
         """
         if weights is not None:
             array, weightsf = escape.match_arrays(self._array, weights)
-            weight_steps = weightsf.scan
+            weight_steps = list(weightsf.scan)
         else:
             array = self._array
             weight_steps = [None] * len(self)
-        qsig = 0.682689492
-        med = []
-        err = []
-        for ta, tw in zip(array.scan, weight_steps):
-            sw = tw.data if tw is not None else None
-            r = utilities.weighted_quantile(
-                ta.data, [0.5 - qsig / 2, 0.5, 0.5 + qsig / 2], sample_weight=sw
-            )
-            med.append(r[1])
-            err.append(np.diff(r) / np.sqrt(len(ta.data)))
-        return np.asarray(med), np.asarray(err).T
+        per_step = [
+            step.weighted_stat(weights=tw) for step, tw in zip(array.scan, weight_steps)
+        ]
+        return (np.asarray([m for m, _ in per_step]),
+                np.asarray([e for _, e in per_step]).T)
 
     def correlation_analysis_to(self, ref, *args, **kwargs):
         (td, tr) = match_arrays(self._array, ref)
@@ -3447,7 +3650,9 @@ del _name
 
 from .mesh import attach_step_methods as _attach_mesh_methods  # noqa: E402
 
-_attach_mesh_methods([*_SCAN_STEP_DELEGATE, "count", "nancount"])
+# The same step methods arr.scan and arr.grid have, so arr.mesh really is the
+# general form of arr.grid and not a subset of it.
+_attach_mesh_methods(SCAN_STEP_METHODS)
 
 
 def to_dataframe(*args):
@@ -3947,6 +4152,94 @@ def _caller_varname(obj):
         del frame
 
 
+def bin_edges(values=None, bin_width=None, n_bins=None, range=None, align="center"):
+    """Bin edges over *values*, given a bin **width** or a **number** of bins.
+
+    The counterpart of picking bins by hand for :func:`digitize`, with the same
+    conventions as the interactive digitizer
+    (:class:`~escape.hist_select.HistogramDigitizer`).
+
+    Parameters
+    ----------
+    values : array_like, optional
+        The data to cover. NaNs are ignored. Only its min and max are used, so
+        passing the full per-shot channel is fine. Not needed when *range* is
+        given.
+    bin_width : float, optional
+        Width of one bin, in the units of *values*. The bins sit on a grid of
+        multiples of the width -- a grid fixed by the width alone, not by
+        where the data happen to start, so two runs (or two cuts of one run)
+        binned the same way share their bins. The grid covers the range.
+    n_bins : int, optional
+        Number of equal bins spanning the range exactly. Give either this or
+        *bin_width*.
+    range : (float, float), optional
+        Cover this interval instead of the data's own min/max. Events outside
+        it are dropped by :func:`digitize` (unless ``include_outlier_bins``).
+    align : {"center", "edge"}
+        For *bin_width*: which part of the bin sits on the multiples of the
+        width. ``"center"`` (the default) puts the bin **centers** there, so a
+        value's bin is labelled by :func:`escape.utilities.roundto` of it --
+        the convention of
+        :meth:`~escape.storage.storage_tools.ArrayTools.timetool_binning`.
+        ``"edge"`` puts the bin **edges** on the multiples instead.
+
+    Returns
+    -------
+    ndarray
+        Monotonically increasing edges, ``len(bins) - 1`` bins.
+
+    Examples
+    --------
+    ::
+
+        bin_edges(tt.data, bin_width=50)             # 50 fs bins over the data
+        bin_edges(tt.data, bin_width=50, range=(-400, 400))
+        bin_edges(tt.data, n_bins=16, range=(-400, 400))
+        bin_edges(tt.data, bin_width=50, align="edge")  # edges, not centers
+    """
+    if (bin_width is None) == (n_bins is None):
+        raise ValueError("bin_edges: give either bin_width= or n_bins=, not both")
+    if align not in ("edge", "center"):
+        raise ValueError(f"align must be 'edge' or 'center', got {align!r}")
+    if range is not None:
+        lo, hi = (float(v) for v in range)
+    elif values is None:
+        raise ValueError("bin_edges: give values to cover, or range=")
+    else:
+        values = np.asanyarray(values)
+        if hasattr(values, "compute"):
+            values = values.compute()
+        values = np.ravel(values)
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            raise ValueError("bin_edges: no finite values to bin")
+        lo, hi = float(np.min(finite)), float(np.max(finite))
+    if not hi > lo:
+        raise ValueError(f"bin_edges: empty range [{lo}, {hi}]")
+    if n_bins is not None:
+        if int(n_bins) != n_bins or n_bins < 1:
+            raise ValueError(f"n_bins must be a positive integer, got {n_bins!r}")
+        if n_bins > MAX_BINS:
+            raise ValueError(f"n_bins={n_bins} is more than {MAX_BINS} bins")
+        return np.linspace(lo, hi, int(n_bins) + 1)
+    if not bin_width > 0:
+        raise ValueError(f"bin_width must be positive, got {bin_width!r}")
+    # the grid is (k + offset) * width; offset 1/2 puts the centers -- i.e.
+    # utilities.roundto values -- on the multiples, offset 0 the edges.
+    offset = 0.5 if align == "center" else 0.0
+    k_lo = int(np.floor(lo / bin_width - offset))
+    k_hi = int(np.ceil(hi / bin_width - offset))
+    n = max(k_hi - k_lo, 1)
+    if n > MAX_BINS:
+        raise ValueError(
+            f"bin_width={bin_width!r} gives {n} bins over [{lo:g}, {hi:g}] "
+            f"(at most {MAX_BINS}). Usually this means the width is in other "
+            "units than the data -- check both."
+        )
+    return (k_lo + offset + np.arange(n + 1)) * bin_width
+
+
 def digitize(
     array,
     bins=None,
@@ -3955,6 +4248,11 @@ def digitize(
     right=False,
     foo=np.digitize,
     use_index_data=False,
+    bin_width=None,
+    n_bins=None,
+    range=None,
+    align="center",
+    unit=None,
     **kwargs,
 ):
     """Digitization function for escape arrays according to numpy.digitize.
@@ -3986,6 +4284,25 @@ def digitize(
             np.digitize.
         use_index_data (bool, optional): if True, digitize based on the array's
             index values rather than its data values. Defaults to False.
+        bin_width (float, optional): instead of ``bins``, bin the data into
+            bins of this width (in the data's own units), on a grid of
+            multiples of it -- "timetool bins of 50 fs" is
+            ``tt.digitize(bin_width=50)``. The grid depends on the width
+            alone, so bins from different calls, cuts or runs line up. See
+            :func:`bin_edges`.
+        n_bins (int, optional): instead of ``bins``, this many equal bins over
+            the data range (or over ``range``). See :func:`bin_edges`.
+        range ((float, float), optional): with ``bin_width``/``n_bins``, bin
+            this interval instead of the data's own min/max. Events outside it
+            are dropped unless ``include_outlier_bins`` says otherwise.
+        align ({'center', 'edge'}, optional): with ``bin_width``, which part
+            of the bin sits on the multiples of the width. Defaults to
+            ``'center'``, i.e. each bin is labelled by the
+            :func:`escape.utilities.roundto` value of the data in it, as in
+            :meth:`~escape.storage.storage_tools.ArrayTools.timetool_binning`.
+            ``'edge'`` puts the edges on the multiples instead.
+        unit (str, optional): unit of the binned quantity, carried into the
+            scan axis so grid/mesh plots label it (``"... / fs"``).
 
     Plain ``bins`` are recorded as one labeled
     :class:`~escape.storage.lineage.Param` (``"<name> bins"``), or pass your
@@ -4004,7 +4321,13 @@ def digitize(
     Returns:
         escape.Array: Digitized/ resorted escape.Array
     """
-    if bins is None:
+    by_size = bin_width is not None or n_bins is not None
+    if bins is not None and by_size:
+        raise ValueError(
+            "digitize: give the bins themselves or bin_width=/n_bins=, not both"
+        )
+
+    if bins is None and not by_size:
         if use_index_data or foo is not np.digitize:
             raise NotImplementedError(
                 "Interactive digitizing (digitize() without bins) supports "
@@ -4025,6 +4348,11 @@ def digitize(
     darray = array.index if use_index_data else array.data.ravel()
     if isinstance(darray, da.Array):
         darray = _eagerly_compute_dask(darray, "digitize", array.name)
+    if by_size:
+        # built from the values themselves, so after they are materialized
+        bins = bin_edges(
+            darray, bin_width=bin_width, n_bins=n_bins, range=range, align=align
+        )
     if include_outlier_bins:
         direction = np.sign(bins[-1] - bins[0])
         if include_outlier_bins == "right":
@@ -4067,10 +4395,15 @@ def digitize(
     bin_center = (bin_left + bin_right) / 2
 
     name = array.name if array.name is not None else _caller_varname(array)
+    # The grid/mesh axis this makes is the binned quantity itself -- label it
+    # with the channel's own name and unit, not with "bin_center_...".
+    center_attributes = dict(kwargs, axis_name=name)
+    if unit is not None:
+        center_attributes["unit"] = unit
     parameter = {
         f"bin_center_{name}": {
             "values": bin_center[bin_nos],
-            "attributes": kwargs,
+            "attributes": center_attributes,
         },
         f"bin_left_{name}": {"values": bin_left[bin_nos], "attributes": kwargs},
         f"bin_right_{name}": {"values": bin_right[bin_nos], "attributes": kwargs},
@@ -4158,9 +4491,11 @@ def unravel_scans(*arrays, categorize_target=None):
     axes = [_scan_axis(array) for array in arrays]
     grid_specs = {
         'shape': shape,
-        'positions': [pos for _, pos in axes],
-        'grid_dimension_names': [name for name, _ in axes],
+        'positions': [pos for _, pos, _ in axes],
+        'grid_dimension_names': [name for name, _, _ in axes],
     }
+    if any(unit for _, _, unit in axes):
+        grid_specs['grid_units'] = [unit or "" for _, _, unit in axes]
 
     index_sort_array = Array(
         index=ixgr, 
@@ -4181,11 +4516,18 @@ unravel_arrays = unravel_scans
 
 
 def _scan_axis(array):
-    """(name, per-step positions) of an Array's first numeric 1-D scan parameter.
+    """(name, per-step positions, unit) of an Array's scan axis.
 
-    Falls back to ``("step", arange(n_steps))`` if there is none.
+    Its first numeric 1-D scan parameter, except that a :func:`digitize`
+    result is described by its bin centers (``bin_center_*``) however the
+    parameters happen to be ordered. Such a parameter carries the name and
+    unit of the quantity that was binned, and those are used, so the axis is
+    called after the channel rather than after the bookkeeping.
+
+    Falls back to ``("step", arange(n_steps), None)`` if there is none.
     """
     n_steps = len(array.scan.step_lengths)
+    candidates = []
     for name, par in array.scan.parameter.items():
         if name == "scan_step_info" or not isinstance(par, dict):
             continue
@@ -4198,8 +4540,19 @@ def _scan_axis(array):
             and np.issubdtype(values.dtype, np.number)
             and not np.all(np.isnan(values))
         ):
-            return name, values
-    return "step", np.arange(n_steps)
+            candidates.append((name, par, values))
+    if not candidates:
+        return "step", np.arange(n_steps), None
+    name, par, values = next(
+        (c for c in candidates if c[0].startswith("bin_center_")), candidates[0]
+    )
+    attributes = par.get("attributes") or {}
+    if isinstance(attributes, dict):
+        name = attributes.get("axis_name", name)
+        unit = attributes.get("unit")
+    else:
+        unit = None
+    return name, values, unit
 
 
 def filter(

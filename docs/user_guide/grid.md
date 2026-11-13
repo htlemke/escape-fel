@@ -166,3 +166,77 @@ sorter = escape.storage.unravel_arrays(sig_a, sig_b)
 sig_c_grid = sorter.categorize(sig_c)
 print(sig_c_grid.grid.nanmean())   # shape (10, 8)
 ```
+
+(binning-a-per-shot-channel)=
+## Making an Axis out of a Per-Shot Channel
+
+A scan axis does not have to be a motor. Any per-shot channel becomes one by
+**binning** it: {meth}`~escape.Array.digitize` groups the shots into bins and
+hands back an Array whose scan steps *are* those bins, and
+{func}`~escape.storage.storage.unravel_scans` crosses that with the scan the
+run already has.
+
+The standard case is a jittering arrival time measured shot by shot with a
+timetool. The laser–X-ray delay of each shot is only known after the fact, so
+the run is an energy scan and the delay axis is made afterwards, as finely as
+the statistics allow:
+
+```python
+import escape
+from escape.storage.storage import unravel_scans
+
+tt = d.bernina.tt_kb.edge_position_fs          # one arrival time per shot
+mu = d.bernina.jet.det_jf.dap_roi1 / d.bernina.mon_mono.intensity
+
+tt_bins = tt.digitize(bin_width=50, range=(-400, 400), unit="fs")
+grid = unravel_scans(mu, tt_bins, categorize_target=mu)
+
+grid.mesh.shape                 # (n_energies, n_bins)
+grid.mesh.nanmean(plot=True)    # mu(E, arrival time) as a map
+```
+
+`bin_width=` is the bin **size** in the channel's own units. The bins sit on
+the grid of multiples of that size — by default with the bin *centers* on the
+multiples, so each bin is labelled by the {func}`escape.utilities.roundto`
+value of the shots in it. The grid is fixed by the size alone, not by where
+these particular shots happen to start, so two runs (or two cuts of one run)
+binned the same way share their bins. `n_bins=` gives that many equal bins
+instead, `range=` restricts what is covered (shots outside it are dropped), and
+`align="edge"` puts the bin *edges*, rather than the centers, on the multiples.
+{func}`~escape.storage.storage.bin_edges` builds such edges on their own.
+
+When the per-shot channel is a timetool reading, the two steps are also
+available as one call:
+
+```python
+grid = mu.tools.timetool_binning(
+    tt, time_vec=None, time_bins=50.0,
+    time_range=(-400, 400), cross_scan=True, unit="fs",
+)
+```
+
+{meth}`~escape.storage.storage_tools.ArrayTools.timetool_binning` digitizes the
+delay and crosses it with the run's own scan (`cross_scan=True`; without it the
+delay bins *replace* that scan, which is what a pure delay scan wants). It can
+also build the corrected delay for you, by adding each step's nominal delay to
+the per-shot reading — `time_vec="auto"`. Do **not** use that here: on an
+energy scan the "nominal delay" it would add is the mono setpoint.
+
+Changing the bin size is the one knob worth turning: narrow bins resolve more
+in time but put fewer shots in each one. `grid.mesh.count()` says how many
+shots every cell actually got.
+
+```{tip}
+The axis is named after the channel that was binned (and labelled with the
+`unit=` you give it), not after the `bin_center_...` parameter that carries it,
+so `grid.mesh.select({"bernina.tt_kb.edge_position_fs": (-100, 100)})` and the
+plot labels both read the way you would say it.
+```
+
+```{note}
+A method over a grid of a few thousand cells reads every cell's events. If the
+Array is still lazy, dask evaluates all cells in one pass — but computing the
+per-shot Array **once** up front (`mu = (sig / i0).compute()`; a per-shot
+channel is a few MB) is faster still, and pays off as soon as you try a second
+bin size.
+```

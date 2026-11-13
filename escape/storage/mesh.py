@@ -46,6 +46,15 @@ __all__ = ["Mesh", "ArrayMesh", "MeshArray"]
 
 _GRID_KINDS = ("grid", "binned", "interpolated")
 
+# How many nodes' lazy results one dask run evaluates. Evaluating them together
+# is what makes a reduction over a lazy mesh fast -- one scheduler pass instead
+# of one per node, reading each file chunk once for all the nodes that share
+# it. Batching rather than one graph for everything is not only a bound on
+# memory: graph building and scheduling grow faster than linearly, so a few
+# medium graphs beat one big one. Measured on a 4483-node grid: 46 s per-node,
+# 19 s in one graph, 11 s in batches of 512 (the optimum is shallow, 256-1024).
+MESH_COMPUTE_BATCH_NODES = 512
+
 
 # ---------------------------------------------------------------------------
 # results
@@ -305,28 +314,64 @@ class Mesh:
 # ---------------------------------------------------------------------------
 # a mesh bound to the steps of an Array
 # ---------------------------------------------------------------------------
+def _is_lazy(value):
+    """Whether *value* -- or any part of a tuple of them -- still needs dask."""
+    if isinstance(value, tuple):
+        return any(hasattr(v, "compute") for v in value)
+    return hasattr(value, "compute")
+
+
+def _as_values(value):
+    """One group's result as numpy: an array, or a tuple of them."""
+    if isinstance(value, tuple):
+        return tuple(np.asarray(v) for v in value)
+    return np.asarray(value)
+
+
 def _step_infos(scan):
     infos = (scan.parameter.get("scan_step_info") or {}).get("values") or []
     return infos if len(infos) == len(scan) else [{}] * len(scan)
 
 
 def _from_parameters(scan):
-    """(names, per-step coordinates) from the scan's own parameter values: the
-    targets (not the ``*_readback`` copies), numeric, one value per step."""
-    names, columns = [], []
-    for name, par in scan.parameter.items():
+    """(names, per-step coordinates, units) from the scan's own parameter
+    values: the targets (not the ``*_readback`` copies), numeric, one value
+    per step.
+
+    A :func:`~escape.storage.storage.digitize` result describes each of its
+    steps with three parameters -- ``bin_center_x``, ``bin_left_x`` and
+    ``bin_right_x`` -- which are one axis, not three: only the centers become
+    a mesh dimension, named and given a unit by what was binned.
+    """
+    names, columns, units = [], [], []
+    parameters = dict(scan.parameter)
+    binned = {
+        name[len("bin_center_"):]
+        for name in parameters
+        if name.startswith("bin_center_")
+    }
+    for name, par in parameters.items():
         if name == "scan_step_info" or name.endswith("_readback") or not isinstance(par, dict):
+            continue
+        if any(
+            name == prefix + quantity
+            for quantity in binned
+            for prefix in ("bin_left_", "bin_right_")
+        ):
             continue
         try:
             values = np.asarray(par["values"], dtype=float)
         except (KeyError, TypeError, ValueError):
             continue
         if values.shape == (len(scan),) and not np.all(np.isnan(values)):
-            names.append(name)
+            attributes = par.get("attributes")
+            attributes = attributes if isinstance(attributes, dict) else {}
+            names.append(attributes.get("axis_name", name))
+            units.append(attributes.get("unit") or "")
             columns.append(values)
     if not columns:
-        return ["step"], np.arange(len(scan), dtype=float)[:, None]
-    return names, np.column_stack(columns)
+        return ["step"], np.arange(len(scan), dtype=float)[:, None], [""]
+    return names, np.column_stack(columns), units
 
 
 def _merge_points(points, resolution=None):
@@ -382,14 +427,16 @@ class ArrayMesh:
             nodes = np.column_stack(
                 [np.asarray(p, float)[unique[:, d]] for d, p in enumerate(positions)]
             )
-            mesh = Mesh(nodes, grid_specs.get("grid_dimension_names"), None, "grid",
+            mesh = Mesh(nodes, grid_specs.get("grid_dimension_names"),
+                        grid_specs.get("grid_units"), "grid",
                         positions=positions, node_grid_index=unique)
             step_nodes = np.asarray(inverse).ravel()
         else:
-            names, points = _from_parameters(scan)
+            names, points, units = _from_parameters(scan)
             nodes, step_nodes = _merge_points(points)
             # several parameters without a grid: moved together, a path
-            mesh = Mesh(nodes, names, kind=None if len(names) == 1 else "path")
+            mesh = Mesh(nodes, names, units if any(units) else None,
+                        kind=None if len(names) == 1 else "path")
         return cls(array, mesh, step_nodes)._compact()
 
     def _compact(self):
@@ -420,12 +467,22 @@ class ArrayMesh:
         return self.mesh.units
 
     @property
+    def positions(self):
+        """The grid positions per dimension, or ``None`` when the nodes do not
+        lie on a grid."""
+        return self.mesh.positions
+
+    @property
     def kind(self):
         return self.mesh.kind
 
     @property
     def is_grid(self):
         return self.mesh.is_grid
+
+    @property
+    def ndim(self):
+        return self.mesh.ndim
 
     @property
     def shape(self):
@@ -439,10 +496,13 @@ class ArrayMesh:
     @property
     def node_steps(self):
         """Per node, the (Array) step numbers that measured it, in recorded order."""
-        groups = [[] for _ in range(len(self.mesh))]
-        for step, node in zip(self.steps, self.step_nodes):
-            groups[node].append(int(step))
-        return groups
+        # A stable sort by node keeps each node's steps in recorded order, and
+        # the counts say where to cut -- a Python loop over the steps costs
+        # noticeably more once a mesh has thousands of nodes.
+        order = np.argsort(self.step_nodes, kind="stable")
+        counts = np.bincount(self.step_nodes, minlength=len(self.mesh))
+        cuts = np.cumsum(counts[:-1]) if len(counts) else []
+        return [part.tolist() for part in np.split(self.steps[order], cuts)]
 
     def visits(self):
         """How many steps measured each node."""
@@ -455,7 +515,7 @@ class ArrayMesh:
             self.steps, np.arange(len(self.steps))
         ):
             return self._array
-        return self._steps_array(self.steps)
+        return self._array_of_steps(self.steps)
 
     def __len__(self):
         return len(self.mesh)
@@ -494,7 +554,7 @@ class ArrayMesh:
         if not keep.any():
             raise IndexError("the selection contains no measured node")
         if not keep_dims:  # one grid point: its steps, as an Array
-            return self._steps_array(self.steps[keep[self.step_nodes]])
+            return self._array_of_steps(self.steps[keep[self.step_nodes]])
         renumber = [
             {old: new for new, old in enumerate(chosen[d])} for d in range(ndim)
         ]
@@ -511,7 +571,7 @@ class ArrayMesh:
             [np.asarray(m.positions[d])[chosen[d]] for d in keep_dims],
             node_grid_index,
         )
-        return self._subset(keep, mesh)
+        return self._with_nodes(keep, mesh)
 
     def select(self, ranges=None, **kwargs):
         """The nodes within value ranges, for any mesh:
@@ -544,9 +604,9 @@ class ArrayMesh:
             ).reshape(-1, m.ndim)
         mesh = Mesh(m.nodes[keep], m.dimension_names, m.units, m.kind, m.resolution,
                     positions, node_grid_index)
-        return self._subset(keep, mesh)
+        return self._with_nodes(keep, mesh)
 
-    def _subset(self, keep, mesh):
+    def _with_nodes(self, keep, mesh):
         remap = np.full(len(self.mesh), -1, int)
         remap[np.flatnonzero(keep)] = np.arange(keep.sum())
         on = keep[self.step_nodes]
@@ -631,21 +691,103 @@ class ArrayMesh:
         return ArrayMesh(self._array, mesh, node_to_cell[self.step_nodes[on]], self.steps[on])
 
     # -- computing ---------------------------------------------------------------
-    def _steps_array(self, steps):
+    def _array_of_steps(self, steps):
         steps = [int(s) for s in steps]
         scan = self._array.scan
         return scan.get_step_array(steps[0]) if len(steps) == 1 else scan[steps]
 
-    def _reduce(self, steps, name, args, kwargs):
-        part = self._steps_array(steps)
-        if name == "count":
-            return len(part)
-        value = getattr(part, name)(*args, **kwargs)
-        if hasattr(value, "compute"):
-            value = value.compute()
-        return np.asarray(value)
+    def _event_slices(self):
+        """``(data, bounds)`` for the fast path, or ``None``.
 
-    def _result(self, values, merge):
+        The event axis of an Array is partitioned by its step lengths in order,
+        so step *n* is ``data[bounds[n]:bounds[n + 1]]``. Only offered for
+        numpy-backed data -- a dask array has to go through the lazy path.
+        """
+        array = self._array
+        data = array.data
+        if not isinstance(data, np.ndarray):
+            return None
+        return data, np.asarray(array.scan._step_index_ranges)
+
+    def _direct_reduction(self, name, kwargs):
+        """The plain numpy function behind a step method, or ``None``.
+
+        Array's reductions go through :func:`~escape.storage.storage.escaped`,
+        which aligns indices and rebuilds an Array for every call. On one slice
+        of one numpy array that work is all thrown away again, and with a few
+        thousand nodes it costs several times the reduction itself. Without an
+        ``axis`` the method is exactly ``np_func(raw_values, ...)``, so for that
+        case the function is used directly. Anything else -- an ``axis``, an
+        element-wise method, an escape-specific one like ``median_and_mad`` --
+        returns ``None`` and takes the ordinary path.
+        """
+        if "axis" in kwargs:
+            return None
+        from .storage import _ARRAY_DELEGATE_METHODS
+
+        entry = _ARRAY_DELEGATE_METHODS.get(name)
+        if entry is None:
+            return None
+        np_func, _, is_reduction, _ = entry
+        return np_func if (is_reduction and np_func is not None) else None
+
+    def _values_per_node(self, groups, name, args, kwargs):
+        """The method applied to every group of steps, as a list over groups.
+
+        Three paths, in order of preference: the plain numpy function on the
+        raw values (see :meth:`_direct_reduction`); otherwise the Array method
+        per group, with any lazy results evaluated **together** rather than one
+        dask run per group -- a few thousand groups re-reading the same file
+        chunks is otherwise the whole cost.
+
+        An entry is a tuple when the method gives several values per group
+        (``median_and_mad``, ``weighted_stat``, ...).
+        """
+        values = [None] * len(groups)
+
+        if name == "count":
+            for i, steps in enumerate(groups):
+                values[i] = int(sum(self._array.scan.step_lengths[s] for s in steps))
+            return values
+
+        sliced = self._event_slices()
+        np_func = None if sliced is None else self._direct_reduction(name, kwargs)
+        if np_func is not None:
+            data, bounds = sliced
+            for i, steps in enumerate(groups):
+                if len(steps) == 1:
+                    part = data[bounds[steps[0]]:bounds[steps[0] + 1]]
+                else:
+                    part = np.concatenate(
+                        [data[bounds[s]:bounds[s + 1]] for s in steps]
+                    )
+                values[i] = np.asarray(np_func(part, *args, **kwargs))
+            return values
+
+        lazy_at, lazy = [], []
+        for i, steps in enumerate(groups):
+            part = self._array_of_steps(steps)
+            value = getattr(part, name)(*args, **kwargs)
+            if _is_lazy(value):
+                lazy_at.append(i)
+                lazy.append(value)
+            else:
+                values[i] = _as_values(value)
+        if lazy:
+            import dask
+            from dask.diagnostics import ProgressBar
+
+            # In batches (see MESH_COMPUTE_BATCH_NODES): one graph for
+            # everything is both unbounded and slower than a few medium ones.
+            with ProgressBar():
+                for start in range(0, len(lazy), MESH_COMPUTE_BATCH_NODES):
+                    batch = lazy[start:start + MESH_COMPUTE_BATCH_NODES]
+                    for i, value in zip(lazy_at[start:start + len(batch)],
+                                        dask.compute(*batch)):
+                        values[i] = _as_values(value)
+        return values
+
+    def _as_mesh_array(self, values, merge):
         m = self.mesh
         if not merge:
             return MeshArray(values, [self.step_coords], "steps", m.dimension_names, m.units, mesh=m)
@@ -730,14 +872,28 @@ def _make_mesh_method(name):
             raise ValueError("interpolate= needs one value per node (merge=True)")
         view = self.as_grid(bins) if bins is not None else self
         groups = view.node_groups() if merge else [[s] for s in view.steps]
-        values = np.asarray([view._reduce(g, name, args, kwargs) for g in groups])
-        if interpolate is not None:
-            result = view._interpolate(values, interpolate)
+        per_node = view._values_per_node(groups, name, args, kwargs)
+
+        # Some methods give several values per node (median_and_mad,
+        # weighted_avg_and_std, weighted_stat, ...). Each becomes a mesh of its
+        # own, returned as a tuple, as the same methods do on arr.scan/arr.grid.
+        if per_node and isinstance(per_node[0], tuple):
+            columns = [
+                np.asarray([node[k] for node in per_node])
+                for k in range(len(per_node[0]))
+            ]
         else:
-            result = view._result(values, merge)
+            columns = [np.asarray(per_node)]
+
+        results = tuple(
+            view._interpolate(values, interpolate) if interpolate is not None
+            else view._as_mesh_array(values, merge)
+            for values in columns
+        )
+        result = results[0] if len(results) == 1 else results
         if plot:
             try:
-                plot_mesh_array(result, axis=plot, **(plot_kws or {}))
+                plot_mesh_array(results[0], axis=plot, **(plot_kws or {}))
             except Exception as exc:  # plotting must not cost the result
                 logger.warning("mesh %s: no plot: %s", name, exc)
         return result
@@ -756,14 +912,17 @@ def _make_mesh_method(name):
         "interpolate : True, 'auto', int, positions per dimension, or dict\n"
         "    Apply per node, then interpolate onto a grid (masked far from nodes).\n"
         "plot : bool, Axes or Figure; plot_kws : dict\n"
-        "    Plot the result.\n"
+        "    Plot the result (the first one, for a method giving several).\n"
+        "\n"
+        "A method that gives several values per group returns one MeshArray "
+        "per value, as a tuple.\n"
     )
     return method
 
 
 def _node_groups(self):
     """Per node, the (Array) step numbers whose events are pooled."""
-    return [g for g in self.node_steps]
+    return self.node_steps
 
 
 ArrayMesh.node_groups = _node_groups

@@ -563,13 +563,23 @@ class ArrayTools(_ToolsBase):
 
         return binned, par_steps, n_signal, std, quantile
 
-    def timetool_binning(self, timetool, time_vec="auto", time_bins=None):
+    def timetool_binning(
+        self,
+        timetool,
+        time_vec="auto",
+        time_bins=None,
+        time_range=None,
+        cross_scan=False,
+        unit=None,
+    ):
         """Bin this Array along a timetool-corrected delay axis.
 
         Builds a corrected per-shot delay from ``timetool`` (optionally
         adding a nominal per-scan-step delay, see ``time_vec``), digitizes
-        it into ``time_bins``, and re-groups this Array (via
-        :meth:`~escape.storage.storage.Array.categorize`) accordingly.
+        it into ``time_bins``, and re-groups this Array accordingly --
+        either replacing its scan (:meth:`~escape.Array.categorize`) or
+        crossing the delay bins with it into a grid (``cross_scan=True``,
+        :func:`~escape.storage.storage.unravel_scans`).
 
         Parameters
         ----------
@@ -602,15 +612,57 @@ class ArrayTools(_ToolsBase):
               pairs with ``time_vec="auto"``).
         time_bins : array-like or float, optional
             Explicit bin edges (array-like), or a bin width (float) in the
-            same units as the corrected delay -- in which case edges are
-            auto-generated to span the corrected delay's observed
-            min/max, rounded outward to that width via
-            :func:`escape.utilities.roundto`.
+            same units as the corrected delay -- in which case the bins sit on
+            the grid of multiples of that width, bin centers on the multiples
+            (:func:`~escape.storage.storage.bin_edges`, ``align="center"``). That grid is fixed
+            by the width alone, so bins from different runs or different cuts
+            of one run line up.
+
+            .. note::
+               Until 2026-11 a width generated its edges with an ``arange``
+               that stopped one width short of the observed maximum, so the
+               shots in the last bin were dropped -- a few per mille of a run,
+               always the latest-arriving ones. Results binned by width before
+               then are missing that bin.
+        time_range : (float, float), optional
+            With a ``time_bins`` width: bin this delay interval instead of the
+            corrected delay's own min/max. Shots outside it are dropped.
+        cross_scan : bool, optional
+            What to do with the scan this Array already has.
+
+            - ``False`` (default): **replace** it -- the result is grouped by
+              delay bin only. Right for a pure delay scan.
+            - ``True``: **cross** it with the delay bins
+              (:func:`~escape.storage.storage.unravel_scans`), so the result
+              is a 2-D grid, this Array's own scan axis by delay bin. Right
+              when the run scans something else as well -- an energy scan
+              binned in arrival time, say -- where replacing the grouping
+              would collapse that axis. Note that ``time_vec="auto"`` makes no
+              sense there: the "nominal delay" it would add is the other
+              axis' setpoint. Pass ``time_vec=None``.
+        unit : str, optional
+            Unit of the corrected delay, carried into the axis so grid/mesh
+            plots label it (``"... / fs"``).
 
         Returns
         -------
         escape.Array
-            This Array, re-grouped into the resulting time bins.
+            This Array, grouped into the resulting time bins -- or, with
+            ``cross_scan=True``, onto the grid of its own scan by those bins.
+            Reduce it with ``.mesh`` (``result.mesh.nanmean()``).
+
+        Examples
+        --------
+        ::
+
+            # delay scan: 50 fs bins, jitter-corrected
+            sig.tools.timetool_binning(tt, time_bins=50e-15)
+
+            # energy scan with a per-shot arrival time: E x delay grid
+            mu.tools.timetool_binning(
+                tt, time_vec=None, time_bins=50.0,
+                time_range=(-400, 400), cross_scan=True, unit="fs",
+            ).mesh.nanmean()
         """
         array = self._array
 
@@ -626,17 +678,27 @@ class ArrayTools(_ToolsBase):
             )  # taking the time of the step and adding the time tool delay for each shot - the real measured delay
 
         if isinstance(time_bins, Number) and type(time_bins) is float:
-            t_tt_data = t_tt.compute().data if t_tt.is_dask_array() else t_tt.data
-            time_bins = np.arange(
-                utilities.roundto(np.nanmin(t_tt_data), time_bins) - time_bins / 2,
-                utilities.roundto(np.nanmax(t_tt_data), time_bins) + time_bins / 2,
-                time_bins,
+            # A width: bin centers on multiples of it, edges halfway between --
+            # the convention this has always used, and now digitize's own
+            # default. digitize covers the range by construction; the arange it
+            # replaces stopped one width short, silently dropping the last bin.
+            t_tt_binned = t_tt.digitize(
+                bin_width=time_bins, range=time_range, align="center", unit=unit
             )
-        t_tt_binned = t_tt.digitize(time_bins)
+        else:
+            if time_range is not None:
+                raise ValueError(
+                    "timetool_binning: time_range= applies to a bin width; "
+                    "with explicit time_bins edges, give the range as edges."
+                )
+            t_tt_binned = t_tt.digitize(time_bins, unit=unit)
 
-        array_tt = (t_tt_binned).categorize(array)
+        if cross_scan:
+            from .storage import unravel_scans
 
-        return array_tt
+            return unravel_scans(array, t_tt_binned, categorize_target=array)
+
+        return t_tt_binned.categorize(array)
 
 
 # >>>>>>>>>>>>>>>
