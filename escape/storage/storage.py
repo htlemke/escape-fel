@@ -4341,7 +4341,7 @@ def _to_storable(data, grp):
                 f"{type(data).__name__}. Pass a numpy or dask array (or a "
                 f"list of numbers)."
             ) from exc
-    if np.dtype(data.dtype).kind in "OUMm":
+    if np.dtype(data.dtype).kind in "OUMm" and not _is_h5_string_data(data, grp):
         raise TypeError(
             f"Cannot store {_describe_storage(grp)}: data has dtype "
             f"{data.dtype}, which has no native HDF5/zarr equivalent (mixed "
@@ -4350,6 +4350,36 @@ def _to_storable(data, grp):
             f"entry."
         )
     return data
+
+
+def _is_h5_string_data(data, grp):
+    """True for object data marked with h5py's variable-length string dtype
+    (``h5py.string_dtype()``) going into an h5py file: HDF5 stores that
+    natively, although numpy sees it as object dtype."""
+    return isinstance(grp, h5py.Group) and bool(
+        h5py.check_string_dtype(np.dtype(data.dtype))
+    )
+
+
+class _H5StringReader:
+    """Array-like view of an HDF5 string dataset that reads ``str`` (h5py
+    returns ``bytes``), so a stored string channel loads back as written."""
+
+    def __init__(self, ds):
+        self._strings = ds.asstr()
+        self.shape = ds.shape
+        self.ndim = ds.ndim
+        self.dtype = ds.dtype
+
+    def __getitem__(self, key):
+        return np.asarray(self._strings[key], dtype=self.dtype)
+
+
+def _h5_readable(ds):
+    """*ds*, or a str-decoding view of it for an HDF5 string dataset."""
+    if h5py.check_string_dtype(ds.dtype):
+        return _H5StringReader(ds)
+    return ds
 
 
 def _check_parent_open(parent, name):
@@ -4628,7 +4658,7 @@ class ArrayH5Dataset:
 
                 chunk_size[0] = int(memlimit_MB // size_element)
 
-            allarrays.append(da.from_array(ds, chunks=chunk_size))
+            allarrays.append(da.from_array(_h5_readable(ds), chunks=chunk_size))
         # if len(allarrays) < 1:
         #     print(ds, ds.shape, chunk_size)
         if len(allarrays) == 0:
