@@ -445,11 +445,53 @@ def reachable_reflections(sample: Sample, energy: float, constraints: dict, hkls
 # --- the 3D view -------------------------------------------------------------------
 
 
+def viewer_page(view_id: str = "diff3d", storage: str | None = None, title: str | None = None) -> str:
+    """The 3D page with the Bernina geometry and detectors built in (HTML text).
+
+    hklforge's view (``hklforge.view``), built from ``GEOMETRY``: the circles,
+    k, k', Q, the Ewald sphere, cells and Brillouin zones, the virtual angles
+    one by one, Brillouin-zone special points. Embed it with
+    ``hklforge.view.iframe`` and feed it :func:`view_message` through
+    ``hklforge.view.payload_html`` (or a ``<span id="{view_id}-payload">``).
+    ``storage``: prefix of what the page keeps in the browser.
+    """
+    from hklforge.view import page
+    return page(GEOMETRY, view_id=view_id, storage=storage,
+                title=title or "Bernina diffractometer (You geometry, SwissFEL frame)",
+                detectors=[[k, v[0], v[1]] for k, v in DETECTOR_PRESETS.items()])
+
+
+def view_message(angles: dict, energy: float, ub=None, surface=None, reference=None, label: str = "",
+                 targets=None, n: int = 0, cell: dict | None = None, space_group=None, **extra) -> dict:
+    """The message :func:`viewer_page` reads, everything in the lab
+    (SwissFEL) frame: ``ub`` (phi frame, 2 pi), ``surface`` / ``reference``
+    phi-frame vectors (or None to clear them), ``targets`` reflections drawn
+    as nodes. With ``cell`` and ``space_group`` it carries the
+    Brillouin-zone special points too (not without a space group: the
+    lattice centring decides which points they are). Further keys (``display``, ``ghosts``
+    ...) are passed on."""
+    from hklforge.view import message
+    sp = None
+    if cell is not None and space_group is not None:     # the centring is not in the cell
+        from hklforge.crystal.bz import special_points
+        try:
+            sp = special_points(cell, space_group)
+        except Exception:
+            sp = None
+    msg = message(None, _complete(angles), k=k_magnitude(energy), ub=ub, label=label, targets=targets,
+                  special_points=sp, n=n, **extra)
+    if ub is not None:            # sent as None too, so that a cleared vector disappears
+        msg["nPhi"] = None if surface is None else [float(x) for x in np.asarray(surface, float)]
+        msg["refPhi"] = None if reference is None else [float(x) for x in np.asarray(reference, float)]
+    return msg
+
+
 def view_payload(sample: Sample | None, angles: dict, energy: float, label: str = "",
                  targets=None, n: int = 0) -> dict:
-    """The message the 3D page (``escape.bernina.VIEWER_HTML``) reads. The page
-    computes its mechanism on You's axes, so UB and the surface normal are
-    handed over in that frame."""
+    """The message the earlier 3D page (``escape.bernina.VIEWER_HTML``) reads.
+    That page computes its mechanism on You's axes, so UB and the surface
+    normal are handed over in that frame. Kept for eco versions that still
+    use that page; new code: :func:`viewer_page` and :func:`view_message`."""
     msg = {"angles": _complete(angles), "kMag": k_magnitude(energy), "label": label, "n": n}
     if sample is not None:
         msg["ub"] = to_you(sample.UB).tolist()

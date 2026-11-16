@@ -151,3 +151,23 @@ def test_random_battery_against_diffcalc():
     stats, mismatches = ce.run_diffcalc(25, seed=7)
     assert mismatches == [] and stats["agree"] >= 10
     assert stats["angle_max_dev"] < 1e-6 and stats["virtual_max_dev"] < 1e-6 and stats["ub_max_dev"] < 1e-9
+
+
+def test_viewer_page_and_message():
+    """The 3D view: hklforge's page with the Bernina geometry; messages in the lab frame."""
+    import json
+    import re
+    from hklforge.view import geometry_message
+    page = dif.viewer_page(storage="test")
+    cfg = json.loads(re.search(r"<script>window\.HKLFORGE_VIEW = (\{.*?\});</script>", page).group(1))
+    assert cfg["geometry"] == json.loads(json.dumps(geometry_message(dif.GEOMETRY)))
+    assert cfg["storage"] == "test" and [d[0] for d in cfg["detectors"]] == list(dif.DETECTOR_PRESETS)
+    s = dif.Sample.from_text(CELL, "(1,1,1) > (1,0,0)\n(1,1,-1) > (0,1,0)", "(1,1,1)", "(1,0,0)")
+    msg = dif.view_message({"eta": 3}, ENERGY, ub=s.UB, surface=s.n_surface, reference=s.n_reference,
+                           targets=[(1, 1, 1)], cell=CELL, space_group="Fd-3m", n=2, ghosts=[])
+    assert np.allclose(msg["ub"], s.UB) and np.allclose(msg["nPhi"], s.n_surface)
+    assert msg["angles"]["eta"] == 3 and set(msg["angles"]) == set(dif.CIRCLES)
+    assert msg["bz"]["variant"] == "FCC" and msg["ghosts"] == [] and msg["n"] == 2
+    assert dif.view_message({}, ENERGY, ub=s.UB)["nPhi"] is None        # cleared, not left out
+    # the earlier page keeps its message (You frame)
+    assert np.allclose(dif.view_payload(s, {}, ENERGY)["ub"], dif.to_you(s.UB))

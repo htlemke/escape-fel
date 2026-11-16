@@ -14,8 +14,12 @@ and the bernina-scripts prep apps (Binder, browser) compute the same thing:
 - :mod:`.detector_view` - a detector face mapped to hkl, Brillouin zones,
   powder rings, rods, exit angles (and a matplotlib drawing of it);
 - :mod:`.otti` - the THC lid's detector arm;
-- ``VIEWER_HTML`` - the three.js 3D page of the diffractometer and
-  reciprocal space (self-contained, fed through ``diffraction.view_payload``).
+- ``diffraction.viewer_page`` / ``diffraction.view_message`` - the 3D view
+  of the diffractometer and reciprocal space: hklforge's page
+  (``hklforge.view``) with the Bernina geometry, messages in the lab frame;
+- ``VIEWER_HTML`` - the earlier, You-only three.js page (messages from
+  ``diffraction.view_payload``, UB in You's frame), kept for eco versions
+  that still use it.
 
 General crystallography (space groups, CIF, structure factors, reflection
 groups) and the angle solver are hklforge's (``hklforge.crystal``,

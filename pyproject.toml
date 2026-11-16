@@ -63,9 +63,9 @@ legacy = ["datastorage"]
 # part of the stable API (see CLAUDE.md) so this stays independently optional.
 stream_graph = ["networkx"]
 # escape.bernina: Bernina diffractometer/detector calculations (also used by
-# eco and the bernina-scripts prep apps); hklforge >= 0.1 brings
-# hklforge.orient and Geometry.detector_towards, xraydb the structure factors
-bernina = ["hklforge>=0.1.0", "xraydb"]
+# eco and the bernina-scripts prep apps); hklforge >= 0.2 brings the 3D view
+# (hklforge.view) and Brillouin-zone points, xraydb the structure factors
+bernina = ["hklforge>=0.2.0", "xraydb"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"
