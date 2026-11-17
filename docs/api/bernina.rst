@@ -36,3 +36,8 @@ stack: ``pip install "escape-fel[bernina]"``.
 
 .. automodule:: escape.bernina.otti
    :members:
+
+.. automodule:: escape.bernina.rebin
+   :members: Grid, FixedBinner, StreamBinner, scan_grid, detector_pixels, jungfrau_pixels,
+             shot_geometry, pixel_corrections, pixel_coordinates, poni_to_frame, frame_to_poni,
+             poni_pixels, poni_geometry, read_poni

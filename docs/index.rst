@@ -30,6 +30,7 @@ a clean interface for aligning, grouping, analysing, and storing event streams.
    user_guide/custom_processing
    user_guide/plot_tools
    user_guide/detectors
+   user_guide/rebinning
    user_guide/wavefront
    user_guide/exafs
    user_guide/adaptive_scan

@@ -66,6 +66,10 @@ stream_graph = ["networkx"]
 # eco and the bernina-scripts prep apps); hklforge >= 0.2 brings the 3D view
 # (hklforge.view) and Brillouin-zone points, xraydb the structure factors
 bernina = ["hklforge>=0.2.0", "xraydb"]
+# escape.bernina.rebin's compiled kernels; without numba it falls back to
+# numpy/scipy (much slower). Kept out of "bernina", which also feeds the
+# browser (pyodide) build where numba does not exist.
+rebin = ["numba"]
 
 [project.urls]
 Homepage = "https://github.com/htlemke/escape-fel"
