@@ -400,7 +400,9 @@ class _GroupedDispatcherContext:
 
     def __init__(self, handler):
         self.h = handler
-        self.groups = [_DelayGroup(chs) for chs in _plan_groups(handler.source_ids, handler.late_threshold_s)]
+        refused = getattr(handler, "refused", set())
+        channels = [c for c in handler.source_ids if c not in refused]
+        self.groups = [_DelayGroup(chs) for chs in _plan_groups(channels, handler.late_threshold_s)]
         self._last_prune = time.time()
         self._clock = 0.0  # local clock offset, set on entering
         self._offset = 0   # see _publish
@@ -483,10 +485,48 @@ class _GroupedDispatcherContext:
                     return self._event(i, g, result)
                 t = getattr(g.stream, "processing_thread", None)
                 if t is not None and not t.is_alive():
-                    raise RuntimeError(f"datahub stream thread died: {g.stream.get_run_exception()!r}")
+                    error = g.stream.get_run_exception()
+                    if self._refuse(g, error):
+                        break  # this connection reopened without them; the others went on
+                    raise RuntimeError(f"datahub stream thread died: {error!r}")
             if time.time() >= deadline:
                 return NullEvent()
             time.sleep(0.001)
+
+    def _refuse(self, g, error):
+        """The dispatcher refused *g*'s channel list ("Unable to request
+        stream", HTTP 500 when none of the channels is one it knows). Ask it
+        which of them it does not know (``bsread.dispatcher.get_channel_status``,
+        no stream opened), leave those out with one message, and reopen *g*
+        with the rest -- the other connections are not touched. False (the
+        caller reconnects as before, with back-off) for any other error, or
+        when every channel checks out: a passing dispatcher problem must not
+        drop a real channel."""
+        if "Unable to request stream" not in str(error):
+            return False
+        try:
+            from bsread import dispatcher
+            from bsread.consts import DEFAULT_DISPATCHER_URL
+
+            states = dispatcher.get_channel_status(list(g.channels), base_url=self.h.url or DEFAULT_DISPATCHER_URL)
+        except Exception as exc:
+            _logger.debug("channel status check failed: %s", exc)
+            return False
+        unknown = [c for c in g.channels if not (states.get(c) or {}).get("configured")]
+        if not unknown:
+            return False
+        self.h.refused.update(unknown)
+        print("DataHubEventHandler: the dispatcher does not know "
+              + ", ".join(repr(c) for c in unknown)
+              + " -- left out of the connection (check the name; a computed Stream's name is not a channel).")
+        self._close(g.stream, _bsread_receive_timeout_s(self.h) + 1.0)
+        g.channels = [c for c in g.channels if c not in unknown]
+        if g.channels:
+            self._open(g)
+        else:
+            self.groups.remove(g)
+        self._publish()
+        return True
 
     def _event(self, i, g, result):
         pulse_id, timestamp_ns, msg = result
@@ -632,6 +672,9 @@ class DataHubEventHandler:
         self._group_delays = []
         self._group_lock = threading.Lock()
         self._awaiting = {}  # channel -> time until which its first data is still expected
+        # channels the dispatcher refused (not configured there), left out
+        # of the connections until unsubscribed -- see _GroupedDispatcherContext._refuse
+        self.refused = set()
 
     # ------------------------------------------------------------------
     # Delay groups (see _GroupedDispatcherContext)
@@ -700,6 +743,7 @@ class DataHubEventHandler:
     def remove_source(self, source_id):
         if source_id in ("lab_time", "pulse_id"):
             return
+        self.refused.discard(source_id)  # subscribed again later: asked again
         try:
             self.source_ids.remove(source_id)
         except ValueError:

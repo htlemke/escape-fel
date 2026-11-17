@@ -678,6 +678,20 @@ class FileSource:
     pass
 
 
+def check_channel_name(name):
+    """Raise ValueError if *name* cannot be a transport channel: the
+    synthetic display name of a computed Stream (arithmetic ``"(a / b)"``,
+    a mask ``"i[pump_on]"``, an element ``"x[3]"``) -- those contain
+    whitespace, brackets or parentheses, which real channel names don't."""
+    if not isinstance(name, str) or not name or any(ch in name for ch in " \t\n()[]"):
+        raise ValueError(
+            f"{name!r} is not a channel name but (probably) the name of a computed "
+            "Stream; subscribe the real channels it is built from instead -- "
+            "stream.accumulate(True), or eventworker.subscribe(owner, *stream._channels())"
+        )
+    return name
+
+
 def _collect_source_channels(source, seen=None):
     """Recursively collect the real, subscribable channel names a Source
     ultimately depends on.
@@ -845,7 +859,15 @@ class EventWorker:
         """Subscribe *channels* on behalf of *owner* (any object, compared by
         identity). Idempotent per (owner, channel). The connection only
         changes when a channel gains its first owner -- see
-        :meth:`unsubscribe`."""
+        :meth:`unsubscribe`.
+
+        Raises ValueError for a name that cannot be a channel: the display
+        name of a computed Stream (``"(a / b)"``, ``"i[pump_on]"``), which
+        the dispatcher would be asked for and refuse, again and again. Such
+        a Stream is subscribed through its real channels:
+        ``stream.accumulate(True)``, or ``subscribe(owner, *stream._channels())``."""
+        for c in channels:
+            check_channel_name(c)
         with self._subs_lock:
             held = self._subs.setdefault(id(owner), (owner, set()))[1]
             added = [c for c in channels if c not in held]
@@ -1186,6 +1208,9 @@ class EventWorker:
             lines.append("restart: pending or in progress")
         elif st["last_restart_age_s"] is not None:
             lines.append(f"restart: finished {st['last_restart_age_s']:.1f} s ago")
+        refused = sorted(getattr(self._eventHandler, "refused", ()) or ())
+        if refused:
+            lines.append("refused by the dispatcher (not a channel it knows), left out: " + ", ".join(refused))
         groups = getattr(self._eventHandler, "groups", None)
         if groups and len(groups) > 1:
             lines.append("dispatcher connections by delay: " + "; ".join(
@@ -1197,6 +1222,9 @@ class EventWorker:
                 continue
             if ch not in st["subscriptions"]:
                 lines.append(f"{ch}: not subscribed")
+                continue
+            if ch in refused:
+                lines.append(f"{ch}: refused by the dispatcher")
                 continue
             n = sum(ch in r for r in recent)
             last = self._chan_last.get(ch)
@@ -1305,7 +1333,9 @@ class EventWorker:
                             self._record_event(now, time.perf_counter() - t0)
                         elif (
                             self.stall_timeout
-                            and getattr(eventHandler, "source_ids", None)  # real channels requested
+                            # real channels requested (not only ones the dispatcher refused)
+                            and set(getattr(eventHandler, "source_ids", None) or ())
+                            - set(getattr(eventHandler, "refused", None) or ())
                             and now - last_real > self.stall_timeout
                         ):
                             raise RuntimeError(f"no events for {now - last_real:.0f} s")
