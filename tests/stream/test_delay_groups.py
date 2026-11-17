@@ -28,6 +28,11 @@ class FakeDispatcherStream:
     rates = {}  # channel -> deliver data only every n-th pulse (default 1)
     skew = 0.0  # s: pulse timestamps this much behind the local clock
     hold = {}   # channel -> s the dispatcher holds back a connection that has it
+    # s after which a mixed connection (late + prompt channels) switches to
+    # the prompt channels and drops the late one -- what the real dispatcher
+    # did with a Jungfrau ROI and a BPM (escape stream_debug, 2026-11-17).
+    # None: it keeps delivering the late channel only.
+    mixed_switch = None
 
     def __init__(self, channels, url=None, **kwargs):
         self.channels = list(channels)
@@ -42,12 +47,17 @@ class FakeDispatcherStream:
         late = "late" in self.channels
         hold = max([0.0] + [self.hold.get(c, 0.0) for c in self.channels])
         pid = pulse_now() - int(hold * RATE)  # a held-back stream starts in the past
+        t_start = time.time()
+        mixed = late and len(self.channels) > 1
         while not self.aborted:
+            if mixed and self.mixed_switch is not None and time.time() - t_start > self.mixed_switch:
+                late, pid = False, pulse_now()  # from now on prompt pulses, without "late"
             target = pid + int(hold * RATE) if not late else pid + int(DELAY * RATE)
             while pulse_now() < target and not self.aborted:
                 time.sleep(0.002)
             if not late:
-                msg = {c: (float(pid) if pid % self.rates.get(c, 1) == 0 else None) for c in self.channels}
+                msg = {c: (float(pid) if pid % self.rates.get(c, 1) == 0 and c != "late" else None)
+                       for c in self.channels}
             elif pid % 2 == 0:
                 msg = {c: (float(pid) if c == "late" else None) for c in self.channels}
             else:
@@ -87,6 +97,7 @@ def ew(monkeypatch):
     FakeDispatcherStream.rates = {}
     FakeDispatcherStream.skew = 0.0
     FakeDispatcherStream.hold = {}
+    FakeDispatcherStream.mixed_switch = None
     w = es.EventWorker(
         dh.DataHubEventHandler(backend="bsread", late_threshold_s=0.5),
         make_default=False,
@@ -139,6 +150,33 @@ def test_late_channel_is_split_off_and_prompt_data_recovers(ew):
     assert all(pid % 2 == 0 and val == pid for pid, val in pairs(late)[-50:])
     fast.accumulate(False)
     late.accumulate(False)
+
+
+@pytest.mark.parametrize("restart_mode", ["break_before_make", "make_before_break"])
+def test_late_data_keeps_coming_when_the_mixed_connection_drops_it(ew, restart_mode):
+    """The real dispatcher stops sending the late channel on the mixed
+    connection after a while and sends the prompt ones there instead: the
+    split must give the late channel a connection of its own too."""
+    ew.stopEventLoop()
+    FakeDispatcherStream.mixed_switch = 6.0  # s: after the split (~3 s here), as observed
+    ew = es.EventWorker(dh.DataHubEventHandler(backend="bsread", late_threshold_s=0.5),
+                        make_default=False, restart_mode=restart_mode)
+    fast, late = es.Stream("fast", ew), es.Stream("late", ew)
+    ratio = late / fast
+    for s in (fast, late, ratio):
+        s.accumulate(True)
+    try:
+        assert wait_until(lambda: len(ew._eventHandler.groups) == 2)
+        time.sleep(6.0)  # past the mixed connection's switch
+        m, n = len(late), len(ratio)
+        assert wait_until(lambda: len(late) > m + 50, timeout=10)
+        assert wait_until(lambda: len(ratio) > n + 50, timeout=10)
+        assert ["late"] in FakeDispatcherStream.connections  # a connection of its own
+        assert ew._eventHandler.expected_delay(["late"]) == pytest.approx(DELAY, abs=0.3)
+    finally:
+        for s in (fast, late, ratio):
+            s.accumulate(False)
+        ew.stopEventLoop()
 
 
 def test_late_and_prompt_values_combine_on_the_same_pulse(ew):

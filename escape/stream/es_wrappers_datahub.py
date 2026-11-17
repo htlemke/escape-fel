@@ -602,9 +602,20 @@ class _GroupedDispatcherContext:
             f"DataHubEventHandler: {', '.join(present)} arrive {g.delay:.1f} s late and "
             f"hold back {', '.join(absent)}; giving them separate dispatcher connections."
         )
-        g.channels = present
         for c in present:
             _LATE_CHANNELS[c] = g.delay
+        # The late channels get a fresh connection of their own too: the
+        # dispatcher does not keep the mixed one as it was -- with a
+        # Jungfrau ROI (12 s late) and a BPM on one connection it sent the
+        # ROI for ~12 s and then only the BPM, so the late group's events
+        # came without data (measured at Bernina, 2026-11-17).
+        old = g.stream
+        index = self.groups.index(g)
+        g = self.groups[index] = _DelayGroup(present)
+        g.delay = max(_LATE_CHANNELS[c] for c in present)
+        self._open(g)
+        threading.Thread(target=self._close, args=(old, _bsread_receive_timeout_s(self.h) + 1.0),
+                         daemon=True).start()
         prompt = self.groups[0] if self.groups[0] is not g else None
         if prompt is None:
             prompt = _DelayGroup(absent)
@@ -709,8 +720,10 @@ class DataHubEventHandler:
 
     def expected_delay(self, channels):
         """How late data of *channels* is expected to arrive (s), from what
-        was measured so far."""
-        return max([0.0] + [_CHANNEL_DELAY.get(c, 0.0) for c in channels])
+        was measured so far: the channel's own last measurement, or the
+        delay its split confirmed if that is longer (a measurement on a
+        mixed connection can be far too short -- 1.9 s for a ROI 12 s late)."""
+        return max([0.0] + [max(_CHANNEL_DELAY.get(c, 0.0), _LATE_CHANNELS.get(c, 0.0)) for c in channels])
 
     def clone(self):
         """Return a fresh, independent handler with the same configuration
