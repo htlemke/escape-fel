@@ -39,7 +39,6 @@ try:
     import bitshuffle.h5
 except:
     print("Could not import bitshuffle.h5!")
-from dask_jobqueue import SLURMCluster
 from distributed import Client
 from dask.utils import SerializableLock
 import socket
@@ -67,6 +66,19 @@ class SwissFelCluster:
         if local:
             self.client = distributed.Client()
         else:
+            # Imported here rather than at module scope: dask_jobqueue's
+            # runner module calls signal.signal(SIGINT, ...) while being
+            # imported, which CPython only allows on the main thread. At
+            # module scope that made `import escape.swissfel` fail outright
+            # for any caller whose first import happened on a worker thread
+            # -- which is how a control system initializing its devices in a
+            # thread pool loses whole devices, with a ValueError that names
+            # signals and nothing else. Nothing but this branch needs
+            # SLURM, so the rest of escape.swissfel no longer inherits the
+            # restriction. This is not about import time: dask_jobqueue adds
+            # 0.02 s on top of the `distributed` this module imports anyway.
+            from dask_jobqueue import SLURMCluster
+
             self.cluster = SLURMCluster(
                 n_workers=workers, 
                 processes=processes, 
