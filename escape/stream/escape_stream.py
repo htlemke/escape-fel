@@ -1240,6 +1240,18 @@ class EventWorker:
         if groups and len(groups) > 1:
             lines.append("dispatcher connections by delay: " + "; ".join(
                 f"[{', '.join(chs)}]" + (f" {d:.1f} s" if d is not None else "") for chs, d in groups))
+            # Whether a late connection's events really are carrying the
+            # prompt channels' values for the same pulse. Without this, a
+            # miss is indistinguishable downstream from "nothing arrived",
+            # and a combined Stream that produces nothing cannot be told
+            # apart from one whose channels are simply quiet.
+            align = getattr(self._eventHandler, "alignment_report", None)
+            if callable(align):
+                try:
+                    for line in align() or ():
+                        lines.append("  " + line)
+                except Exception:  # diagnostics must never raise
+                    pass
         recent = list(self._recent_nonnull)
         now = time.time()
         for ch in channels:

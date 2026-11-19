@@ -265,8 +265,8 @@ connections they start at 1, so 0 always means prompt data. Each event is
 dispatched when it arrives and carries its group number. A Stream only
 processes events of `Stream._event_group()`: the latest group among its
 channels. A late group's event also carries the values the earlier groups
-delivered for the same pulse; each group keeps those in a buffer for the
-longest delay plus 5 s. So:
+delivered for the same pulse, taken from each prompt group's `PulseCache`
+(`escape/stream/pulse_align.py`). So:
 
 - `pbps.plot()` stays live; `jf[0].plot()` runs about 12 s behind.
 - `jf[0][evtset[71]]` and `jf[0] - pbps` are evaluated when the Jungfrau
@@ -281,6 +281,47 @@ longest delay plus 5 s. So:
 - `_wait_for_data()` adds the known delay to a plot's `timeout`, and keeps
   waiting (at most 30 s) while a channel is on a fresh connection that has
   not delivered it yet (`handler.awaiting_data()`), e.g. until a split.
+
+**Retention.** Each prompt group's `PulseCache` is bounded in *pulses*, not
+seconds: what has to be covered is how many pulses the latest group is
+behind, so the depth is derived from the measured delay
+(`depth_for_delay()`: delay x 100 Hz plus 200 pulses of margin, ~1400 for
+the Jungfrau's 12 s) and resized whenever a delay is re-measured or the
+groups change. An earlier version bounded it by wall-clock age instead,
+which tied retention to how promptly the consumer happened to be polled.
+
+**Warm-up after a split.** A split costs more than the reconnection: the
+late connection immediately delivers pulses generated ~12 s *ago*, and the
+prompt group only started retaining pulses at the restart, so those cannot
+match. Nothing combining the two can produce a value until the first pulse
+that both connections have seen, i.e. about one delay after the split. A
+combined Stream built right after a split therefore looks empty for ~12 s,
+which is long enough to exceed a plot's timeout and read as a failure.
+
+**Telling a miss from absent data.** Downstream, a cache miss and "the
+channel was quiet" are indistinguishable - both leave the value out of the
+event - so a combined Stream that produces nothing used to be impossible to
+explain from outside the process. `PulseCache` counts lookups, hits, misses
+and evictions, and `diagnose()` prints one line per prompt group:
+
+```
+alignment: group 0 [SAR-CVME-TIFALL5:EvtSet] held 1203/1410 pulses, lookups 2504, hit rate 0.98
+```
+
+A hit rate well below 1, outside the warm-up above, means alignment is
+failing rather than the data being absent. Note that the delay measurement
+itself (`_account`) deliberately still sees the *unmerged* values, since it
+is about what that connection delivered.
+
+**Merging separate backends** (`MultiSourceEventHandler`) is a different
+problem - there the merged event is the only thing anyone consumes - and
+uses `PulseJoin` from the same module. It settles a pulse once every source
+has delivered a *newer* one, so "this source has nothing for this pulse" is
+a known answer; its predecessor released a pulse only once every source had
+contributed, which never happens with sources of different rates (a 45 Hz
+detector merged with a 90 Hz counter), leaving those pulses to a staleness
+timeout. One source falling silent costs `depth` pulses of latency, not an
+unbounded stall.
 
 **Pulse order.** `EventWorker._is_new_pulse` dispatches each pulse once, in
 increasing order, per group number. This matters for every handler, not

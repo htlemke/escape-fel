@@ -62,6 +62,8 @@ import time
 import logging
 from collections import OrderedDict, deque
 
+from .pulse_align import PulseCache, PulseJoin, depth_for_delay
+
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -368,7 +370,10 @@ class _DelayGroup:
         self.window_msgs = 0
         self.window_start = time.time()
         self.delay = None         # median delay (s) of the last window
-        self.buffer = OrderedDict()  # pulse id -> (pulse time, values), for later groups
+        # Prompt groups retain recent pulses so a later group's event can be
+        # backfilled with them; bounded in pulses and resized from the measured
+        # delay (see _publish), with hit/miss counters for diagnose().
+        self.cache = PulseCache(depth=depth_for_delay(0.0))
 
     def sort_key(self):
         if self.delay is not None:
@@ -403,7 +408,6 @@ class _GroupedDispatcherContext:
         refused = getattr(handler, "refused", set())
         channels = [c for c in handler.source_ids if c not in refused]
         self.groups = [_DelayGroup(chs) for chs in _plan_groups(channels, handler.late_threshold_s)]
-        self._last_prune = time.time()
         self._clock = 0.0  # local clock offset, set on entering
         self._offset = 0   # see _publish
 
@@ -437,11 +441,14 @@ class _GroupedDispatcherContext:
         EventWorker dispatches pulses in order per group number, and a late
         connection's pulses are older than the prompt ones before)."""
         self.groups.sort(key=_DelayGroup.sort_key)
+        self._resize_caches()
         prompt = self.groups and any(c not in _LATE_CHANNELS for c in self.groups[0].channels)
         self._offset = 0 if prompt else 1
         self.h._set_groups([[]] * self._offset + [g.channels for g in self.groups],
                            [None] * self._offset + [g.delay for g in self.groups])
         self.h.stream = self.groups[0].stream if self.groups else None
+        # diagnose() asks the handler, not the context that owns the caches.
+        self.h.alignment_report = self.alignment_report
 
     ABSENT_S = 10.0  # s without any data before a channel counts as held back
 
@@ -533,31 +540,66 @@ class _GroupedDispatcherContext:
         now = time.time()
         pulse_time = timestamp_ns * 1e-9 if timestamp_ns else now
         values = {c: msg.get(c) for c in g.channels}  # a split group may still deliver others
+        # Delay measurement is about what *this connection* delivered, so it
+        # is taken from the unmerged values.
         self._account(g, now - self._clock - pulse_time, values)
         if len(self.groups) > 1:
             if i < len(self.groups) - 1:
-                g.buffer[pulse_id] = (pulse_time, values)
+                # A prompt group retains its pulses for the later groups.
+                g.cache.put(pulse_id, values)
             if i > 0:
                 merged = {}
                 for earlier in self.groups[:i]:
-                    hit = earlier.buffer.get(pulse_id)
+                    hit = earlier.cache.get(pulse_id)
                     if hit is not None:
-                        merged.update(hit[1])
+                        merged.update(hit)
                 merged.update(values)
                 values = merged
-            if now - self._last_prune > 1.0:
-                self._prune(now)
         return DataHubEvent(pulse_id, timestamp_ns, values, group=i + self._offset)
 
-    def _prune(self, now):
-        self._last_prune = now
-        keep = max((g.delay or 0.0) for g in self.groups) + 5.0
+    def alignment_report(self):
+        """One line per prompt group: how often a later group's event found
+        that group's values for the same pulse.
+
+        A hit rate well below 1 means the merge is failing rather than the
+        data being absent -- the distinction that matters when a combined
+        Stream produces nothing. Right after a split there is a legitimate
+        warm-up: the late connection immediately delivers pulses generated
+        before the prompt one started retaining, so those cannot match.
+        """
+        if len(self.groups) < 2:
+            return []
+        out = []
+        for i, g in enumerate(self.groups[:-1]):
+            st = g.cache.stats()
+            rate = st["hit_rate"]
+            out.append(
+                "alignment: group %d [%s] held %d/%d pulses, lookups %d, "
+                "hit rate %s%s"
+                % (
+                    i + self._offset,
+                    ", ".join(g.channels),
+                    st["held"], st["depth"],
+                    st["n_hit"] + st["n_miss"],
+                    "n/a" if rate is None else "%.2f" % rate,
+                    "" if not st["n_evicted"] else ", %d evicted" % st["n_evicted"],
+                )
+            )
+        return out
+
+    def _resize_caches(self):
+        """Size every group's retention from the largest measured delay.
+
+        In pulses, not seconds: what has to be covered is how many pulses the
+        latest group is behind. The previous version bounded by wall-clock age
+        (max delay + 5 s), which tied retention to how promptly the consumer
+        happened to be polled, and gave no way to see whether alignment was
+        actually working. Called whenever the groups or their delays change.
+        """
+        depth = depth_for_delay(max((g.delay or 0.0) for g in self.groups)
+                                if self.groups else 0.0)
         for g in self.groups:
-            while g.buffer:
-                pid, (t, _) = next(iter(g.buffer.items()))
-                if now - t <= keep:
-                    break
-                g.buffer.popitem(last=False)
+            g.cache.set_depth(depth)
 
     # -- delay detection -----------------------------------------------
     def _account(self, g, delay, values):
@@ -577,6 +619,7 @@ class _GroupedDispatcherContext:
     def _evaluate(self, g):
         d = sorted(g.delays)
         g.delay = d[len(d) // 2]
+        self._resize_caches()  # retention follows the measured delay
         spread = d[int(0.9 * (len(d) - 1))] - d[int(0.1 * (len(d) - 1))]
         present = [c for c in g.channels if g.seen.get(c)]
         # Held back = no data at all for ABSENT_S on this connection, not just
@@ -902,57 +945,6 @@ class DataHubLocalEventHandler:
 # MultiSourceEventHandler — merge events from several backends by pulse_id
 # ---------------------------------------------------------------------------
 
-class _PulseIdMerger:
-    """Thread-safe pulse_id aligner for N independent event sources.
-
-    Each source calls ``add(source_idx, pulse_id, timestamp_ns, msg_dict)``
-    from its own thread.  Once all *n_sources* have contributed to a pulse_id
-    (or ``timeout_pulses`` newer pulses have arrived, or the buffer overflows)
-    the merged message is forwarded via ``callback(pulse_id, timestamp_ns, msg)``.
-    """
-
-    def __init__(self, n_sources, callback, buffer_size=200, timeout_pulses=50):
-        self.n_sources = n_sources
-        self.callback = callback
-        self.buffer_size = buffer_size
-        self.timeout_pulses = timeout_pulses
-        self._data = {}   # {pulse_id: {'_ts': ns, '_nsrc': int, **channels}}
-        self._lock = threading.Lock()
-
-    def add(self, source_idx, pulse_id, timestamp_ns, msg):
-        with self._lock:
-            if pulse_id not in self._data:
-                self._data[pulse_id] = {'_ts': timestamp_ns, '_nsrc': 0}
-            entry = self._data[pulse_id]
-            entry['_nsrc'] += 1
-            entry.update(msg)
-            self._flush()
-
-    def _flush(self):
-        if not self._data:
-            return
-        sorted_ids = sorted(self._data)
-        latest_id = sorted_ids[-1]
-        fire = []
-        for pid in sorted_ids:
-            entry = self._data[pid]
-            complete = entry['_nsrc'] >= self.n_sources
-            stale = (latest_id - pid) >= self.timeout_pulses
-            overflow = len(self._data) > self.buffer_size
-            if complete or stale or (overflow and pid != latest_id):
-                fire.append(pid)
-        for pid in sorted(fire):
-            entry = self._data.pop(pid, None)
-            if entry is None:
-                continue
-            ts = entry.pop('_ts', 0)
-            entry.pop('_nsrc', None)
-            try:
-                self.callback(pid, ts, dict(entry))
-            except Exception as exc:
-                _logger.warning("_PulseIdMerger callback error: %s", exc)
-
-
 class MultiSourceContext:
     """Context manager that drives N sub-handler contexts in background threads.
 
@@ -964,9 +956,19 @@ class MultiSourceContext:
         self._handler = handler
         self._queue = queue.Queue(maxsize=handler.queue_size)
         self._stop = threading.Event()
-        self._merger = _PulseIdMerger(
+        # PulseJoin, not the old _PulseIdMerger: that released a pulse only
+        # once *every* source had contributed to it, which never happens when
+        # the sources run at different rates (a 45 Hz detector merged with a
+        # 90 Hz counter), so those pulses were held until the staleness
+        # timeout fired. PulseJoin settles a pulse when every source has moved
+        # *past* it, i.e. when "nothing" is also a known answer.
+        self._join = PulseJoin(
             n_sources=len(handler.handlers),
-            callback=self._on_merged,
+            depth=max(int(handler.timeout_pulses), handler.queue_size),
+            # Honour the handler's own setting: a caller passing a small
+            # timeout_pulses is asking for partials to be forwarded quickly,
+            # and the watermark rule alone would make them wait for a silent
+            # source instead.
             timeout_pulses=handler.timeout_pulses,
         )
         self._contexts = []
@@ -1017,7 +1019,10 @@ class MultiSourceContext:
             if pid is not None:
                 backoff = 1.0
             if pid is not None and hasattr(event, '_msg') and hasattr(event, '_ts_ns'):
-                self._merger.add(source_idx, pid, event._ts_ns, event._msg)
+                for merged in self._join.offer(
+                    source_idx, pid, event._ts_ns, event._msg
+                ):
+                    self._on_merged(*merged)
 
     def _on_merged(self, pulse_id, timestamp_ns, msg):
         try:
