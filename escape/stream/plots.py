@@ -498,13 +498,18 @@ class PlotCorrelation(_LivePlotBase):
         self._connect_close_event()
 
     def _getplotData(self):  # noqa: N802
-        def flatten(ll):
-            return [item for sub in ll for item in sub]
-
-        xi = np.asarray(flatten(self.data_x.eventIds))
-        yi = np.asarray(flatten(self.data_y.eventIds))
-        xd = np.asarray(flatten(self.data_x.data))
-        yd = np.asarray(flatten(self.data_y.data))
+        # One snapshot per side, values and ids together: this matches the
+        # two sides by event id below, so a value list and an id list that
+        # are one append apart would pair the wrong samples. And iterating
+        # the live deques at all races the EventWorker -- which is what used
+        # to make every live correlation plot print "Live plot update error:
+        # deque mutated during iteration" and silently skip the frame.
+        xd_list, xi_list = self.data_x.flat(with_ids=True)
+        yd_list, yi_list = self.data_y.flat(with_ids=True)
+        xi = np.asarray(xi_list)
+        yi = np.asarray(yi_list)
+        xd = np.asarray(xd_list)
+        yd = np.asarray(yd_list)
 
         if len(xi) == 0 or len(yi) == 0:
             return np.array([]), np.array([])
@@ -595,7 +600,7 @@ class ValueHistPlot(_LivePlotBase):
         self._connect_close_event()
 
     def _flat(self):
-        return [v for step in self.data.data for v in step]
+        return self.data.flat()
 
     def _getplotData(self):  # noqa: N802
         flat = self._flat()
@@ -682,7 +687,7 @@ class TracePlot(_LivePlotBase):
         self._connect_close_event()
 
     def _flat(self):
-        return [v for step in self.data.data for v in step]
+        return self.data.flat()
 
     def _getplotData(self):  # noqa: N802
         flat = self._flat()
@@ -781,11 +786,11 @@ class WaterfallPlot(_LivePlotBase):
         self._connect_close_event()
 
     def _rows(self):
-        flat = [v for step in self.data.data for v in step]
+        flat = self.data.flat()
         rows = np.asarray(flat[-self.N_acc:], dtype=float) if flat else np.empty((0, 0))
         if self.x_stream is None or rows.size == 0:
             return rows, None
-        xflat = [v for step in self.x_stream.data for v in step]
+        xflat = self.x_stream.flat()
         xvals = np.asarray(xflat[-self.N_acc:], dtype=float) if xflat else None
         if xvals is None or len(xvals) != len(rows):
             xvals = None  # event counts of the two Streams diverged -- fall back to plain order

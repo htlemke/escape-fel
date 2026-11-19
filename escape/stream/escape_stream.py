@@ -471,11 +471,36 @@ class DataManager:
         """True, uncapped number of events ever appended to each step."""
         return list(self._counts)
 
-    def snapshot(self):
+    def snapshot(self, with_ids=False):
         """Per-step copies of the retained data, taken under the lock -- safe
-        to compute on while the EventWorker keeps appending."""
+        to compute on while the EventWorker keeps appending.
+
+        ``with_ids=True`` returns ``(data, eventIds)`` copied under the *same*
+        lock hold. Two separate snapshots would be one append apart, and
+        every caller that matches pulses indexes the two lists in parallel.
+        """
         with self._lock:
-            return [list(d) for d in self._data]
+            data = [list(d) for d in self._data]
+            if not with_ids:
+                return data
+            return data, [list(e) for e in self._eventIds]
+
+    def flat(self, with_ids=False):
+        """:meth:`snapshot`, flattened across steps, oldest first.
+
+        Use this rather than iterating ``.data``/``.eventIds``: those are the
+        live deques the EventWorker appends to, and iterating one while it
+        does raises ``RuntimeError: deque mutated during iteration``. In a
+        live plot that surfaced as "Live plot update error: deque mutated
+        during iteration" on every update that lost the race -- the frame was
+        simply dropped, so plots updated intermittently and the more streams
+        were running, the worse it got.
+        """
+        if not with_ids:
+            return [v for step in self.snapshot() for v in step]
+        data, ids = self.snapshot(with_ids=True)
+        return ([v for step in data for v in step],
+                [i for step in ids for i in step])
 
     data = property(lambda self: self._data)
     eventIds = property(lambda self: self._eventIds)
@@ -2156,9 +2181,13 @@ class Stream:
         """
         from escape import Array
 
-        data = np.asarray([v for step in self.data for v in step])
+        # One snapshot for both: to_frame indexes values by event id, so the
+        # two must not be an append apart (and iterating the live deques
+        # races the EventWorker outright -- see DataManager.flat).
+        flat_data, flat_ids = self.flat(with_ids=True)
+        data = np.asarray(flat_data)
         if isinstance(index, str) and index == "pulse_id":
-            idx = np.asarray([v for step in self.eventIds for v in step])
+            idx = np.asarray(flat_ids)
         else:
             idx = np.asarray(index)
             if len(idx) != len(data):
@@ -2481,9 +2510,21 @@ class Stream:
         self.accumulate(True, owner=tool)
         tool.fig.canvas.mpl_connect("close_event", lambda _e: self.accumulate(False, owner=tool))
 
+    def snapshot(self, with_ids=False):
+        """This Stream's retained samples, copied under the append lock.
+
+        See :meth:`DataManager.snapshot`. ``.data``/``.eventIds`` are the
+        live deques and must not be iterated while the EventWorker runs.
+        """
+        return self._dataManager.snapshot(with_ids=with_ids)
+
+    def flat(self, with_ids=False):
+        """:meth:`snapshot`, flattened across steps, oldest first."""
+        return self._dataManager.flat(with_ids=with_ids)
+
     def _rolling_values(self):
         """The retained (rolling-buffer) samples of this Stream, flat."""
-        return np.asarray([v for step in self.data for v in list(step)], dtype=float)
+        return np.asarray(self.flat(), dtype=float)
 
     # -- tunable parameters -------------------------------------------------
 
@@ -2650,8 +2691,7 @@ class Stream:
         if isinstance(key, Stream):
             return self.filter(key)
         if isinstance(key, slice):
-            all_data = [v for step in self.data for v in step]
-            return np.array(all_data[key])
+            return np.array(self.flat()[key])
         if isinstance(key, (int, np.integer)):
             return self.element(key)
         raise TypeError(
