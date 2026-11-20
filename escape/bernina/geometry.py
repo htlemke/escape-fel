@@ -144,3 +144,14 @@ def parse_direction(text) -> tuple:
     if word in LAB_WORDS:
         return LAB_WORDS[word]
     return parse_vector(text)
+
+
+def energy_limits(val) -> tuple:
+    """The energy constraint's (lo, hi) eV (either None = open). The energy is
+    a constraint held at the set energy unless given as such limits."""
+    try:
+        lo, hi = val
+    except (TypeError, ValueError):
+        raise ValueError(f"energy: None (the set energy) or (lo, hi) in eV to let it vary, "
+                         f"not {val!r}") from None
+    return (None if lo is None else float(lo), None if hi is None else float(hi))

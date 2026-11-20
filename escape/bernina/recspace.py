@@ -44,7 +44,7 @@ from hklforge.virtual import virtual_angles
 
 from .geometry import (BEAM, DETECTOR_CIRCLES, GEOMETRY, POSITION_ORDER, SAMPLE_CIRCLES,  # noqa: F401
                        UP, YOU_BEAM, YOU_TO_LAB, YOU_UP, _turn, en2lam, frame_rotation, from_you,
-                       lam2en, to_you, turn_crystal_data)
+                       energy_limits, lam2en, to_you, turn_crystal_data)
 
 # rows of a solution table: the six circles, then the virtual angles
 VIRTUAL_ORDER = ("theta", "ttheta", "qaz", "alpha", "naz", "tau", "psi", "beta",
@@ -336,8 +336,8 @@ def make_mode(constraints: dict) -> tuple[dict, str]:
             if len(val):
                 mode["h2"] = tuple(float(x) for x in val)
         elif key == "energy":
-            lo, hi = val
-            mode["energy"] = (None if lo is None else float(lo), None if hi is None else float(hi))
+            lo, hi = energy_limits(val)
+            mode["energy"] = (lo, hi)
         else:
             mode[key] = float(val)
     if "h2" not in mode:

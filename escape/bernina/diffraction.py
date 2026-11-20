@@ -47,7 +47,8 @@ from hklforge.orient import u_from_one, u_from_two
 from hklforge.virtual import virtual_angles
 
 from .geometry import (BEAM, CIRCLES, GEOMETRY, LEGACY_NAMES, SAMPLE_CIRCLES, UP,  # noqa: F401
-                       YOU_TO_LAB, en2lam, k_magnitude, parse_direction, parse_vector, to_you)
+                       YOU_TO_LAB, en2lam, energy_limits, k_magnitude, parse_direction, parse_vector,
+                       to_you)
 
 VIRTUAL_CONSTRAINTS = ("qaz", "naz", "alpha", "beta", "psi", "betain", "betaout", "omega")
 BOOL_CONSTRAINTS = ("a_eq_b", "bin_eq_bout", "bisect")
@@ -210,8 +211,8 @@ def make_mode(constraints: dict) -> dict:
         elif key == "h2":
             mode["h2"] = tuple(float(x) for x in val)
         elif key == "energy":
-            lo, hi = val
-            mode["energy"] = (None if lo is None else float(lo), None if hi is None else float(hi))
+            lo, hi = energy_limits(val)
+            mode["energy"] = (lo, hi)
         elif key in CIRCLES or key in VIRTUAL_CONSTRAINTS:
             mode[key] = float(val)
         else:

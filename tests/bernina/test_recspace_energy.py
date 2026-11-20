@@ -24,3 +24,13 @@ def test_free_energy_finds_the_fixed_energy_solution(hkl, cons, extra):
     for s in sols:
         assert np.allclose(rc.calc_hkl(UB, s["energy"], {n: s[n] for n in rc.POSITION_ORDER}), hkl, atol=1e-8)
     assert rc.make_mode({"eta": 1, "energy": (None, 12000)})[0]["energy"] == (None, 12000.0)
+
+
+def test_energy_constraint_is_none_or_limits():
+    assert "energy" not in rc.make_mode({"eta": 1, "energy": None})[0]          # the set energy
+    assert rc.make_mode({"eta": 1, "energy": [5000, None]})[0]["energy"] == (5000.0, None)   # JSON lists
+    for bad in (9000, "9000", [1, 2, 3]):
+        with pytest.raises(ValueError, match="None .the set energy. or .lo, hi."):
+            rc.make_mode({"energy": bad})
+        with pytest.raises(ValueError, match="None .the set energy. or .lo, hi."):
+            dif.make_mode({"energy": bad})
