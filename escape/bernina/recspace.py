@@ -315,8 +315,11 @@ def make_mode(constraints: dict) -> tuple[dict, str]:
     """diffcalc-style constraint dict (None = free) -> (hklforge mode, detector policy).
 
     Extra keys over diffcalc: ``h2`` (a second reflection kept in Bragg
-    condition, list of 3 or None) and ``h2_detector`` ("h1": detector on the
-    first reflection, "between": on the bisector of both outgoing beams).
+    condition, list of 3 or None), ``h2_detector`` ("h1": detector on the
+    first reflection, "between": on the bisector of both outgoing beams) and
+    ``energy`` ((lo, hi) eV, either None; None = fixed): the photon energy is
+    one more unknown within those limits (hklforge >= 0.2.2), so one more
+    angle has to be held.
     """
     mode, detector = {}, "h1"
     for key, val in constraints.items():
@@ -332,6 +335,9 @@ def make_mode(constraints: dict) -> tuple[dict, str]:
         elif key == "h2":
             if len(val):
                 mode["h2"] = tuple(float(x) for x in val)
+        elif key == "energy":
+            lo, hi = val
+            mode["energy"] = (None if lo is None else float(lo), None if hi is None else float(hi))
         else:
             mode[key] = float(val)
     if "h2" not in mode:
@@ -352,15 +358,19 @@ def solve(ub, energy, hkl, constraints: dict, reference=DEFAULT_REFERENCE,
 
     Each solution is a dict of the six circles plus all virtual angles, in
     degrees, circles wrapped to (-180, 180]. Raises ``ModeError`` for a mode
-    that does not fix a finite set of positions.
+    that does not fix a finite set of positions. With ``constraints["energy"]
+    = (lo, hi)`` the energy is free: ``energy`` is not used and each solution
+    has its own ``"energy"`` (eV).
     """
     mode, detector = make_mode(constraints)
     pl = get_plan(mode, detector)
     n_ref, n_surf = vector_phi(reference, ub), vector_phi(surface, ub)
-    k = wavevector(energy)
+    k = None if "energy" in mode else wavevector(energy)
     out = []
     for a in pl.run(ub, k, hkl, n_surf, n_ref):
         row = {n: a[n] for n in POSITION_ORDER}
+        if "energy" in a:
+            row["energy"] = float(a["energy"])
         row.update(virtual_angles(GEOMETRY, a, n_surf, n_ref))
         out.append(row)
     return out
