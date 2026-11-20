@@ -171,3 +171,27 @@ def test_viewer_page_and_message():
     assert dif.view_message({}, ENERGY, ub=s.UB)["nPhi"] is None        # cleared, not left out
     # the earlier page keeps its message (You frame)
     assert np.allclose(dif.view_payload(s, {}, ENERGY)["ub"], dif.to_you(s.UB))
+
+
+
+@pytest.mark.parametrize("hkl, cons, extra", [((1, 1, 1), {"mu": 0, "chi": 30, "phi": 45}, "eta"),   # crystal fixed
+                                              ((1, 1, 1), {"mu": 0, "chi": 30, "phi": 45}, "delta"),
+                                              ((2, 2, 0), {"mu": 0, "eta": 20, "chi": 90}, "gamma")])
+def test_free_energy_finds_the_fixed_energy_solution(hkl, cons, extra):
+    """Hold one more circle at a 9 keV solution's value and free the energy: 9 keV comes back."""
+    if not hasattr(pytest.importorskip("hklforge.solve"), "_energy_limits"):
+        pytest.skip("hklforge < 0.2.2: no free energy")
+    s = _sample()
+    fixed = s.solve(hkl, ENERGY, cons)
+    assert len(fixed.columns)
+    a = dif.solution_angles(fixed, 0)
+    df = s.solve(hkl, None, {**cons, extra: a[extra], "energy": (5000, 20000)})
+    assert df.index[0] == "energy"
+    energies = df.loc["energy"].to_numpy(float)
+    assert np.all((energies >= 5000) & (energies <= 20000)) and np.min(abs(energies - ENERGY)) < 1e-6
+    for c in df.columns:
+        assert np.allclose(s.hkl_at(dif.solution_angles(df, c), float(df.loc["energy", c])), hkl, atol=1e-8)
+    with pytest.raises(Exception, match="one more"):       # already complete at a fixed energy
+        s.solve(hkl, None, {**cons, "energy": (5000, 20000)})
+    t = dif.reachable_reflections(s, ENERGY, {**cons, extra: a[extra], "energy": (5000, 20000)}, [hkl])
+    assert t.loc[0, "reachable"] and 5000 <= t.loc[0, "energy"] <= 20000

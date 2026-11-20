@@ -64,8 +64,9 @@ legacy = ["datastorage"]
 stream_graph = ["networkx"]
 # escape.bernina: Bernina diffractometer/detector calculations (also used by
 # eco and the bernina-scripts prep apps); hklforge >= 0.2 brings the 3D view
-# (hklforge.view) and Brillouin-zone points, xraydb the structure factors
-bernina = ["hklforge>=0.2.0", "xraydb"]
+# (hklforge.view) and Brillouin-zone points, 0.2.2 the free energy, xraydb the
+# structure factors
+bernina = ["hklforge>=0.2.2", "xraydb"]
 # escape.bernina.rebin's compiled kernels; without numba it falls back to
 # numpy/scipy (much slower). Kept out of "bernina", which also feeds the
 # browser (pyodide) build where numba does not exist.

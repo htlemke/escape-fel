@@ -27,6 +27,10 @@ Conventions (identical to eco's recspace):
   circles and the virtual angles that follow the outgoing beam
   (``PER_REFLECTION``) are given for each reflection the detector is not on
   (``reflection_angles``). alpha, betain and naz depend on the sample only.
+- **Free energy**: the constraint ``energy = (lo, hi)`` (eV, either None)
+  makes the photon energy one more unknown (hklforge >= 0.2.2), for a mode
+  that is over-determined by one at a fixed energy; every solution then has
+  an ``energy`` row and the ``energy`` argument is not used for solving.
 """
 from __future__ import annotations
 
@@ -52,7 +56,7 @@ SURFACE_CONSTRAINTS = ("betain", "betaout", "bin_eq_bout")
 DETECTOR_POLICIES = {"h1": "detector on reflection 1", "between": "detector between both"}
 # with two reflections: what differs between them (the rest only depends on the sample)
 PER_REFLECTION = ("gamma", "delta", "ttheta", "theta", "qaz", "beta", "betaout", "psi", "tau", "omega")
-ROW_ORDER = CIRCLES + ("theta", "ttheta", "qaz", "naz", "alpha", "beta", "psi", "tau",
+ROW_ORDER = ("energy",) + CIRCLES + ("theta", "ttheta", "qaz", "naz", "alpha", "beta", "psi", "tau",
                        "betain", "betaout", "omega")
 UNSUPPORTED = ("mu_is_gam",)
 
@@ -154,7 +158,9 @@ class Sample:
         """Every position putting ``hkl`` in Bragg condition.
 
         ``constraints``: {name: value} of the held ones (circles, virtual
-        angles, booleans True, ``h2``: a second (h, k, l)). Returns a
+        angles, booleans True, ``h2``: a second (h, k, l), ``energy``: (lo,
+        hi) eV to let the energy vary; each solution then has its own
+        ``energy`` row and the argument is not used). Returns a
         DataFrame with one column per solution ('sol. 0', ...) and the angles
         as rows (``ROW_ORDER``); empty if there is none.
         """
@@ -164,7 +170,7 @@ class Sample:
         if "h2" not in mode:
             detector = "h1"
         pl = _plan(mode, detector)
-        k = wavevector(energy)
+        k = None if "energy" in mode else wavevector(energy)
         try:
             positions = pl.run(self.UB, k, tuple(float(x) for x in hkl), self.n_surface, self.n_reference)
         except Degenerate as e:
@@ -173,6 +179,8 @@ class Sample:
         rows = []
         for a in positions:
             row = {n: float(a[n]) for n in CIRCLES}
+            if "energy" in a:
+                row["energy"] = float(a["energy"])
             row.update(virtual_angles(GEOMETRY, a, self.n_surface, self.n_reference))
             rows.append(row)
         df = pd.DataFrame(rows, index=[f"sol. {i}" for i in range(len(rows))]).T
@@ -201,6 +209,9 @@ def make_mode(constraints: dict) -> dict:
             mode[key] = True
         elif key == "h2":
             mode["h2"] = tuple(float(x) for x in val)
+        elif key == "energy":
+            lo, hi = val
+            mode["energy"] = (None if lo is None else float(lo), None if hi is None else float(hi))
         elif key in CIRCLES or key in VIRTUAL_CONSTRAINTS:
             mode[key] = float(val)
         else:
@@ -422,7 +433,8 @@ def reachable_reflections(sample: Sample, energy: float, constraints: dict, hkls
             rows.append({**row, "reachable": False, "why not": str(e)})
             continue
         if df.empty:
-            beyond = np.linalg.norm(sample.B @ np.asarray(hkl, float)) > 2 * wavevector(energy)
+            beyond = ("energy" not in constraints
+                      and np.linalg.norm(sample.B @ np.asarray(hkl, float)) > 2 * wavevector(energy))
             rows.append({**row, "reachable": False,
                          "why not": "2 theta > 180: energy too low" if beyond else "no solution under these constraints"})
             continue
@@ -438,6 +450,7 @@ def reachable_reflections(sample: Sample, energy: float, constraints: dict, hkls
             good = through
         best = df[good[0]]
         rows.append({**row, "reachable": True, "why not": "", "solutions": len(good),
+                     **({"energy": float(best["energy"])} if "energy" in best.index else {}),
                      **{n: float(best[n]) for n in CIRCLES}, "ttheta": float(best["ttheta"])})
     return pd.DataFrame(rows)
 
