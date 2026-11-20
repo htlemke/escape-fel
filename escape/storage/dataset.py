@@ -179,6 +179,9 @@ class DataSet:
         self.data_raw = raw_datasets
         self.datasets = {}
         self._esc_types = {}
+        # [(name, func)], see add_append_callback; underscore so __repr__
+        # does not list it as a data item
+        self._append_callbacks = []
 
         # the path actually opened, after suffix completion (None when
         # results_file is an already open h5py.File / zarr.Group)
@@ -305,6 +308,79 @@ class DataSet:
             dict2structure({name: data}, base=self)
 
         return data
+
+    # --- append callbacks -------------------------------------------------
+    # Fixed recipes for derived items, e.g. a normalised signal: a callback
+    # `func(dataset)` returns the item and `run_append_callbacks` stores it
+    # with `self.append(func(self), name=name)`. Used by loaders that apply
+    # the same recipes to every dataset they produce (eco's `runs`), so a
+    # quantity defined once in a session is there for every run loaded after.
+
+    @property
+    def append_callbacks(self):
+        """The registered `[(name, func)]`, in the order they run. Order
+        matters: a callback may use an item an earlier one appended."""
+        # setdefault: a DataSet unpickled from before this attribute existed
+        return self.__dict__.setdefault("_append_callbacks", [])
+
+    @append_callbacks.setter
+    def append_callbacks(self, callbacks):
+        self.__dict__["_append_callbacks"] = [
+            (name, func) for name, func in callbacks
+        ]
+
+    def add_append_callback(self, name, func, run=False):
+        """Register `func(dataset) -> data`, stored as item `name`.
+
+        Registering a name again replaces that callback in place (keeping its
+        position). With `run=True` it is also applied to this dataset now.
+        """
+        if not callable(func):
+            raise TypeError(f"append callback for {name!r} is not callable: {func!r}")
+        cbs = self.append_callbacks
+        for i, (n, _) in enumerate(cbs):
+            if n == name:
+                cbs[i] = (name, func)
+                break
+        else:
+            cbs.append((name, func))
+        if run:
+            return self.run_append_callbacks(names=[name])
+
+    def remove_append_callback(self, name):
+        """Unregister `name`. An item it already appended stays."""
+        self.append_callbacks = [(n, f) for n, f in self.append_callbacks if n != name]
+
+    def run_append_callbacks(self, names=None, raise_on_error=False, verbose=True):
+        """Run the registered callbacks (all, or only `names`) in order:
+        `self.append(func(self), name=name)` for each.
+
+        A failing callback is reported and skipped and the rest still run --
+        typically a run that lacks a channel the recipe needs -- unless
+        `raise_on_error`. Returns `(applied, failed)` as lists of names.
+
+        Note: with a results file open for writing, `append` also stores the
+        item in it, as for any other append.
+        """
+        applied, failed = [], []
+        for name, func in list(self.append_callbacks):
+            if names is not None and name not in names:
+                continue
+            try:
+                self.append(func(self), name=name)
+            except Exception as e:
+                if raise_on_error:
+                    raise
+                failed.append(name)
+                if verbose:
+                    logger.warning(
+                        "append callback %r failed and was skipped: %s: %s",
+                        name, type(e).__name__, e,
+                    )
+                    logger.debug("append callback %r", name, exc_info=True)
+            else:
+                applied.append(name)
+        return applied, failed
 
     def get_array(self,spec, computed=True):
         dataset = self
